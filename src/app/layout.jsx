@@ -3,6 +3,7 @@ import InitColorSchemeScript from '@mui/material/InitColorSchemeScript'
 
 // Vercel Analytics
 import { Analytics } from '@vercel/analytics/next'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 
 // Third-party Imports
 import 'react-perfect-scrollbar/dist/css/styles.css'
@@ -35,6 +36,7 @@ const RootLayout = async props => {
         <InitColorSchemeScript attribute='data' defaultMode={systemMode} />
         {children}
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   )
