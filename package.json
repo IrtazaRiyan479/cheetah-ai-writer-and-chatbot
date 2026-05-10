@@ -23,6 +23,7 @@
     "@mui/lab": "7.0.1-beta.19",
     "@mui/material": "7.3.5",
     "@mui/material-nextjs": "7.3.5",
+    "@mui/utils": "^9.0.1",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "analytics": "^0.8.19",
