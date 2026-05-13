@@ -2,6 +2,7 @@
 import Accordion from './accordion'
 import Alerts from './alerts'
 import Autocomplete from './autocomplete'
+import avatar from './avatar'
 import backdrop from './backdrop'
 import badges from './badges'
 import breadcrumbs from './breadcrumbs'
@@ -41,6 +42,7 @@ const overrides = skin => {
     Accordion(skin),
     Alerts,
     Autocomplete(skin),
+    avatar,
     backdrop,
     badges,
     breadcrumbs,
