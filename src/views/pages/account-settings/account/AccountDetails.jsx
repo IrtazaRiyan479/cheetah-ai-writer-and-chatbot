@@ -21,7 +21,7 @@ const initialData = {
   firstName: 'John',
   lastName: 'Doe',
   email: 'john.doe@example.com',
-  organization: 'Pixinvent',
+  organization: 'Irtaza Riyan',
   phoneNumber: '+1 (917) 543-9876',
   address: '123 Main St, New York, NY 10001',
   state: 'New York',
@@ -133,7 +133,7 @@ const AccountDetails = () => {
                 fullWidth
                 label='Organization'
                 value={formData.organization}
-                placeholder='Pixinvent'
+                placeholder='Irtaza Riyan'
                 onChange={e => handleFormChange('organization', e.target.value)}
               />
             </Grid>

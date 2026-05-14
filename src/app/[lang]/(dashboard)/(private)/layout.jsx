@@ -46,7 +46,6 @@ const Layout = async props => {
             <VerticalLayout
               navigation={<Navigation dictionary={dictionary} mode={mode} />}
               navbar={<Navbar />}
-              footer={<VerticalFooter />}
             >
               {children}
             </VerticalLayout>
@@ -65,7 +64,6 @@ const Layout = async props => {
             <i className='ri-arrow-up-line' />
           </Button>
         </ScrollToTop>
-        <Customizer dir={direction} />
       </AuthGuard>
     </Providers>
   )

@@ -541,14 +541,14 @@ const horizontalMenuData = dictionary => [
       {
         label: dictionary['navigation'].raiseSupport,
         icon: 'ri-lifebuoy-line',
-        href: 'https://pixinvent.ticksy.com',
+        href: 'https://Irtaza Riyan.ticksy.com',
         suffix: <i className='ri-external-link-line text-xl' />,
         target: '_blank'
       },
       {
         label: dictionary['navigation'].documentation,
         icon: 'ri-book-line',
-        href: 'https://demos.pixinvent.com/materialize-nextjs-admin-template/documentation',
+        href: 'https://demos.Irtaza Riyan.com/materialize-nextjs-admin-template/documentation',
         suffix: <i className='ri-external-link-line text-xl' />,
         target: '_blank'
       },
@@ -563,7 +563,7 @@ const horizontalMenuData = dictionary => [
       {
         label: dictionary['navigation'].externalLink,
         icon: 'ri-link',
-        href: 'https://pixinvent.com',
+        href: 'https://Irtaza Riyan.com',
         target: '_blank',
         suffix: <i className='ri-external-link-line text-xl' />
       },

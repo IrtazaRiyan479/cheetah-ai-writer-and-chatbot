@@ -157,21 +157,21 @@ const Footer = () => {
             <span>{`© ${new Date().getFullYear()}, Made with `}</span>
             <span>{`❤️`}</span>
             <span>{` by `}</span>
-            <Link href='https://pixinvent.com/' target='_blank' className='font-medium text-white'>
-              Pixinvent
+            <Link href='https://www.linkedin.com/in/irtaza-riyan/' target='_blank' className='font-medium text-white'>
+              Irtaza Riyan
             </Link>
           </Typography>
           <div className='flex gap-1.5 items-center opacity-[0.78]'>
-            <IconButton component={Link} size='small' href='https://github.com/pixinvent' target='_blank'>
+            <IconButton component={Link} size='small' href='https://github.com/Irtaza Riyan' target='_blank'>
               <i className='ri-github-fill text-white text-lg' />
             </IconButton>
-            <IconButton component={Link} size='small' href='https://www.facebook.com/pixinvents/' target='_blank'>
+            <IconButton component={Link} size='small' href='https://www.facebook.com/Irtaza Riyans/' target='_blank'>
               <i className='ri-facebook-fill text-white text-lg' />
             </IconButton>
-            <IconButton component={Link} size='small' href='https://twitter.com/pixinvents' target='_blank'>
+            <IconButton component={Link} size='small' href='https://twitter.com/Irtaza Riyans' target='_blank'>
               <i className='ri-twitter-fill text-white text-lg' />
             </IconButton>
-            <IconButton component={Link} size='small' href='https://www.linkedin.com/company/pixinvent' target='_blank'>
+            <IconButton component={Link} size='small' href='https://www.linkedin.com/company/Irtaza Riyan' target='_blank'>
               <i className='ri-linkedin-fill text-white text-lg' />
             </IconButton>
           </div>

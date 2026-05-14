@@ -28,7 +28,7 @@ const InviteAndShare = () => {
             Share the referral link
           </Typography>
           <div className='flex items-center gap-4'>
-            <TextField size='small' placeholder='pixinvent.com/?ref=6479' className='flex-auto' />
+            <TextField size='small' placeholder='Irtaza Riyan.com/?ref=6479' className='flex-auto' />
             <div className='flex gap-2'>
               <CustomIconButton variant='contained' className='bg-facebook text-white'>
                 <i className='ri-facebook-circle-line' />

@@ -27,7 +27,7 @@ const Address = () => {
         <form>
           <Grid container spacing={5}>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField fullWidth label='Company Name' variant='outlined' placeholder='Pixinvent' />
+              <TextField fullWidth label='Company Name' variant='outlined' placeholder='Irtaza Riyan' />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth label='Billing Email' variant='outlined' placeholder='john.doe@example.com' />

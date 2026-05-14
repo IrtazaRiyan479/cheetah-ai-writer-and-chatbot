@@ -24,8 +24,8 @@ const FooterContent = () => {
         <span className='text-textSecondary'>{`© ${new Date().getFullYear()}, Made with `}</span>
         <span>{`❤️`}</span>
         <span className='text-textSecondary'>{` by `}</span>
-        <Link href='https://pixinvent.com' target='_blank' className='text-primary capitalize'>
-          Pixinvent
+        <Link href='https://Irtaza Riyan.com' target='_blank' className='text-primary capitalize'>
+          Irtaza Riyan
         </Link>
       </p>
       {!isBreakpointReached && (
@@ -33,17 +33,17 @@ const FooterContent = () => {
           <Link href='https://themeforest.net/licenses/standard' target='_blank' className='text-primary'>
             License
           </Link>
-          <Link href='https://themeforest.net/user/pixinvent/portfolio' target='_blank' className='text-primary'>
+          <Link href='https://themeforest.net/user/Irtaza Riyan/portfolio' target='_blank' className='text-primary'>
             More Themes
           </Link>
           <Link
-            href='https://demos.pixinvent.com/materialize-nextjs-admin-template/documentation'
+            href='https://demos.Irtaza Riyan.com/materialize-nextjs-admin-template/documentation'
             target='_blank'
             className='text-primary'
           >
             Documentation
           </Link>
-          <Link href='https://pixinvent.ticksy.com' target='_blank' className='text-primary'>
+          <Link href='https://Irtaza Riyan.ticksy.com' target='_blank' className='text-primary'>
             Support
           </Link>
         </div>

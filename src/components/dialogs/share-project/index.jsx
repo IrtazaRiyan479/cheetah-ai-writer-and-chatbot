@@ -226,7 +226,7 @@ const ShareProject = ({ open, setOpen }) => {
           <div className='flex grow gap-2'>
             <i className='ri-group-line text-xl' />
             <Typography color='text.primary' className='font-medium'>
-              {`Public to ${themeConfig.templateName} - Pixinvent`}
+              {`Public to ${themeConfig.templateName} - Irtaza Riyan`}
             </Typography>
           </div>
           <Button variant='contained' className='flex gap-2'>
