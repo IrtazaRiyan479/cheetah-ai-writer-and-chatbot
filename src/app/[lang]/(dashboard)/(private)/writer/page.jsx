@@ -1,49 +1,41 @@
 // MUI Imports
 import Grid from '@mui/material/Grid'
+import Container from '@mui/material/Container'
 
 // Component Imports
 import ProductAddHeader from '@views/apps/ecommerce/products/add/ProductAddHeader'
-import ProductInformation from '@views/apps/ecommerce/products/add/ProductInformation'
-import ProductImage from '@views/apps/ecommerce/products/add/ProductImage'
-import ProductVariants from '@views/apps/ecommerce/products/add/ProductVariants'
-import ProductInventory from '@views/apps/ecommerce/products/add/ProductInventory'
-import ProductPricing from '@views/apps/ecommerce/products/add/ProductPricing'
 import ProductOrganize from '@views/apps/ecommerce/products/add/ProductOrganize'
+import ProductPricing from '@views/apps/ecommerce/products/add/ProductPricing' // Our new Model/Preset component
+import ProductInformation from '@views/apps/ecommerce/products/add/ProductInformation'
 
-const eCommerceProductsAdd = () => {
+const CheetahWriter = () => {
   return (
-    <Grid container spacing={6}>
-      <Grid size={{ xs: 12 }}>
-        <ProductAddHeader />
-      </Grid>
-      <Grid size={{ xs: 12, md: 8 }}>
-        <Grid container spacing={6}>
-          <Grid size={{ xs: 12 }}>
-            <ProductInformation />
-          </Grid>
-          <Grid size={{ xs: 12 }}>
-            <ProductImage />
-          </Grid>
-          <Grid size={{ xs: 12 }}>
-            <ProductVariants />
-          </Grid>
-          <Grid size={{ xs: 12 }}>
-            <ProductInventory />
-          </Grid>
+    <Container maxWidth='md' className='p-0'>
+      <Grid container spacing={6}>
+
+        {/* Top Header */}
+        <Grid size={{ xs: 12 }}>
+          <ProductAddHeader />
         </Grid>
-      </Grid>
-      <Grid size={{ xs: 12, md: 4 }}>
-        <Grid container spacing={6}>
-          <Grid size={{ xs: 12 }}>
-            <ProductPricing />
-          </Grid>
-          <Grid size={{ xs: 12 }}>
-            <ProductOrganize />
-          </Grid>
+
+                {/* AI Model & Presets (ADDED HERE) */}
+        <Grid size={{ xs: 12 }}>
+          <ProductPricing />
         </Grid>
+
+        {/* Article Type Selection (The clickable tiles) */}
+        <Grid size={{ xs: 12 }}>
+          <ProductOrganize />
+        </Grid>
+
+        {/* Main Article Settings (Target Keyword, Tone, etc.) */}
+        <Grid size={{ xs: 12 }}>
+          <ProductInformation />
+        </Grid>
+
       </Grid>
-    </Grid>
+    </Container>
   )
 }
 
-export default eCommerceProductsAdd
+export default CheetahWriter

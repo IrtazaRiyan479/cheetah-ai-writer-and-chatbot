@@ -1,23 +1,15 @@
 // MUI Imports
-import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 
 const ProductAddHeader = () => {
   return (
-    <div className='flex flex-wrap sm:items-center justify-between max-sm:flex-col gap-6'>
-      <div>
-        <Typography variant='h4' className='mbe-1'>
-          Add a new product
-        </Typography>
-        <Typography>Orders placed across your store</Typography>
-      </div>
-      <div className='flex flex-wrap max-sm:flex-col gap-4'>
-        <Button variant='outlined' color='secondary'>
-          Discard
-        </Button>
-        <Button variant='outlined'>Save Draft</Button>
-        <Button variant='contained'>Publish Product</Button>
-      </div>
+    <div className='flex flex-col mbe-4'>
+      <Typography variant='h4' className='font-bold mbe-1'>
+        Create New Article
+      </Typography>
+      <Typography color='text.secondary'>
+        Configure your AI writing parameters below.
+      </Typography>
     </div>
   )
 }

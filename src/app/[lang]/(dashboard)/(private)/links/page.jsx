@@ -2,23 +2,13 @@
 import dynamic from 'next/dynamic'
 
 // Component Imports
-import Settings from '@views/apps/ecommerce/settings'
+import Settings from '@views/apps/links'
 
-const StoreDetailsTab = dynamic(() => import('@views/apps/ecommerce/settings/store-details'))
-const PaymentsTab = dynamic(() => import('@views/apps/ecommerce/settings/payments'))
-const CheckoutTab = dynamic(() => import('@views/apps/ecommerce/settings/checkout'))
-const ShippingDeliveryTab = dynamic(() => import('@views/apps/ecommerce/settings/ShippingDelivery'))
-const LocationsTab = dynamic(() => import('@views/apps/ecommerce/settings/locations'))
-const NotificationsTab = dynamic(() => import('@views/apps/ecommerce/settings/Notifications'))
+const StoreDetailsTab = dynamic(() => import('@views/apps/links/store-details'))
 
 // Vars
 const tabContentList = () => ({
   'store-details': <StoreDetailsTab />,
-  payments: <PaymentsTab />,
-  checkout: <CheckoutTab />,
-  'shipping-delivery': <ShippingDeliveryTab />,
-  locations: <LocationsTab />,
-  notifications: <NotificationsTab />
 })
 
 const eCommerceSettings = () => {

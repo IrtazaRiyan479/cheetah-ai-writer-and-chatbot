@@ -5,72 +5,69 @@ import { useState } from 'react'
 
 // MUI Imports
 import Card from '@mui/material/Card'
-import CardHeader from '@mui/material/CardHeader'
 import CardContent from '@mui/material/CardContent'
-import FormControl from '@mui/material/FormControl'
-import InputLabel from '@mui/material/InputLabel'
-import MenuItem from '@mui/material/MenuItem'
-import Select from '@mui/material/Select'
-import TextField from '@mui/material/TextField'
+import Typography from '@mui/material/Typography'
+import Grid from '@mui/material/Grid'
 
-// Component Imports
-import CustomIconButton from '@core/components/mui/IconButton'
+// Third-party Imports
+import classnames from 'classnames'
+
+// Define your article types here
+const articleTypes = [
+  { id: 'blog', title: 'Blog Post', icon: 'ri-article-line' },
+  { id: 'listicle', title: 'Listicle', icon: 'ri-list-check-2' },
+  { id: 'local-roundup', title: 'Local Places Roundup', icon: 'ri-map-pin-2-line' },
+  { id: 'amazon-roundup', title: 'Amazon Product Roundup', icon: 'ri-shopping-cart-line' },
+  { id: 'amazon-review', title: 'Amazon Single Product Review', icon: 'ri-star-line' },
+  { id: 'youtube-blog', title: 'YouTube Video to Blog Post', icon: 'ri-youtube-line' },
+  { id: 'rewrite', title: 'Rewrite Blog Post', icon: 'ri-edit-2-line' }
+]
 
 const ProductOrganize = () => {
-  // States
-  const [vendor, setVendor] = useState('')
-  const [category, setCategory] = useState('')
-  const [collection, setCollection] = useState('')
-  const [status, setStatus] = useState('')
+  // State to track which card is currently clicked
+  const [selectedType, setSelectedType] = useState('blog')
 
   return (
-    <Card>
-      <CardHeader title='Organize' />
-      <CardContent>
-        <form onSubmit={e => e.preventDefault()} className='flex flex-col gap-5'>
-          <FormControl fullWidth>
-            <InputLabel>Select Vendor</InputLabel>
-            <Select label='Select Vendor' value={vendor} onChange={e => setVendor(e.target.value)}>
-              <MenuItem value={`Men's Clothing`}>Men&apos;s Clothing</MenuItem>
-              <MenuItem value={`Women's Clothing`}>Women&apos;s Clothing</MenuItem>
-              <MenuItem value={`Kid's Clothing`}>Kid&apos;s Clothing</MenuItem>
-            </Select>
-          </FormControl>
-          <div className='flex items-center gap-4'>
-            <FormControl fullWidth>
-              <InputLabel>Select Category</InputLabel>
-              <Select label='Select Category' value={category} onChange={e => setCategory(e.target.value)}>
-                <MenuItem value='Household'>Household</MenuItem>
-                <MenuItem value='Office'>Office</MenuItem>
-                <MenuItem value='Electronics'>Electronics</MenuItem>
-                <MenuItem value='Management'>Management</MenuItem>
-                <MenuItem value='Automotive'>Automotive</MenuItem>
-              </Select>
-            </FormControl>
-            <CustomIconButton size='large' variant='outlined' color='primary' className='min-is-fit'>
-              <i className='ri-add-line' />
-            </CustomIconButton>
-          </div>
-          <FormControl fullWidth>
-            <InputLabel>Select Collection</InputLabel>
-            <Select label='Select Collection' value={collection} onChange={e => setCollection(e.target.value)}>
-              <MenuItem value={`Men's Clothing`}>Men&apos;s Clothing</MenuItem>
-              <MenuItem value={`Women's Clothing`}>Women&apos;s Clothing</MenuItem>
-              <MenuItem value={`Kid's Clothing`}>Kid&apos;s Clothing</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl fullWidth>
-            <InputLabel>Select Status</InputLabel>
-            <Select label='Select Status' value={status} onChange={e => setStatus(e.target.value)}>
-              <MenuItem value='Published'>Published</MenuItem>
-              <MenuItem value='Inactive'>Inactive</MenuItem>
-              <MenuItem value='Scheduled'>Scheduled</MenuItem>
-            </Select>
-          </FormControl>
-          <TextField fullWidth label='Enter Tags' placeholder='Fashion, Trending, Summer' />
-        </form>
-      </CardContent>
-    </Card>
+    <div className='flex flex-col gap-3'>
+      {/* Label sits outside the box, just like Koala */}
+      <Typography variant='h6' className='font-semibold'>
+        Article Type
+      </Typography>
+
+      <Grid container spacing={4}>
+        {articleTypes.map(type => (
+          <Grid size={{ xs: 12, sm: 6, md: 4 }} key={type.id}>
+            <Card
+              onClick={() => setSelectedType(type.id)}
+              className={classnames(
+                'cursor-pointer transition-all duration-200 border-2 shadow-sm',
+                selectedType === type.id
+                  ? 'border-primary bg-[var(--mui-palette-primary-lightOpacity)]' // Active state (Bright border, tinted bg)
+                  : 'border-transparent hover:border-actionHover bg-backgroundPaper' // Inactive state
+              )}
+            >
+              <CardContent className='flex flex-col items-center justify-center gap-2 text-center p-6'>
+                <i
+                  className={classnames(
+                    type.icon,
+                    'text-3xl',
+                    selectedType === type.id ? 'text-primary' : 'text-textSecondary'
+                  )}
+                />
+                <Typography
+                  className={classnames(
+                    'font-medium',
+                    selectedType === type.id ? 'text-primary' : 'text-textPrimary'
+                  )}
+                >
+                  {type.title}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+    </div>
   )
 }
 
