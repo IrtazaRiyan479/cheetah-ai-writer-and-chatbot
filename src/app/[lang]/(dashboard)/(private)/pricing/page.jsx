@@ -1,5 +1,8 @@
 // Component Imports
-import Pricing from '@views/pages/pricing'
+import PricingWrapper from '@/views/front-pages/pricing'
+
+// Context Imports
+import { IntersectionProvider } from '@/contexts/intersectionContext'
 
 // Data Imports
 import { getPricingData } from '@/app/server/actions'
@@ -20,11 +23,16 @@ import { getPricingData } from '@/app/server/actions'
 
   return res.json()
 } */
-const PricePage = async () => {
+
+const PricingPage = async () => {
   // Vars
   const data = await getPricingData()
 
-  return <Pricing data={data} />
+  return (
+    <IntersectionProvider>
+      <PricingWrapper data={data} />
+    </IntersectionProvider>
+    )
 }
 
-export default PricePage
+export default PricingPage

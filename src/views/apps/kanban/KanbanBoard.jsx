@@ -1,79 +1,73 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef } from 'react'
 
 // Third-party imports
-import { useDragAndDrop } from '@formkit/drag-and-drop/react'
-import { animations } from '@formkit/drag-and-drop'
 import { useDispatch, useSelector } from 'react-redux'
+import classNames from 'classnames'
 
-// Slice Imports
-import { addColumn, updateColumns } from '@/redux-store/slices/kanban'
+// MUI Imports (ADDED THIS to detect mobile screens)
+import useMediaQuery from '@mui/material/useMediaQuery'
 
 // Component Imports
-import KanbanList from './KanbanList'
-import NewColumn from './NewColumn'
-import KanbanDrawer from './KanbanDrawer'
+import TaskCard from './TaskCard'
+import SendMsgForm from '@views/apps/chat/SendMsgForm'
 
-const KanbanBoard = () => {
-  // State
-  const [drawerOpen, setDrawerOpen] = useState(false)
+// Util Imports
+import { commonLayoutClasses } from '@layouts/utils/layoutClasses'
 
-  // Hooks
+const ImageGeneratorBoard = () => {
   const kanbanStore = useSelector(state => state.kanbanReducer)
   const dispatch = useDispatch()
 
-  const [boardRef, columns, setColumns] = useDragAndDrop(kanbanStore.columns, {
-    plugins: [animations()],
-    dragHandle: '.list-handle'
-  })
+  const feedRef = useRef(null)
+  const feedTasks = kanbanStore.tasks
 
-  // Add New Column
-  const addNewColumn = title => {
-    const maxId = Math.max(...kanbanStore.columns.map(column => column.id))
+  // ADDED THIS: Get the screen size just like ChatWrapper does
+  const isBelowSmScreen = useMediaQuery(theme => theme.breakpoints.down('sm'))
 
-    dispatch(addColumn(title))
-    setColumns([...columns, { id: maxId + 1, title, taskIds: [] }])
-  }
-
-  // To get the current task for the drawer
-  const currentTask = kanbanStore.tasks.find(task => task.id === kanbanStore.currentTaskId)
-
-  // Update Columns on Drag and Drop
+  // Auto-scroll horizontally to the right when a new image is added
   useEffect(() => {
-    if (columns !== kanbanStore.columns) dispatch(updateColumns(columns))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columns])
+    if (feedRef.current) {
+      feedRef.current.scrollLeft = feedRef.current.scrollWidth
+    }
+  }, [feedTasks.length])
 
   return (
-    <div className='flex items-start gap-6'>
-      <div ref={boardRef} className='flex gap-6'>
-        {columns.map(column => (
-          <KanbanList
-            key={column.id}
-            dispatch={dispatch}
-            column={column}
-            store={kanbanStore}
-            setDrawerOpen={setDrawerOpen}
-            columns={columns}
-            setColumns={setColumns}
-            currentTask={currentTask}
-            tasks={column.taskIds.map(taskId => kanbanStore.tasks.find(task => task.id === taskId))}
-          />
-        ))}
-      </div>
-      <NewColumn addNewColumn={addNewColumn} />
-      {currentTask && (
-        <KanbanDrawer
-          task={currentTask}
-          drawerOpen={drawerOpen}
-          setDrawerOpen={setDrawerOpen}
-          dispatch={dispatch}
-          columns={columns}
-          setColumns={setColumns}
-        />
+    <div
+      className={classNames(
+        commonLayoutClasses.contentHeightFixed,
+        'flex flex-col is-full bs-full overflow-hidden relative bg-transparent'
       )}
+    >
+      {/* 1. Horizontal Scroll Area */}
+      <div
+        ref={feedRef}
+        className='flex-grow flex gap-6 p-6 overflow-x-auto scroll-smooth items-start [&::-webkit-scrollbar]:hidden'
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
+        {feedTasks.length > 0 ? (
+          feedTasks.map((task, index) => (
+            <TaskCard key={task.id} task={task} index={index} />
+          ))
+        ) : (
+          <div className='flex items-center justify-center w-full h-full text-textDisabled min-h-[400px]'>
+            Start by typing a prompt below...
+          </div>
+        )}
+      </div>
+
+      {/* 2. The Unaltered Form Area */}
+      {/* Removed the 'p-6' padding so it stretches full width like in Chat */}
+      <div className='mt-auto shrink-0 w-full'>
+        <SendMsgForm
+          dispatch={dispatch}
+          activeUser={{ id: 'ai-generator' }}
+          // PASSED THE PROP HERE so the form knows to shrink the send button on mobile!
+          isBelowSmScreen={isBelowSmScreen}
+        />
+      </div>
     </div>
   )
 }
 
-export default KanbanBoard
+export default ImageGeneratorBoard

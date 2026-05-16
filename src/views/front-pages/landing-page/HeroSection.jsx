@@ -66,7 +66,7 @@ const HeroSection = ({ mode }) => {
   }, [])
 
   return (
-    <section id='home' className='relative overflow-hidden pbs-[70px] -mbs-[70px] bg-backgroundPaper z-[1]'>
+    <section id='home' className='relative overflow-hidden pbs-[70px] rounded bg-backgroundPaper z-[1]'>
       <img src={heroSectionBg} alt='hero-bg' className={styles.heroSectionBg} />
       <div className={classnames('pbs-16 overflow-hidden', frontCommonStyles.layoutSpacing)}>
         <div className='md:max-is-[550px] mlb-0 mli-auto text-center'>

@@ -12,6 +12,7 @@ import Navigation from '@components/layout/vertical/Navigation'
 import Header from '@components/layout/horizontal/Header'
 import Navbar from '@components/layout/vertical/Navbar'
 import VerticalFooter from '@components/layout/vertical/Footer'
+import ConditionalFooter from '@components/layout/vertical/ConditionalFooter'
 import HorizontalFooter from '@components/layout/horizontal/Footer'
 import Customizer from '@core/components/customizer'
 import ScrollToTop from '@core/components/scroll-to-top'
@@ -46,6 +47,9 @@ const Layout = async props => {
             <VerticalLayout
               navigation={<Navigation dictionary={dictionary} mode={mode} />}
               navbar={<Navbar />}
+              footer={<ConditionalFooter>
+                  <VerticalFooter />
+                </ConditionalFooter>}
             >
               {children}
             </VerticalLayout>

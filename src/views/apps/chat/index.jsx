@@ -83,33 +83,16 @@ const ChatWrapper = () => {
         'shadow-md': settings.skin !== 'bordered'
       })}
     >
-      <SidebarLeft
-        chatStore={chatStore}
-        getActiveUserData={activeUser}
-        dispatch={dispatch}
-        backdropOpen={backdropOpen}
-        setBackdropOpen={setBackdropOpen}
-        sidebarOpen={sidebarOpen}
-        setSidebarOpen={setSidebarOpen}
-        isBelowLgScreen={isBelowLgScreen}
-        isBelowMdScreen={isBelowMdScreen}
-        isBelowSmScreen={isBelowSmScreen}
-        messageInputRef={messageInputRef}
-      />
-
       <ChatContent
         chatStore={chatStore}
         dispatch={dispatch}
         backdropOpen={backdropOpen}
         setBackdropOpen={setBackdropOpen}
-        setSidebarOpen={setSidebarOpen}
         isBelowMdScreen={isBelowMdScreen}
         isBelowLgScreen={isBelowLgScreen}
         isBelowSmScreen={isBelowSmScreen}
         messageInputRef={messageInputRef}
       />
-
-      <Backdrop open={backdropOpen} onClick={() => setBackdropOpen(false)} className='absolute z-10' />
     </div>
   )
 }
