@@ -1,5 +1,5 @@
 // Component Imports
-import LandingPageWrapper from '@views/front-pages/landing-page'
+import LandingPageWrapper from '@views/apps/home'
 import { IntersectionProvider } from '@/contexts/intersectionContext'
 
 // Server Action Imports

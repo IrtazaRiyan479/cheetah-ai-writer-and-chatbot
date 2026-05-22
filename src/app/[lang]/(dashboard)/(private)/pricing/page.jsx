@@ -1,5 +1,5 @@
 // Component Imports
-import PricingWrapper from '@/views/front-pages/pricing'
+import PricingWrapper from '@/views/apps/pricing'
 
 // Context Imports
 import { IntersectionProvider } from '@/contexts/intersectionContext'

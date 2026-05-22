@@ -8,10 +8,10 @@ import Grid from '@mui/material/Grid'
 import Container from '@mui/material/Container'
 
 // Component Imports
-import ProductAddHeader from '@views/apps/ecommerce/products/add/ProductAddHeader'
-import ProductOrganize from '@views/apps/ecommerce/products/add/ProductOrganize'
-import ProductPricing from '@views/apps/ecommerce/products/add/ProductPricing'
-import ProductInformation from '@views/apps/ecommerce/products/add/ProductInformation'
+import ProductAddHeader from '@views/apps/writer/ProductAddHeader'
+import ProductOrganize from '@views/apps/writer/ProductOrganize'
+import ProductPricing from '@views/apps/writer/ProductPricing'
+import ProductInformation from '@views/apps/writer/ProductInformation'
 
 const CheetahWriter = () => {
   // LIFTED STATE: Now the whole page knows which article type is selected!
