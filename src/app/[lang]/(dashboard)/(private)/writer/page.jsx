@@ -1,3 +1,8 @@
+'use client'
+
+// React Imports
+import { useState } from 'react'
+
 // MUI Imports
 import Grid from '@mui/material/Grid'
 import Container from '@mui/material/Container'
@@ -5,34 +10,33 @@ import Container from '@mui/material/Container'
 // Component Imports
 import ProductAddHeader from '@views/apps/ecommerce/products/add/ProductAddHeader'
 import ProductOrganize from '@views/apps/ecommerce/products/add/ProductOrganize'
-import ProductPricing from '@views/apps/ecommerce/products/add/ProductPricing' // Our new Model/Preset component
+import ProductPricing from '@views/apps/ecommerce/products/add/ProductPricing'
 import ProductInformation from '@views/apps/ecommerce/products/add/ProductInformation'
 
 const CheetahWriter = () => {
+  // LIFTED STATE: Now the whole page knows which article type is selected!
+  const [selectedType, setSelectedType] = useState('blog')
+
   return (
     <Container maxWidth='md' className='p-0'>
       <Grid container spacing={6}>
-
-        {/* Top Header */}
         <Grid size={{ xs: 12 }}>
           <ProductAddHeader />
         </Grid>
 
-                {/* AI Model & Presets (ADDED HERE) */}
         <Grid size={{ xs: 12 }}>
           <ProductPricing />
         </Grid>
 
-        {/* Article Type Selection (The clickable tiles) */}
         <Grid size={{ xs: 12 }}>
-          <ProductOrganize />
+          {/* We pass the state down to the tiles */}
+          <ProductOrganize selectedType={selectedType} setSelectedType={setSelectedType} />
         </Grid>
 
-        {/* Main Article Settings (Target Keyword, Tone, etc.) */}
         <Grid size={{ xs: 12 }}>
-          <ProductInformation />
+          {/* We pass the state down to the form so it can change dynamically! */}
+          <ProductInformation selectedType={selectedType} />
         </Grid>
-
       </Grid>
     </Container>
   )

@@ -1,18 +1,12 @@
 'use client'
 
-// React Imports
-import { useState } from 'react'
-
 // MUI Imports
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Typography from '@mui/material/Typography'
 import Grid from '@mui/material/Grid'
-
-// Third-party Imports
 import classnames from 'classnames'
 
-// Define your article types here
 const articleTypes = [
   { id: 'blog', title: 'Blog Post', icon: 'ri-article-line' },
   { id: 'listicle', title: 'Listicle', icon: 'ri-list-check-2' },
@@ -23,13 +17,10 @@ const articleTypes = [
   { id: 'rewrite', title: 'Rewrite Blog Post', icon: 'ri-edit-2-line' }
 ]
 
-const ProductOrganize = () => {
-  // State to track which card is currently clicked
-  const [selectedType, setSelectedType] = useState('blog')
-
+// CHANGED: Accept props from the parent instead of using local state
+const ProductOrganize = ({ selectedType, setSelectedType }) => {
   return (
     <div className='flex flex-col gap-3'>
-      {/* Label sits outside the box, just like Koala */}
       <Typography variant='h6' className='font-semibold'>
         Article Type
       </Typography>
@@ -42,8 +33,8 @@ const ProductOrganize = () => {
               className={classnames(
                 'cursor-pointer transition-all duration-200 border-2 shadow-sm',
                 selectedType === type.id
-                  ? 'border-primary bg-[var(--mui-palette-primary-lightOpacity)]' // Active state (Bright border, tinted bg)
-                  : 'border-transparent hover:border-actionHover bg-backgroundPaper' // Inactive state
+                  ? 'border-primary bg-[var(--mui-palette-primary-lightOpacity)]'
+                  : 'border-transparent hover:border-actionHover bg-backgroundPaper'
               )}
             >
               <CardContent className='flex flex-col items-center justify-center gap-2 text-center p-6'>
