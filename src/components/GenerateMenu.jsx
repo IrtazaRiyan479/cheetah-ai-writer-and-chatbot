@@ -5,7 +5,6 @@ import { useParams } from 'next/navigation'
 import Chip from '@mui/material/Chip'
 
 // Component Imports
-import { SubMenu as HorizontalSubMenu, MenuItem as HorizontalMenuItem } from '@menu/horizontal-menu'
 import { SubMenu as VerticalSubMenu, MenuItem as VerticalMenuItem, MenuSection } from '@menu/vertical-menu'
 
 // Util Imports

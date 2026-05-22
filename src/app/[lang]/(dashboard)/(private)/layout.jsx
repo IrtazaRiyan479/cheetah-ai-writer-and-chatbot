@@ -4,17 +4,13 @@ import Button from '@mui/material/Button'
 // Layout Imports
 import LayoutWrapper from '@layouts/LayoutWrapper'
 import VerticalLayout from '@layouts/VerticalLayout'
-import HorizontalLayout from '@layouts/HorizontalLayout'
 
 // Component Imports
 import Providers from '@components/Providers'
 import Navigation from '@components/layout/vertical/Navigation'
-import Header from '@components/layout/horizontal/Header'
 import Navbar from '@components/layout/vertical/Navbar'
 import VerticalFooter from '@components/layout/vertical/Footer'
 import ConditionalFooter from '@components/layout/vertical/ConditionalFooter'
-import HorizontalFooter from '@components/layout/horizontal/Footer'
-import Customizer from '@core/components/customizer'
 import ScrollToTop from '@core/components/scroll-to-top'
 import AuthGuard from '@/hocs/AuthGuard'
 
@@ -53,13 +49,7 @@ const Layout = async props => {
             >
               {children}
             </VerticalLayout>
-          }
-          horizontalLayout={
-            <HorizontalLayout header={<Header dictionary={dictionary} />} footer={<HorizontalFooter />}>
-              {children}
-            </HorizontalLayout>
-          }
-        />
+          }        />
         <ScrollToTop className='mui-fixed'>
           <Button
             variant='contained'

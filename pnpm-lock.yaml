@@ -38,27 +38,6 @@ importers:
       '@formkit/drag-and-drop':
         specifier: 0.5.3
         version: 0.5.3
-      '@fullcalendar/common':
-        specifier: 5.11.5
-        version: 5.11.5
-      '@fullcalendar/core':
-        specifier: 6.1.19
-        version: 6.1.19
-      '@fullcalendar/daygrid':
-        specifier: 6.1.19
-        version: 6.1.19(@fullcalendar/core@6.1.19)
-      '@fullcalendar/interaction':
-        specifier: 6.1.19
-        version: 6.1.19(@fullcalendar/core@6.1.19)
-      '@fullcalendar/list':
-        specifier: 6.1.19
-        version: 6.1.19(@fullcalendar/core@6.1.19)
-      '@fullcalendar/react':
-        specifier: 6.1.19
-        version: 6.1.19(@fullcalendar/core@6.1.19)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      '@fullcalendar/timegrid':
-        specifier: 6.1.19
-        version: 6.1.19(@fullcalendar/core@6.1.19)
       '@hookform/resolvers':
         specifier: 5.2.2
         version: 5.2.2(react-hook-form@7.66.1(react@19.2.3))
@@ -675,39 +654,6 @@ packages:
 
   '@formkit/drag-and-drop@0.5.3':
     resolution: {integrity: sha512-VGQsKYc350OOMbz7wYt69YqDbn49x7RJ32eqiJieNke54nGZYmx18XEqTw0lBiJmH3RaiH6V45gB1u+tvI/TNw==}
-
-  '@fullcalendar/common@5.11.5':
-    resolution: {integrity: sha512-3iAYiUbHXhjSVXnYWz27Od2cslztUPsOwiwKlfGvQxBixv2Kl6a8IPwaijKFYJHXdwYmfPoEgK7rvqAGVoIYwA==}
-
-  '@fullcalendar/core@6.1.19':
-    resolution: {integrity: sha512-z0aVlO5e4Wah6p6mouM0UEqtRf1MZZPt4mwzEyU6kusaNL+dlWQgAasF2cK23hwT4cmxkEmr4inULXgpyeExdQ==}
-
-  '@fullcalendar/daygrid@6.1.19':
-    resolution: {integrity: sha512-IAAfnMICnVWPjpT4zi87i3FEw0xxSza0avqY/HedKEz+l5MTBYvCDPOWDATpzXoLut3aACsjktIyw9thvIcRYQ==}
-    peerDependencies:
-      '@fullcalendar/core': ~6.1.19
-
-  '@fullcalendar/interaction@6.1.19':
-    resolution: {integrity: sha512-GOciy79xe8JMVp+1evAU3ytdwN/7tv35t5i1vFkifiuWcQMLC/JnLg/RA2s4sYmQwoYhTw/p4GLcP0gO5B3X5w==}
-    peerDependencies:
-      '@fullcalendar/core': ~6.1.19
-
-  '@fullcalendar/list@6.1.19':
-    resolution: {integrity: sha512-knZHpAVF0LbzZpSJSUmLUUzF0XlU/MRGK+Py2s0/mP93bCtno1k2L3XPs/kzh528hSjehwLm89RgKTSfW1P6cA==}
-    peerDependencies:
-      '@fullcalendar/core': ~6.1.19
-
-  '@fullcalendar/react@6.1.19':
-    resolution: {integrity: sha512-FP78vnyylaL/btZeHig8LQgfHgfwxLaIG6sKbNkzkPkKEACv11UyyBoTSkaavPsHtXvAkcTED1l7TOunAyPEnA==}
-    peerDependencies:
-      '@fullcalendar/core': ~6.1.19
-      react: ^16.7.0 || ^17 || ^18 || ^19
-      react-dom: ^16.7.0 || ^17 || ^18 || ^19
-
-  '@fullcalendar/timegrid@6.1.19':
-    resolution: {integrity: sha512-OuzpUueyO9wB5OZ8rs7TWIoqvu4v3yEqdDxZ2VcsMldCpYJRiOe7yHWKr4ap5Tb0fs7Rjbserc/b6Nt7ol6BRg==}
-    peerDependencies:
-      '@fullcalendar/core': ~6.1.19
 
   '@hookform/resolvers@5.2.2':
     resolution: {integrity: sha512-A/IxlMLShx3KjV/HeTcTfaMxdwy690+L/ZADoeaTltLx+CVuzkeVIPuybK3jrRfw7YZnmdKsVVHAlEPIAEUNlA==}
@@ -3954,9 +3900,6 @@ packages:
     peerDependencies:
       preact: '>=10'
 
-  preact@10.12.1:
-    resolution: {integrity: sha512-l8386ixSsBdbreOAkqtrwqHwdvR35ID8c3rKPa8lCWuO86dBi32QWHV4vfsZK1utLLFMvw+Z5Ad4XLkZzchscg==}
-
   preact@10.24.3:
     resolution: {integrity: sha512-Z2dPnBnMUfyQfSQ+GBdsGa16hz35YmLmtTLhM169uW944hYL6xzTYkJjC07j+Wosz733pMWx0fgON3JNw1jJQA==}
 
@@ -5243,37 +5186,6 @@ snapshots:
       tslib: 2.8.1
 
   '@formkit/drag-and-drop@0.5.3': {}
-
-  '@fullcalendar/common@5.11.5':
-    dependencies:
-      tslib: 2.8.1
-
-  '@fullcalendar/core@6.1.19':
-    dependencies:
-      preact: 10.12.1
-
-  '@fullcalendar/daygrid@6.1.19(@fullcalendar/core@6.1.19)':
-    dependencies:
-      '@fullcalendar/core': 6.1.19
-
-  '@fullcalendar/interaction@6.1.19(@fullcalendar/core@6.1.19)':
-    dependencies:
-      '@fullcalendar/core': 6.1.19
-
-  '@fullcalendar/list@6.1.19(@fullcalendar/core@6.1.19)':
-    dependencies:
-      '@fullcalendar/core': 6.1.19
-
-  '@fullcalendar/react@6.1.19(@fullcalendar/core@6.1.19)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
-    dependencies:
-      '@fullcalendar/core': 6.1.19
-      react: 19.2.3
-      react-dom: 19.2.3(react@19.2.3)
-
-  '@fullcalendar/timegrid@6.1.19(@fullcalendar/core@6.1.19)':
-    dependencies:
-      '@fullcalendar/core': 6.1.19
-      '@fullcalendar/daygrid': 6.1.19(@fullcalendar/core@6.1.19)
 
   '@hookform/resolvers@5.2.2(react-hook-form@7.66.1(react@19.2.3))':
     dependencies:
@@ -8627,8 +8539,6 @@ snapshots:
   preact-render-to-string@6.5.11(preact@10.24.3):
     dependencies:
       preact: 10.24.3
-
-  preact@10.12.1: {}
 
   preact@10.24.3: {}
 
