@@ -14,8 +14,6 @@ import { useDispatch, useSelector } from 'react-redux'
 // Slice Imports
 import { getActiveUserData } from '@/redux-store/slices/chat'
 
-// Component Imports
-import SidebarLeft from './SidebarLeft'
 import ChatContent from './ChatContent'
 
 // Hook Imports
