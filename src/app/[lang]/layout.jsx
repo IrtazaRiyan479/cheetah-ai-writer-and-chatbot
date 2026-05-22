@@ -18,6 +18,9 @@ import { i18n } from '@configs/i18n'
 // Util Imports
 import { getSystemMode } from '@core/utils/serverHelpers'
 
+// Vercel Speed Insights
+import { SpeedInsights } from '@vercel/speed-insights/next'
+
 // Style Imports
 import '@/app/globals.css'
 
@@ -47,6 +50,7 @@ const RootLayout = async props => {
         <body className='flex is-full min-bs-full flex-auto flex-col'>
           <InitColorSchemeScript attribute='data' defaultMode={systemMode} />
           {children}
+          <SpeedInsights />
         </body>
       </html>
     </TranslationWrapper>
