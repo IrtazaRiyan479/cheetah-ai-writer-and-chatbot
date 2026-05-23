@@ -48,6 +48,11 @@ const verticalMenuData = () => [
     label: 'Contact',
     href: '/contact',
     icon: 'ri-megaphone-fill'
+  },
+  {
+    label: 'Test',
+    href: '/test',
+    icon: 'ri-test-tube-fill'
   }
 ]
 
