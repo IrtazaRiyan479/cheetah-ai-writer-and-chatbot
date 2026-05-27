@@ -60,3 +60,10 @@ model ChatMessage {
   message   String   @db.Text
   time      DateTime @default(now())
 }
+
+model Preset {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  settings  String   @db.Text // This will hold our JSON object of all fields
+  createdAt DateTime @default(now())
+}

@@ -17,8 +17,8 @@ import YoutubeBlogFields from './fields/YoutubeBlogFields'
 import LocalRoundupFields from './fields/LocalRoundupFields'
 import RewriteFields from './fields/RewriteFields'
 
-// 1. Accept selectedModel as a prop
-const ProductInformation = ({ selectedType, selectedModel }) => {
+// 1. Accept settings and updateSetting as props
+const ProductInformation = ({ settings, updateSetting }) => {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
 
@@ -32,9 +32,9 @@ const ProductInformation = ({ selectedType, selectedModel }) => {
     'rewrite': RewriteFields
   }
 
-  const ActiveFields = ComponentMap[selectedType] || BlogFields
+  // Use settings.type instead of selectedType
+  const ActiveFields = ComponentMap[settings.type] || BlogFields
 
-  // 2. This function sends the selected model to rotate the API!
   const handleCreateArticle = async () => {
     setIsGenerating(true)
 
@@ -43,17 +43,18 @@ const ProductInformation = ({ selectedType, selectedModel }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: `Write a short, professional ${selectedType} article.`,
-          model: selectedModel // <--- THIS rotates the model dynamically
+          // Use settings.type and settings.model
+          prompt: `Write a short, professional ${settings.type} article.`,
+          model: settings.model
         })
       })
 
       const data = await res.json()
 
       if(data.success) {
-        console.log("Success! Used Model:", selectedModel)
+        console.log("Success! Used Model:", settings.model)
         console.log("Generated Text:", data.text)
-        alert(`Article generated successfully using ${selectedModel}! Check your browser console to read it.`)
+        alert(`Article generated successfully using ${settings.model}! Check your browser console to read it.`)
       } else {
         throw new Error(data.error)
       }
@@ -69,7 +70,8 @@ const ProductInformation = ({ selectedType, selectedModel }) => {
     <Card className='shadow-sm'>
       <CardContent className='p-4 sm:p-6'>
         <Grid container spacing={5}>
-          <ActiveFields />
+          {/* settings and updateSetting are now defined! */}
+          <ActiveFields settings={settings} updateSetting={updateSetting} />
 
           <Grid size={{ xs: 12 }}>
             <div
@@ -96,7 +98,6 @@ const ProductInformation = ({ selectedType, selectedModel }) => {
             <Typography variant='caption' className='text-sm'>0 / 0 messages</Typography>
           </div>
 
-          {/* 3. Attach the function to the button */}
           <Button
             variant='contained'
             color='primary'
