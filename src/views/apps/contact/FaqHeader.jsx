@@ -24,9 +24,9 @@ const FaqHeader = ({ searchValue, setSearchValue }) => {
     <Card className={classnames('shadow-none bg-transparent bg-cover border-0', styles.bgImage)} elevation={0}>
       <CardContent className='flex flex-col items-center is-full text-center !plb-[5.5rem] pli-5'>
         <Typography variant='h4' color='primary.main' className='mbe-2'>
-          Hello, how can we help?
+          Get in Touch
         </Typography>
-        <Typography className='mbe-7'>or choose a category to quickly find the help you need</Typography>
+        <Typography className='mbe-7'>Ask questions about your project or need a custom solution.</Typography>
         <TextField
           className='is-full sm:max-is-[55%] md:max-is-[600px]'
           variant='outlined'

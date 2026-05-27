@@ -23,7 +23,7 @@ const FaqFooter = () => {
               <i className='ri-phone-line text-3xl' />
             </CustomAvatar>
             <div className='flex items-center flex-col gap-1'>
-              <Typography variant='h5'>+ (810) 2548 2568</Typography>
+              <Typography variant='h5'>+ (880) 1642 319711</Typography>
               <Typography>We are always happy to help!</Typography>
             </div>
           </div>
@@ -34,7 +34,7 @@ const FaqFooter = () => {
               <i className='ri-mail-line text-3xl' />
             </CustomAvatar>
             <div className='flex items-center flex-col gap-1'>
-              <Typography variant='h5'>hello@help.com</Typography>
+              <Typography variant='h5'>abrar141shovon@gmail.com</Typography>
               <Typography>Best way to get answer faster!</Typography>
             </div>
           </div>

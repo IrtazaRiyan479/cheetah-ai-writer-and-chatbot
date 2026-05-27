@@ -31,7 +31,7 @@ const Footer = () => {
         />
         <div className={classnames('plb-12 text-white', frontCommonStyles.layoutSpacing)}>
           <Grid container rowSpacing={10} columnSpacing={12}>
-            <Grid size={{ xs: 12, lg: 5 }}>
+            <Grid size={{ xs: 12, lg: 6 }}>
               <div className='flex flex-col items-start gap-6'>
                 <Link href='/front-pages/landing-page'>
                   <Logo color='var(--mui-palette-common-white)' />
@@ -63,7 +63,7 @@ const Footer = () => {
                 </div>
               </div>
             </Grid>
-            <Grid size={{ xs: 12, sm: 3, lg: 2 }}>
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
               <Typography color='white' className='font-medium mbe-6 opacity-[0.92]'>
                 Our Tools
               </Typography>
@@ -93,7 +93,7 @@ const Footer = () => {
                 </Typography>
               </div>
             </Grid>
-            <Grid size={{ xs: 12, sm: 3, lg: 2 }}>
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
               <Typography color='white' className='font-medium mbe-6 opacity-[0.92]'>
                 Account & Support
               </Typography>
@@ -110,39 +110,6 @@ const Footer = () => {
                 <Typography component={Link} href='/register1' color='white' className='opacity-[0.78]'>
                   Register
                 </Typography>
-              </div>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-              <Typography color='white' className='font-medium mbe-6 opacity-[0.92]'>
-                Download our App
-              </Typography>
-              <div className='flex flex-col gap-4'>
-                <Link className='bg-[#211B2C] bs-[56px] is-[211px] rounded'>
-                  <div className='flex items-center pli-5 plb-[7px] gap-6'>
-                    <img src='/images/front-pages/apple-icon.png' alt='apple store' className='bs-[34px]' />
-                    <div className='flex flex-col items-start'>
-                      <Typography variant='body2' color='white' className='opacity-[0.82]'>
-                        Download on the
-                      </Typography>
-                      <Typography color='white' className='font-medium opacity-[0.92]'>
-                        App Store
-                      </Typography>
-                    </div>
-                  </div>
-                </Link>
-                <Link className='bg-[#211B2C] bs-[56px] is-[211px] rounded'>
-                  <div className='flex items-center pli-5 plb-[7px] gap-6'>
-                    <img src='/images/front-pages/google-play-icon.png' alt='Google play' className='bs-[34px]' />
-                    <div className='flex flex-col items-start'>
-                      <Typography variant='body2' color='white' className='opacity-[0.82]'>
-                        Download on the
-                      </Typography>
-                      <Typography color='white' className='font-medium opacity-[0.92]'>
-                        Google Play
-                      </Typography>
-                    </div>
-                  </div>
-                </Link>
               </div>
             </Grid>
           </Grid>
