@@ -37,7 +37,7 @@ const pricingPlans = [
     current: false
   },
   {
-    title: 'Growth Plan (Most Popular)',
+    title: 'Growth Plan',
     price: 79,
     features: [
       'Everything in basic',

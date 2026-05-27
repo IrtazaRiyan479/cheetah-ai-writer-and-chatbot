@@ -59,7 +59,7 @@ const ProductPricing = ({ selectedModel, setSelectedModel }) => {
             </Typography>
             <FormControl fullWidth size='small'>
               <Select
-                value={selectedModel || 'gemini-3.5-flash'}
+                value={selectedModel || 'gemini-3.1-flash-lite'}
                 onChange={handleModelChange}
               >
                 {availableModels.map((model) => (

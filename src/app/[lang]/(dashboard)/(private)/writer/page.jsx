@@ -16,7 +16,7 @@ import ProductInformation from '@views/apps/writer/ProductInformation'
 const CheetahWriter = () => {
 
   const [selectedType, setSelectedType] = useState('blog')
-  const [selectedModel, setSelectedModel] = useState('gemini-3.5-flash')
+  const [selectedModel, setSelectedModel] = useState('gemini-3.1-flash-lite')
 
   return (
     <Container maxWidth='md' className='p-0'>
