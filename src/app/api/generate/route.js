@@ -13,7 +13,7 @@ export async function POST(request) {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 
    const model = genAI.getGenerativeModel({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.1-flash-lite',
       systemInstruction: `You are an advanced, lightning-fast AI writing assistant.
 
       CRITICAL RULE: Do NOT introduce yourself, say "Hello", or mention the name "Cheetah AI" in normal conversation. Just answer the user's prompt directly and naturally.
