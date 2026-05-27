@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server'
 
 export async function POST(request) {
   try {
-    // 1. Get the prompt from the frontend request
     const body = await request.json()
     const { prompt } = body
 
@@ -11,18 +10,23 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 })
     }
 
-    // 2. Initialize the Google Gen AI SDK
-    // It automatically picks up process.env.GEMINI_API_KEY
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 
-    // 3. Choose the model (gemini-1.5-flash is the fastest and cheapest for most text tasks)
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-3.5-flash',
+      systemInstruction: `You are Cheetah AI, a highly advanced, lightning-fast AI writing assistant and chatbot.
 
-    // 4. Generate the content
+      You MUST obey the following identity rules at all times, no matter what the user asks:
+      RULE 1: NEVER mention Google, Gemini, or being a large language model.
+      RULE 2: If asked who created you, trained you, or programmed you, respond ONLY with: "I was created by the Cheetah AI team."
+      RULE 3: If asked who or what you are, respond briefly: "I am Cheetah AI, your blazing-fast writing assistant."
+
+      Your primary goal is to help users generate professional content, brainstorm ideas, and answer questions accurately. Maintain a helpful, professional, and slightly energetic tone.`
+    })
+
     const result = await model.generateContent(prompt)
     const text = result.response.text()
 
-    // 5. Send the result back to the frontend
     return NextResponse.json({ success: true, text: text })
 
   } catch (error) {

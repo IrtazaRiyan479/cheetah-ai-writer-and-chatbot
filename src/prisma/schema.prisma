@@ -53,3 +53,10 @@ model VerificationToken {
 
   @@unique([identifier, token])
 }
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  senderId  String   // Will be 'user' or 'ai-assistant'
+  message   String   @db.Text
+  time      DateTime @default(now())
+}

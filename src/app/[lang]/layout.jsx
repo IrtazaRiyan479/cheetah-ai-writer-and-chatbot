@@ -28,8 +28,10 @@ import '@/app/globals.css'
 import '@assets/iconify-icons/generated-icons.css'
 
 export const metadata = {
-  title: 'Cheetah - Material Next.js Admin Template',
-  description: 'Cheetah - Material Next.js Admin Template'
+  title: 'Cheetah AI | Write & Create Faster',
+  description: 'Cheetah AI is your ultimate AI-powered writing assistant and chatbot. Whether you need help drafting emails, writing code, brainstorming ideas, or just want to have a chat, Cheetah AI is here to assist you. Powered by the latest in AI technology, Cheetah AI understands your needs and provides intelligent, context-aware responses to help you write and create faster than ever before.',
+  keywords: ['Cheetah AI', 'AI Writing Assistant', 'AI Chatbot', 'Content Creation', 'Email Drafting', 'Code Writing', 'Brainstorming', 'Artificial Intelligence'],
+  authors: [{ name: 'Abrar Shovon' }],
 }
 
 const RootLayout = async props => {
