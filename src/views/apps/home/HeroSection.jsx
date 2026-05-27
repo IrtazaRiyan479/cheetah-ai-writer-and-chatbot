@@ -67,7 +67,6 @@ const HeroSection = ({ mode }) => {
 
   return (
     <section id='home' className='relative overflow-hidden pbs-[70px] rounded bg-backgroundPaper z-[1]'>
-      <img src={heroSectionBg} alt='hero-bg' className={styles.heroSectionBg} />
       <div className={classnames('pbs-16 overflow-hidden', frontCommonStyles.layoutSpacing)}>
         <div className='md:max-is-[550px] mlb-0 mli-auto text-center'>
           <Typography className='font-extrabold text-primary sm:text-[38px] text-3xl mbe-4 leading-[44px]'>
@@ -88,25 +87,6 @@ const HeroSection = ({ mode }) => {
             </Button>
           </div>
         </div>
-      </div>
-      <div
-        className={classnames('relative text-center', frontCommonStyles.layoutSpacing)}
-        style={{
-          transform: isAboveLgScreen ? `translate(${dashboardPosition.x}px, ${dashboardPosition.y}px)` : 'none'
-        }}
-      >
-        <Link href='/' target='_blank'>
-          <img src={dashboardImage} alt='dashboard-image' className={classnames('mli-auto', styles.heroSecDashboard)} />
-          <div className={classnames('absolute', styles.heroSectionElements)}>
-            <img
-              src={elementsImage}
-              alt='dashboard-elements'
-              style={{
-                transform: isAboveLgScreen ? `translate(${elementsPosition.x}px, ${elementsPosition.y}px)` : 'none'
-              }}
-            />
-          </div>
-        </Link>
       </div>
     </section>
   )

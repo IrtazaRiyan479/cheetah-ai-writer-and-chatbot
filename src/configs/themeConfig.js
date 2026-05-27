@@ -16,9 +16,9 @@
  * Another way is to clear the cookie from the browser's Application/Storage tab and then reload the page.
  */
 const themeConfig = {
-  templateName: 'Materialize',
+  templateName: 'Cheetah',
   homePageUrl: '/dashboards/crm',
-  settingsCookieName: 'materialize-mui-next-demo-1',
+  settingsCookieName: 'Cheetah-mui-next-demo-1',
   mode: 'system', // 'system', 'light', 'dark'
   skin: 'default', // 'default', 'bordered'
   semiDark: false, // true, false

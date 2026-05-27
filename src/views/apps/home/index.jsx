@@ -32,9 +32,9 @@ const LandingPageWrapper = ({ mode }) => {
       <HeroSection mode={mode} />
       <UsefulFeature />
       <CustomerReviews />
-      <OurTeam />
+      {/* <OurTeam /> */}
       <Pricing />
-      <ProductStat />
+      {/* <ProductStat /> */}
       <Faqs />
       <GetStarted />
       <ContactUs />

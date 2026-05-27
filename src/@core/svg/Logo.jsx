@@ -1,74 +1,24 @@
 const Logo = props => {
   return (
-    <svg width='40' height='22' viewBox='0 0 40 22' fill='none' xmlns='http://www.w3.org/2000/svg' {...props}>
-      <rect
-        width='7.37565'
-        height='21.1131'
-        rx='3.68783'
-        transform='matrix(-0.865206 0.501417 0.498585 0.866841 28.4115 0)'
-        fill='var(--mui-palette-primary-main)'
-      />
-      <rect
-        width='7.37565'
-        height='21.1131'
-        rx='3.68783'
-        transform='matrix(-0.865206 0.501417 0.498585 0.866841 28.4869 0)'
-        fill='url(#paint0_linear_448_114254)'
-        fillOpacity='0.4'
-      />
-      <rect
-        width='7.37565'
-        height='21.1131'
-        rx='3.68783'
-        transform='matrix(0.865206 0.501417 -0.498585 0.866841 25.6563 0)'
-        fill='var(--mui-palette-primary-main)'
-      />
-      <rect
-        width='7.37565'
-        height='21.1131'
-        rx='3.68783'
-        transform='matrix(-0.865206 0.501417 0.498585 0.866841 14.3293 0)'
-        fill='var(--mui-palette-primary-main)'
-      />
-      <rect
-        width='7.37565'
-        height='21.1131'
-        rx='3.68783'
-        transform='matrix(-0.865206 0.501417 0.498585 0.866841 14.3293 0)'
-        fill='url(#paint1_linear_448_114254)'
-        fillOpacity='0.4'
-      />
-      <rect
-        width='7.37565'
-        height='21.1131'
-        rx='3.68783'
-        transform='matrix(0.865206 0.501417 -0.498585 0.866841 11.5132 0)'
-        fill='var(--mui-palette-primary-main)'
-      />
-      <defs>
-        <linearGradient
-          id='paint0_linear_448_114254'
-          x1='3.68783'
-          y1='0'
-          x2='3.68783'
-          y2='21.1131'
-          gradientUnits='userSpaceOnUse'
-        >
-          <stop />
-          <stop offset='1' stopOpacity='0' />
-        </linearGradient>
-        <linearGradient
-          id='paint1_linear_448_114254'
-          x1='3.68783'
-          y1='0'
-          x2='3.68783'
-          y2='21.1131'
-          gradientUnits='userSpaceOnUse'
-        >
-          <stop />
-          <stop offset='1' stopOpacity='0' />
-        </linearGradient>
-      </defs>
+    <svg
+      width='40'
+      height='40'
+      viewBox='0 0 400 400'
+      fill='none'
+      xmlns='http://www.w3.org/2000/svg'
+      {...props}
+    >
+      {/* transform="translate(X, Y)"
+        X = 0
+        Y = -20 */}
+
+      <g id="cheetah-ai-logo" transform="translate(0, -20)">
+        <path
+          fill="var(--mui-palette-primary-main)"
+          opacity="1.00"
+          d=" M 173.95 88.80 C 196.05 78.71 220.93 75.36 245.00 77.96 C 266.67 80.93 287.94 88.48 305.84 101.16 C 315.02 107.22 322.90 114.98 330.34 123.02 C 294.90 140.41 259.50 157.91 223.98 175.16 C 230.21 184.89 236.89 194.32 243.17 204.02 C 210.41 222.27 177.67 240.55 144.97 258.89 C 142.97 260.07 140.95 261.19 138.81 262.09 C 137.90 262.74 137.00 263.43 136.09 264.10 C 138.39 263.64 140.66 263.01 143.01 262.85 C 198.03 258.68 253.08 254.73 308.10 250.49 C 303.37 242.65 297.61 235.47 292.93 227.61 C 316.74 224.07 340.39 219.45 364.20 216.00 C 363.55 236.71 358.36 257.31 348.61 275.63 C 337.53 295.95 321.39 313.48 302.06 326.20 C 285.75 336.36 267.46 343.53 248.38 346.15 C 207.29 352.33 163.68 338.17 134.22 308.81 C 112.45 287.69 98.43 258.90 94.61 228.85 C 90.38 196.30 98.99 162.43 117.67 135.51 C 131.78 115.31 151.23 98.54 173.95 88.80 Z"
+        />
+      </g>
     </svg>
   )
 }

@@ -7,7 +7,7 @@ import { useEffect, useRef } from 'react'
 import styled from '@emotion/styled'
 
 // Component Imports
-import MaterializeLogo from '@core/svg/Logo'
+import CheetahLogo from '@core/svg/Logo'
 
 // Config Imports
 import themeConfig from '@configs/themeConfig'
@@ -61,7 +61,7 @@ const Logo = ({ color }) => {
 
   return (
     <div className='flex items-center min-bs-[24px]'>
-      <MaterializeLogo />
+      <CheetahLogo />
       <LogoText
         color={color}
         ref={logoTextRef}
