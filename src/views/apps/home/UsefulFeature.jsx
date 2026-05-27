@@ -28,33 +28,33 @@ import frontCommonStyles from '@views/apps/styles.module.css'
 const feature = [
   {
     icon: <LaptopCharging />,
-    title: 'Quality Code',
-    description: 'Code structure that all developers will easily understand and fall in love with.'
+    title: 'Advanced AI Models',
+    description: 'Powered by state-of-the-art LLMs to generate high-quality and human-like content.'
   },
   {
     icon: <TransitionUp />,
-    title: 'Continuous Updates',
-    description: 'Free updates for the next 12 months, including new demos and features.'
+    title: 'Intelligent Chatbot Engine',
+    description: 'Deploy context-aware, custom-trained chatbots to your website in minutes.'
   },
   {
     icon: <Edit />,
-    title: 'Stater-Kit',
-    description: 'Start your project quickly without having to remove unnecessary features.'
+    title: 'SEO-First Generation',
+    description: "Don't just write—rank. Every output is optimized for search engines."
   },
   {
     icon: <Cube />,
-    title: 'API Ready',
-    description: 'Just change the endpoint and see your own data loaded within seconds.'
+    title: 'API-First Architecture',
+    description: 'Connect Cheetah AI directly to your existing tech stack with our flexible, easy-to-use API.'
   },
   {
     icon: <LifeBuoy />,
-    title: 'Excellent Support',
-    description: 'An easy-to-follow doc with lots of references and code examples.'
+    title: 'Lightning-Fast Processing',
+    description: 'Our backend is optimized to deliver high-quality, full-length content in seconds, not minutes.'
   },
   {
     icon: <Document />,
-    title: 'Well Documented',
-    description: 'An easy-to-follow doc with lots of references and code examples.'
+    title: 'Intuitive Dashboard',
+    description: 'Manage your AI agents, and adjust parameters through a clean UI'
   }
 ]
 
@@ -96,12 +96,12 @@ const UsefulFeature = () => {
           </div>
           <div className='flex items-baseline max-sm:flex-col gap-x-2 mbe-3 sm:mbe-2'>
             <Typography variant='h4' className='font-bold'>
-              Everything you need
+              Cheetah AI
             </Typography>
-            <Typography variant='h5'>to start your next project</Typography>
+            <Typography variant='h5' > to accelerate Your Content Workflow</Typography>
           </div>
           <Typography className='font-medium text-center'>
-            Not just a set of tools, the package includes ready-to-deploy conceptual application.
+            More than just a generator — it's a comprehensive engine designed for speed, scale, and intelligence.
           </Typography>
         </div>
         <div>

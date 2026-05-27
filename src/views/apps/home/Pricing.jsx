@@ -29,23 +29,23 @@ import ElementTwo from '@/assets/svg/front-pages/landing-page/ElementTwo'
 const pricingPlans = [
   {
     title: 'Basic Plan',
-    price: 20,
-    features: ['Timeline', 'Basic search', 'Live chat widget', 'Email marketing', 'Custom Forms', 'Traffic analytics'],
+    price: 29,
+    features: ['50 AI content generations per month', 'Standard chatbot widget', 'Basic traffic analytics', 'Custom form builder', 'Email marketing tools', 'Basic support (24 hour response time)'],
     supportType: 'Basic',
     supportMedium: 'Only Email',
     respondTime: 'AVG. Time: 24h',
     current: false
   },
   {
-    title: 'Favourite Plan',
-    price: 51,
+    title: 'Growth Plan (Most Popular)',
+    price: 79,
     features: [
       'Everything in basic',
-      'Timeline with database',
-      'Advanced search',
-      'Marketing automation',
-      'Advanced chatbot',
-      'Campaign management'
+      'Unlimited AI content generations',
+      'Advanced AI model access',
+      'Full marketing automation suite',
+      'Campaign management',
+      'Priority support (6 hour response time)'
     ],
     supportType: 'Standard',
     supportMedium: 'Email & Chat',
@@ -53,15 +53,15 @@ const pricingPlans = [
     current: true
   },
   {
-    title: 'Standard Plan',
-    price: 99,
+    title: 'Scale Plan',
+    price: 149,
     features: [
-      'Campaign management',
-      'Timeline with database',
-      'Fuzzy search',
-      'A/B testing sanbox',
-      'Custom permissions',
-      'Social media automation'
+      'Everything in Growth',
+      'Custom brand voice training',
+      'Team collaboration seats',
+      'A/B testing sandbox',
+      'Social media automation',
+      'Dedicated support'
     ],
     supportType: 'Exclusive',
     supportMedium: 'Email, Chat & Google Meet',
@@ -95,13 +95,12 @@ const PricingPlan = () => {
         </div>
         <div className='flex sm:items-baseline max-sm:items-center max-sm:flex-col gap-x-2 mbe-3 sm:mbe-2'>
           <Typography variant='h4' className='font-bold'>
-            Tailored pricing plans
+            Tailored plans
           </Typography>
-          <Typography variant='h5'>designed for you</Typography>
+          <Typography variant='h5'>for every stage of your growth</Typography>
         </div>
         <Typography className='font-medium text-center'>
-          All plans include 40+ advanced tools and features to boost your product. Choose the best plan to fit your
-          needs.
+          Choose the right plan to power your marketing engine. Save 10% on yearly subscriptions.
         </Typography>
       </div>
       <div className='text-center'>

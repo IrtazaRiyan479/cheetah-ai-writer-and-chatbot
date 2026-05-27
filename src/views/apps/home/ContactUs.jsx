@@ -70,7 +70,7 @@ const ContactUs = () => {
           </Typography>
           <Typography variant='h5'>together</Typography>
         </div>
-        <Typography className='font-medium text-center'>Any question or remark? just write us a message</Typography>
+        <Typography className='font-medium text-center'>Have questions about Cheetah AI? Reach out to our team and we will get back to you promptly.</Typography>
       </div>
       <div>
         <Grid container spacing={6}>
@@ -78,15 +78,14 @@ const ContactUs = () => {
             <Card className='bg-primary'>
               <CardContent className='flex flex-col gap-5 pli-8 pbs-8 pbe-7'>
                 <div className='flex flex-col gap-1.5'>
-                  <Typography className='font-medium text-white'>Let&apos;s contact with us</Typography>
+                  <Typography className='font-medium text-white'>Get in Touch</Typography>
                   <Typography variant='h4' className='text-white'>
-                    Share your ideas or requirement with our experts.
+                    Share your project requirements or specific ideas with our AI experts.
                   </Typography>
                 </div>
                 <img src='/images/front-pages/landing-page/chat.png' alt='chat' className='is-full' />
                 <Typography className='text-white'>
-                  Looking for more customisation, more features, and more anything? Don&apos;t worry, We&apos;ve provide
-                  you with an entire team of experienced professionals.
+                 Looking for custom features or specialized integrations? Our team of developers is ready to build the exact solution your business needs to scale.
                 </Typography>
               </CardContent>
             </Card>
@@ -102,8 +101,8 @@ const ContactUs = () => {
                     <TextField fullWidth label='Full name' id='name-input' />
                     <TextField fullWidth label='Email address' id='email-input' type='email' />
                   </div>
-                  <TextField fullWidth multiline rows={7} label='Message' id='message-input' />
-                  <Button variant='contained'>Send Inquiry</Button>
+                  <TextField fullWidth multiline rows={7} label='Tell us about your project or ask a question...' id='message-input' />
+                  <Button variant='contained'>Send Message</Button>
                 </form>
               </CardContent>
             </Card>

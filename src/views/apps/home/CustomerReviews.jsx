@@ -27,74 +27,39 @@ import frontCommonStyles from '@views/apps/styles.module.css'
 // Data
 const data = [
   {
-    desc: "I've never used a theme as versatile and flexible as Vuexy. It's my go to for building dashboard sites on almost any project.",
+    desc: "Cheetah AI has completely transformed my daily workflow. I am generating high quality blog drafts in minutes instead of hours. It feels like having an expert copywriter on my team.",
     svg: <Eckerd color='#2882C3' />,
     rating: 5,
-    name: 'Eugenia Moore',
-    position: 'Founder of Hubspot'
+    name: 'Sarah Jenkins',
+    position: 'Content Director'
   },
   {
-    desc: 'Materio is awesome, and I particularly enjoy knowing that if I get stuck on something.',
+    desc: 'The chatbot integration was effortless. We deployed it on our e commerce site and saw our support ticket volume drop significantly within the first week.',
     svg: <Levis color='#A8112E' />,
     rating: 5,
-    name: 'Tommy haffman',
-    position: 'Founder of Levis'
+    name: 'Mark Reynolds',
+    position: 'Tech Lead'
   },
   {
-    desc: "This template is superior in so many ways. The code, the design, the regular updates, the support.. It's the whole package. Excellent Work.",
+    desc: "I have tested several AI platforms, but none match the speed and accuracy of Cheetah AI. It has become the most important tool in our marketing stack.",
     svg: <Airbnb color='#FF5A60' />,
     rating: 4,
-    name: 'Eugenia Moore',
-    position: 'CTO of Airbnb'
+    name: 'Elena Rodriguez',
+    position: 'Digital Strategist'
   },
   {
-    desc: "All the requirements for developers have been taken into consideration, so I'm able to build any interface I want.",
+    desc: "The SEO optimization is what makes this tool stand out. My organic traffic has doubled since integrating Cheetah AI into our content pipeline. It is a true game changer for our growth.",
     svg: <Continental color='#F39409' />,
     rating: 5,
-    name: 'Sara Smith',
-    position: 'Founder of Continental'
+    name: 'David Chen',
+    position: 'SEO Specialist'
   },
   {
-    desc: "I've never used a theme as versatile and flexible as Vuexy. It's my go to for building dashboard sites on almost any project.",
+    desc: "Finally, an AI tool that actually understands our brand voice. Cheetah AI creates content that sounds like us, not like a machine. It saves our team countless hours every week.",
     svg: <Dribbble color='#ea4c89' />,
     rating: 5,
-    name: 'Tommy haffman',
-    position: 'Founder of Hubspot'
-  },
-  {
-    desc: "I've never used a theme as versatile and flexible as Vuexy. It's my go to for building dashboard sites on almost any project.",
-    svg: <Eckerd color='#2882C3' />,
-    rating: 5,
-    name: 'Eugenia Moore',
-    position: 'Founder of Hubspot'
-  },
-  {
-    desc: 'Materio is awesome, and I particularly enjoy knowing that if I get stuck on something.',
-    svg: <Levis color='#A8112E' />,
-    rating: 5,
-    name: 'Tommy haffman',
-    position: 'Founder of Levis'
-  },
-  {
-    desc: "This template is superior in so many ways. The code, the design, the regular updates, the support.. It's the whole package. Excellent Work.",
-    svg: <Airbnb color='#FF5A60' />,
-    rating: 4,
-    name: 'Eugenia Moore',
-    position: 'CTO of Airbnb'
-  },
-  {
-    desc: "All the requirements for developers have been taken into consideration, so I'm able to build any interface I want.",
-    svg: <Continental color='#F39409' />,
-    rating: 5,
-    name: 'Sara Smith',
-    position: 'Founder of Continental'
-  },
-  {
-    desc: 'Materio is awesome, and I particularly enjoy knowing that if I get stuck on something.',
-    svg: <Dribbble color='#ea4c89' />,
-    rating: 5,
-    name: 'Tommy haffman',
-    position: 'Founder of Levis'
+    name: 'Jessica Thompson',
+    position: 'Digital Strategist'
   }
 ]
 
@@ -185,12 +150,12 @@ const CustomerReviews = () => {
         </div>
         <div className='flex items-baseline flex-wrap gap-2 mbe-3 sm:mbe-2'>
           <Typography variant='h4' className='font-bold'>
-            Success stories
+            Trusted by
           </Typography>
-          <Typography variant='h5'>from clients</Typography>
+          <Typography variant='h5'>Marketing Teams</Typography>
         </div>
         <Typography className='font-medium text-center'>
-          See what our customers have to say about their experience.
+          Real feedback from professionals using Cheetah AI to scale their output.
         </Typography>
       </div>
       <AppKeenSlider>
@@ -201,7 +166,7 @@ const CustomerReviews = () => {
                 <Card elevation={8} className='flex items-center' style={scaleStyle(index)}>
                   <CardContent className='p-8 items-center mlb-auto'>
                     <div className='flex flex-col gap-4 items-center justify-center text-center'>
-                      {item.svg}
+                      {/* {item.svg} */}
                       <Typography color='text.primary'>{item.desc}</Typography>
                       <Rating value={item.rating} readOnly />
                       <div>
@@ -233,13 +198,13 @@ const CustomerReviews = () => {
           )}
         </>
       </AppKeenSlider>
-      <div className='flex flex-wrap items-center justify-center gap-x-16 gap-y-6 mli-3'>
+      {/* <div className='flex flex-wrap items-center justify-center gap-x-16 gap-y-6 mli-3'>
         <Levis color='var(--mui-palette-text-secondary)' />
         <Continental color='var(--mui-palette-text-secondary)' />
         <Airbnb color='var(--mui-palette-text-secondary)' />
         <Eckerd color='var(--mui-palette-text-secondary)' />
         <Dribbble color='var(--mui-palette-text-secondary)' />
-      </div>
+      </div> */}
     </section>
   )
 }

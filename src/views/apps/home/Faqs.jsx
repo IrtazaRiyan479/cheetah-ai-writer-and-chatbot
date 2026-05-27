@@ -24,28 +24,28 @@ import frontCommonStyles from '@views/apps/styles.module.css'
 const FaqsData = [
   {
     id: 'panel1',
-    question: 'Do you charge for each upgrade?',
+    question: 'Is my subscription fee recurring?',
     answer:
-      'Lemon drops chocolate cake gummies carrot cake chupa chups muffin topping. Sesame snaps icing marzipan gummi bears macaroon dragée danish caramels powder. Bear claw dragée pastry topping soufflé. Wafer gummi bears marshmallow pastry pie.'
+      'Yes, all plans are billed on a monthly or yearly basis to ensure you always have access to the latest AI models and platform features. You can easily upgrade, downgrade, or cancel your plan at any time directly through your account dashboard.'
   },
   {
     id: 'panel2',
-    question: 'What is regular license?',
+    question: 'Can I integrate Cheetah AI with my existing website?',
     active: true,
     answer:
-      'Regular license can be used for end products that do not charge users for access or service(access is free and there will be no monthly subscription fee). Single regular license can be used for single end product and end product can be used by you or your client. If you want to sell end product to multiple clients then you will need to purchase separate license for each client. The same rule applies if you want to use the same end product on multiple domains(unique setup). For more info on regular license you can check official description.'
+      'Absolutely. Our API first architecture allows you to connect Cheetah AI to your existing tech stack with minimal configuration. We provide full documentation to help your development team get integrated quickly and securely.'
   },
   {
     id: 'panel3',
-    question: 'What is extended license?',
+    question: 'How do you ensure my data privacy and security?',
     answer:
-      'Lorem ipsum dolor sit amet consectetur adipisicing elit. Nobis et aliquid quaerat possimus maxime! Mollitia reprehenderit neque repellat deleniti delectus architecto dolorum maxime, blanditiis earum ea, incidunt quam possimus cumque.'
+      'We prioritize the security of your business information. All data processed through our platform is encrypted in transit and at rest. We do not use your proprietary data to train our public models, so your business secrets stay private.'
   },
   {
     id: 'panel4',
-    question: 'Which license is applicable for SASS application?',
+    question: 'What level of support do I receive?',
     answer:
-      'Lorem ipsum dolor sit amet consectetur adipisicing elit. Nobis et aliquid quaerat possimus maxime! Mollitia reprehenderit neque repellat deleniti delectus architecto dolorum maxime, blanditiis earum ea, incidunt quam possimus cumque.'
+      'Support depends on your chosen plan. Starter users receive email support with a 24 hour response time. Growth and Scale users receive priority support via email, chat, and dedicated Google Meet sessions for onboarding and troubleshooting.'
   }
 ]
 

@@ -37,8 +37,7 @@ const Footer = () => {
                   <Logo color='var(--mui-palette-common-white)' />
                 </Link>
                 <Typography color='white' className='lg:max-is-[390px] opacity-[0.78]'>
-                  Most Powerful & Comprehensive 🤩 React NextJS Admin Template with Elegant Material Design & Unique
-                  Layouts.
+                  Cheetah AI is your all in one platform for intelligent content generation, automated marketing, and custom chatbot development. Built for efficiency.
                 </Typography>
                 <div className='flex gap-4'>
                   <TextField
@@ -66,47 +65,50 @@ const Footer = () => {
             </Grid>
             <Grid size={{ xs: 12, sm: 3, lg: 2 }}>
               <Typography color='white' className='font-medium mbe-6 opacity-[0.92]'>
-                Pages
+                Our Tools
               </Typography>
               <div className='flex flex-col gap-4'>
-                <Typography component={Link} href='/front-pages/pricing' color='white' className='opacity-[0.78]'>
-                  Pricing
+                <Typography component={Link} href='/chat' color='white' className='opacity-[0.78]'>
+                  Cheetah Chat
                 </Typography>
-                <Link href='/front-pages/payment' className='flex items-center gap-[10px]'>
+                <Link href='/writer' className='flex items-center gap-[10px]'>
                   <Typography color='white' className='opacity-[0.78]'>
-                    Payment
+                    Cheetah Writer
                   </Typography>
                   <Chip label='New' color='primary' size='small' />
                 </Link>
                 <Typography
                   component={Link}
-                  href='/pages/misc/under-maintenance'
+                  href='/en/images'
                   color='white'
                   className='opacity-[0.78]'
                 >
-                  Maintenance
+                  Cheetah Images
                 </Typography>
-                <Typography component={Link} href='/pages/misc/coming-soon' color='white' className='opacity-[0.78]'>
-                  Coming Soon
+                <Typography component={Link} href='/en/links' color='white' className='opacity-[0.78]'>
+                  Cheetah Links
+                </Typography>
+                <Typography component={Link} href='/en/magnets' color='white' className='opacity-[0.78]'>
+                  Cheetah Magnets
                 </Typography>
               </div>
             </Grid>
             <Grid size={{ xs: 12, sm: 3, lg: 2 }}>
               <Typography color='white' className='font-medium mbe-6 opacity-[0.92]'>
-                Products
+                Account & Support
               </Typography>
               <div className='flex flex-col gap-4'>
-                <Typography component={Link} href='/front-pages/landing-page' color='white' className='opacity-[0.78]'>
-                  Page builder
+                <Typography component={Link} href='/pricing' color='white' className='opacity-[0.78]'>
+                  Pricing
                 </Typography>
-                <Typography component={Link} href='/front-pages/landing-page' color='white' className='opacity-[0.78]'>
-                  Admin Dashboards
+                <Typography component={Link} href='/contact' color='white' className='opacity-[0.78]'>
+                  Contact
                 </Typography>
-                <Typography component={Link} href='/front-pages/landing-page' color='white' className='opacity-[0.78]'>
-                  UI Kits
+                <Typography component={Link} href='/login1' color='white' className='opacity-[0.78]'>
+                  Login
                 </Typography>
-                <Typography component={Link} href='/front-pages/landing-page' color='white' className='opacity-[0.78]'>
-                  Illustrations
+                <Typography component={Link} href='/register1' color='white' className='opacity-[0.78]'>
+                  Register
                 </Typography>
               </div>
             </Grid>
