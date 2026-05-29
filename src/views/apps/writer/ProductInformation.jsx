@@ -17,8 +17,7 @@ import YoutubeBlogFields from './fields/YoutubeBlogFields'
 import LocalRoundupFields from './fields/LocalRoundupFields'
 import RewriteFields from './fields/RewriteFields'
 
-// 1. Accept settings and updateSetting as props
-const ProductInformation = ({ settings, updateSetting }) => {
+const ProductInformation = ({ settings, updateSetting, setStep, setOutline }) => {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
 
@@ -32,35 +31,41 @@ const ProductInformation = ({ settings, updateSetting }) => {
     'rewrite': RewriteFields
   }
 
-  // Use settings.type instead of selectedType
   const ActiveFields = ComponentMap[settings.type] || BlogFields
 
-  const handleCreateArticle = async () => {
+const handleCreateArticle = async () => {
     setIsGenerating(true)
 
     try {
+      // Hit your newly updated API endpoint in 'outline' mode
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          // Use settings.type and settings.model
-          prompt: `Write a short, professional ${settings.type} article.`,
+          mode: 'outline',
+          targetKeyword: settings.targetKeyword || 'General Topic',
           model: settings.model
         })
       })
 
       const data = await res.json()
 
-      if(data.success) {
-        console.log("Success! Used Model:", settings.model)
-        console.log("Generated Text:", data.text)
-        alert(`Article generated successfully using ${settings.model}! Check your browser console to read it.`)
+      if (data.success) {
+        // Save the AI's JSON outline to your global page.jsx state
+        setOutline(data.outline)
+
+        // NOW route the user to the correct screen
+        if (settings.useOutlineEditor) {
+          setStep(1) // Go to Outline Editor
+        } else {
+          setStep(2) // Skip directly to Article Writer
+        }
       } else {
         throw new Error(data.error)
       }
     } catch (error) {
-      console.error("Error generating article:", error)
-      alert("Failed to generate article.")
+      console.error("Error generating outline:", error)
+      alert("Failed to generate outline. Check console.")
     } finally {
       setIsGenerating(false)
     }

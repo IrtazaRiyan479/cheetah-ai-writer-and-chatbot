@@ -22,10 +22,10 @@ import TextField from '@mui/material/TextField'
 const availableModels = [
   { label: 'Gemini 3.5 Flash', value: 'gemini-3.5-flash', isPaid: false },
   { label: 'Gemini 3.1 Flash-Lite', value: 'gemini-3.1-flash-lite', isPaid: false },
-  { label: 'Gemini 3.1 Pro ⭐', value: 'gemini-3.1-pro-preview-customtools', isPaid: true },
-  { label: 'GPT-5.2 ⭐', value: 'gemini-2.5-pro', isPaid: true },
+  { label: 'Gemini 3.1 Pro ⭐', value: 'gemini-3.1-pro-preview-customtools', isPaid: false },
+  { label: 'GPT-5.2 ⭐', value: 'gemini-2.5-pro', isPaid: false },
   { label: 'GPT-5 Mini', value: 'gemini-2.5-flash', isPaid: false },
-  { label: 'Claude 4.5 Sonnet ⭐', value: 'gemini-3.1-pro-preview', isPaid: true }
+  { label: 'Claude 4.5 Sonnet ⭐', value: 'gemini-3.1-pro-preview', isPaid: false }
 ]
 
 const ProductPricing = ({

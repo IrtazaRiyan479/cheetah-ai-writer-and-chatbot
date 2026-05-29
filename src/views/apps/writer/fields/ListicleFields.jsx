@@ -131,6 +131,7 @@ const ListicleFields = ({ settings, updateSetting }) => (
         </Grid>
       </div>
 
+      <FormControlLabel control={<Switch checked={settings.useOutlineEditor} onChange={(e) => updateSetting('useOutlineEditor', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Outline Editor</Typography>} />
       <FormControlLabel control={<Switch checked={settings.deepSearch} onChange={(e) => updateSetting('deepSearch', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Deep Search (Beta)</Typography>} />
       <FormControlLabel control={<Switch checked={settings.enableFirstHandExperience} onChange={(e) => updateSetting('enableFirstHandExperience', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable First-Hand Experience</Typography>} />
       <FormControlLabel control={<Switch checked={settings.enableSupplementalInformation} onChange={(e) => updateSetting('enableSupplementalInformation', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable Supplemental Information</Typography>} />

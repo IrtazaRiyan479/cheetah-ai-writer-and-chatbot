@@ -8,6 +8,8 @@ import ProductAddHeader from '@views/apps/writer/ProductAddHeader'
 import ProductOrganize from '@views/apps/writer/ProductOrganize'
 import ProductPricing from '@views/apps/writer/ProductPricing'
 import ProductInformation from '@views/apps/writer/ProductInformation'
+import OutlineEditor from '@views/apps/writer/OutlineEditor'
+import ArticleEditor from '@views/apps/writer/ArticleEditor'
 
 const defaultSettings = {
   // Existing Base Fields
@@ -67,6 +69,8 @@ const CheetahWriter = () => {
   const [settings, setSettings] = useState(defaultSettings)
   const [presets, setPresets] = useState([])
   const [selectedPresetId, setSelectedPresetId] = useState('default')
+  const [step, setStep] = useState(0)
+  const [outline, setOutline] = useState([])
 
   // Load presets on mount
   const fetchPresets = async () => {
@@ -136,6 +140,7 @@ const CheetahWriter = () => {
 
   return (
     <Container maxWidth='md' className='p-0'>
+      {step === 0 && (
       <Grid container spacing={6}>
         <Grid size={{ xs: 12 }}><ProductAddHeader /></Grid>
 
@@ -164,9 +169,20 @@ const CheetahWriter = () => {
           <ProductInformation
             settings={settings}
             updateSetting={updateSetting}
+            setStep={setStep}
+            setOutline={setOutline}
           />
         </Grid>
       </Grid>
+      )}
+
+      {step === 1 && (
+        <OutlineEditor settings={settings} setStep={setStep} outline={outline} setOutline={setOutline} />
+      )}
+
+      {step === 2 && (
+        <ArticleEditor settings={settings} setStep={setStep} outline={outline} />
+      )}
     </Container>
   )
 }

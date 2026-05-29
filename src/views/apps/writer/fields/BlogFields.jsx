@@ -189,6 +189,8 @@ const BlogFields = ({ settings, updateSetting }) => (
         </Typography>
       </div>
 
+      <FormControlLabel control={<Switch checked={settings.useOutlineEditor} onChange={(e) => updateSetting('useOutlineEditor', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Outline Editor</Typography>} />
+
       <FormControlLabel
         control={<Switch checked={settings.includeFaq} onChange={(e) => updateSetting('includeFaq', e.target.checked)} />}
         label={<Typography className='font-medium text-textPrimary'>Include FAQ Section</Typography>}

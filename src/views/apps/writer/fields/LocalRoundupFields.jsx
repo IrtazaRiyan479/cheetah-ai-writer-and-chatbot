@@ -151,7 +151,7 @@ const LocalRoundupFields = ({ settings, updateSetting }) => (
         </Grid>
       </div>
 
-      {/* --- ADDED MAP AND LOCAL FIELDS HERE --- */}
+      <FormControlLabel control={<Switch checked={settings.useOutlineEditor} onChange={(e) => updateSetting('useOutlineEditor', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Outline Editor</Typography>} />
       <FormControlLabel control={<Switch checked={settings.generateUniqueMapImages} onChange={(e) => updateSetting('generateUniqueMapImages', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Generate Unique Map Images</Typography>} />
       <FormControlLabel control={<Switch checked={settings.includeGoogleMapsLinks} onChange={(e) => updateSetting('includeGoogleMapsLinks', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Include Google Maps Links</Typography>} />
       <FormControlLabel control={<Switch checked={settings.includeBusinessHours} onChange={(e) => updateSetting('includeBusinessHours', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Include Business Hours</Typography>} />

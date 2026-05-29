@@ -82,6 +82,7 @@
     "react-toastify": "11.0.5",
     "react-use": "17.6.0",
     "server-only": "0.0.1",
+    "text-readability": "^1.1.1",
     "valibot": "1.2.0"
   },
   "devDependencies": {
