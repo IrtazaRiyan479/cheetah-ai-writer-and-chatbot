@@ -36,7 +36,6 @@ const ProductPricing = ({
   const params = useParams()
   const lang = params.lang || 'en'
 
-  // Dialog States
   const [openCreate, setOpenCreate] = useState(false)
   const [openDelete, setOpenDelete] = useState(false)
   const [newPresetName, setNewPresetName] = useState('')

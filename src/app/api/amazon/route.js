@@ -1,0 +1,55 @@
+import { NextResponse } from 'next/server'
+import amazonPaapi from 'amazon-paapi'
+
+export async function POST(request) {
+  try {
+    const { keyword } = await request.json()
+
+    if (!keyword) {
+      return NextResponse.json({ error: 'Keyword or ASIN is required' }, { status: 400 })
+    }
+
+    const commonParameters = {
+      AccessKey: process.env.AMAZON_ACCESS_KEY,
+      SecretKey: process.env.AMAZON_SECRET_KEY,
+      PartnerTag: process.env.AMAZON_PARTNER_TAG,
+      PartnerType: 'Associates',
+      Marketplace: 'www.amazon.com' // Change if targeting UK, CA, etc.
+    }
+
+    const requestParameters = {
+      Keywords: keyword,
+      SearchIndex: 'All',
+      ItemCount: 3, // Number of products to return
+      Resources: [
+        'ItemInfo.Title',
+        'ItemInfo.Features',
+        'Offers.Listings.Price',
+        'Images.Primary.Large',
+        'ItemInfo.ByLineInfo'
+      ]
+    }
+
+    // Execute the search using the paapi package
+    const response = await amazonPaapi.SearchItems(commonParameters, requestParameters)
+
+    // Map the complex Amazon response into a clean, usable array
+    const products = response.SearchResult.Items.map(item => ({
+      asin: item.ASIN,
+      title: item.ItemInfo?.Title?.DisplayValue,
+      url: item.DetailPageURL,
+      imageUrl: item.Images?.Primary?.Large?.URL,
+      price: item.Offers?.Listings?.[0]?.Price?.DisplayAmount || 'Price unavailable',
+      features: item.ItemInfo?.Features?.DisplayValues || []
+    }))
+
+    return NextResponse.json({ success: true, products })
+
+  } catch (error) {
+    console.error('Amazon API Error:', error)
+    return NextResponse.json({
+      success: false,
+      error: error.message || 'Failed to fetch from Amazon'
+    }, { status: 500 })
+  }
+}

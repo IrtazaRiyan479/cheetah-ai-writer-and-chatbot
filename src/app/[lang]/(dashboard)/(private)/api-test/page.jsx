@@ -18,6 +18,22 @@ export default function ApiDiagnostics() {
     setLogs(prev => ({ ...prev, [service]: JSON.stringify(data, null, 2) }))
   }
 
+  const testAmazon = async () => {
+    setLoading({ ...loading, amazon: true })
+    try {
+      const res = await fetch('/api/amazon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: 'running shoes for flat feet' })
+      })
+      const data = await res.json()
+      updateLog('amazon', data)
+    } catch (err) {
+      updateLog('amazon', { error: err.message })
+    }
+    setLoading({ ...loading, amazon: false })
+  }
+
   const testSerper = async () => {
     setLoading({ ...loading, serper: true })
     try {
@@ -115,6 +131,33 @@ export default function ApiDiagnostics() {
                   />
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* AMAZON PA-API TEST */}
+        <Grid size={{ xs: 12 }}>
+          <Card className='shadow-sm'>
+            <CardContent>
+              <div className='flex items-center justify-between mbe-4'>
+                <div>
+                  <Typography variant='h6'>Amazon Associate API</Typography>
+                  <Typography variant='caption' color='text.secondary'>Testing keyword: "running shoes for flat feet"</Typography>
+                </div>
+                <Button
+                  variant='contained'
+                  onClick={testAmazon}
+                  disabled={loading.amazon}
+                >
+                  {loading.amazon ? 'Testing...' : 'Run Test'}
+                </Button>
+              </div>
+              <Divider className='mbe-4' />
+              <TextField
+                multiline fullWidth rows={6}
+                value={logs.amazon || 'Awaiting test...'}
+                slotProps={{ input: { readOnly: true, style: { fontFamily: 'monospace', fontSize: '12px' } } }}
+              />
             </CardContent>
           </Card>
         </Grid>

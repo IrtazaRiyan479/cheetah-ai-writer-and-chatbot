@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Grid from '@mui/material/Grid'
@@ -8,9 +8,97 @@ import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import TextField from '@mui/material/TextField'
 import IconButton from '@mui/material/IconButton'
+import Menu from '@mui/material/Menu'
+import MenuItem from '@mui/material/MenuItem'
+import ListItemIcon from '@mui/material/ListItemIcon'
+import ListItemText from '@mui/material/ListItemText'
 import Divider from '@mui/material/Divider'
 
 const OutlineEditor = ({ settings, setStep, outline, setOutline }) => {
+  // Menu State
+  const [anchorEl, setAnchorEl] = useState(null)
+  const [activeItemIndex, setActiveItemIndex] = useState(null)
+  const menuOpen = Boolean(anchorEl)
+
+  // Drag and Drop State
+  const [draggedIndex, setDraggedIndex] = useState(null)
+
+  // --- MENU HANDLERS ---
+  const handleMenuOpen = (event, index) => {
+    setAnchorEl(event.currentTarget)
+    setActiveItemIndex(index)
+  }
+
+  const handleMenuClose = () => {
+    setAnchorEl(null)
+    setActiveItemIndex(null)
+  }
+
+  // --- OUTLINE MANIPULATION ---
+  const handleTextChange = (index, newText) => {
+    const newOutline = [...outline]
+    newOutline[index].text = newText
+    setOutline(newOutline)
+  }
+
+  const handleAddHeading = () => {
+    setOutline([
+      ...outline,
+      { id: `heading-${Date.now()}`, type: 'h2', text: '' }
+    ])
+  }
+
+  const handleDuplicate = () => {
+    if (activeItemIndex === null) return
+    const itemToDuplicate = outline[activeItemIndex]
+    const newOutline = [...outline]
+    newOutline.splice(activeItemIndex + 1, 0, {
+      ...itemToDuplicate,
+      id: `heading-${Date.now()}`,
+      text: `${itemToDuplicate.text} (Copy)`
+    })
+    setOutline(newOutline)
+    handleMenuClose()
+  }
+
+  const handleChangeType = (type) => {
+    if (activeItemIndex === null) return
+    const newOutline = [...outline]
+    newOutline[activeItemIndex].type = type
+    setOutline(newOutline)
+    handleMenuClose()
+  }
+
+  const handleDelete = () => {
+    if (activeItemIndex === null) return
+    const newOutline = outline.filter((_, i) => i !== activeItemIndex)
+    setOutline(newOutline)
+    handleMenuClose()
+  }
+
+  // --- DRAG AND DROP HANDLERS ---
+  const handleDragStart = (e, index) => {
+    setDraggedIndex(index)
+    // Optional: Make the dragged item slightly transparent
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDragOver = (e) => {
+    e.preventDefault() // Necessary to allow dropping
+    e.dataTransfer.dropEffect = 'move'
+  }
+
+  const handleDrop = (e, dropIndex) => {
+    e.preventDefault()
+    if (draggedIndex === null || draggedIndex === dropIndex) return
+
+    const newOutline = [...outline]
+    const draggedItem = newOutline.splice(draggedIndex, 1)[0]
+    newOutline.splice(dropIndex, 0, draggedItem)
+
+    setOutline(newOutline)
+    setDraggedIndex(null)
+  }
 
   return (
     <Grid container spacing={6}>
@@ -26,54 +114,59 @@ const OutlineEditor = ({ settings, setStep, outline, setOutline }) => {
         <Card className='shadow-sm'>
           <CardContent className='flex flex-col gap-4'>
             {outline.map((item, index) => (
-              <div key={item.id} className={`flex gap-3 items-start ${item.type === 'h3' ? 'ml-8' : ''}`}>
-
-                {/* Drag Handle Mockup */}
-                <IconButton size='small' className='mt-1 cursor-grab text-textSecondary'>
+              <div
+                key={item.id}
+                className={`flex gap-3 items-start transition-all ${item.type === 'h3' ? 'ml-8' : ''}`}
+                draggable
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, index)}
+              >
+                {/* Drag Handle */}
+                <IconButton size='small' className='mt-1 cursor-grab text-textSecondary active:cursor-grabbing'>
                   <i className='ri-draggable' />
                 </IconButton>
 
-                <div className='flex-1 flex flex-col gap-2'>
-                  <div className='flex items-center gap-2'>
-                    {/* Tag Badge (H1, H2, H3) */}
-                    <div className='bg-primary/10 text-primary px-2 py-1 rounded text-xs font-bold uppercase'>
-                      {item.type}
-                    </div>
-                    {/* Title Input */}
-                    <TextField
-                      fullWidth size='small'
-                      value={item.text}
-                      className='bg-backgroundPaper'
-                    />
-                    <IconButton size='small' color='error'>
-                      <i className='ri-delete-bin-7-line' />
-                    </IconButton>
-                  </div>
-
-                  {/* Optional Extra Prompt area like in Koala */}
-                  {(item.extraPrompt !== undefined || item.type === 'h2') && (
-                    <TextField
-                      fullWidth size='small'
-                      placeholder='Extra instructions for this section (optional)'
-                      value={item.extraPrompt || ''}
-                      variant='standard'
-                      className='ml-12 w-[calc(100%-3rem)] opacity-70 focus-within:opacity-100 transition-opacity'
-                      InputProps={{ disableUnderline: true, className: 'text-sm italic' }}
-                    />
-                  )}
+                <div className='flex-1 flex flex-col'>
+                  <TextField
+                    fullWidth
+                    size='small'
+                    value={item.text}
+                    onChange={(e) => handleTextChange(index, e.target.value)}
+                    placeholder={`Enter ${item.type.toUpperCase()} heading...`}
+                    variant='outlined'
+                    className='bg-backgroundPaper'
+                  />
                 </div>
+
+                {/* Options Menu Trigger */}
+                <IconButton
+                  size='small'
+                  className='mt-1'
+                  onClick={(e) => handleMenuOpen(e, index)}
+                >
+                  <i className='ri-more-2-fill text-textSecondary' />
+                </IconButton>
               </div>
             ))}
 
             <Divider className='my-2' />
-            <Button variant='dashed' color='primary' startIcon={<i className='ri-add-line' />}>
-              Add Section
+
+            <Button
+              variant='text'
+              color='primary'
+              startIcon={<i className='ri-add-line' />}
+              onClick={handleAddHeading}
+              className='self-start'
+            >
+              Add Heading
             </Button>
+
           </CardContent>
         </Card>
       </Grid>
 
-      {/* RIGHT COLUMN: Settings Summary & Action */}
+      {/* RIGHT COLUMN: Summary Panel */}
       <Grid size={{ xs: 12, md: 4 }}>
         <Card className='shadow-sm sticky top-6 mbs-11'>
           <CardContent>
@@ -100,13 +193,47 @@ const OutlineEditor = ({ settings, setStep, outline, setOutline }) => {
 
             <Button
               fullWidth variant='contained' color='primary' size='large'
-              onClick={() => setStep(2)} // Move to Article Generation
+              onClick={() => setStep(2)}
             >
               Write Article
             </Button>
           </CardContent>
         </Card>
       </Grid>
+
+      {/* REUSABLE ACTION MENU */}
+      <Menu
+        anchorEl={anchorEl}
+        open={menuOpen}
+        onClose={handleMenuClose}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+      >
+        <MenuItem onClick={handleDuplicate}>
+          <ListItemIcon><i className='ri-file-copy-line text-lg' /></ListItemIcon>
+          <ListItemText>Duplicate</ListItemText>
+        </MenuItem>
+
+        {activeItemIndex !== null && outline[activeItemIndex]?.type === 'h2' ? (
+          <MenuItem onClick={() => handleChangeType('h3')}>
+            <ListItemIcon><i className='ri-indent-increase text-lg' /></ListItemIcon>
+            <ListItemText>Make H3 (Subheading)</ListItemText>
+          </MenuItem>
+        ) : (
+          <MenuItem onClick={() => handleChangeType('h2')}>
+            <ListItemIcon><i className='ri-indent-decrease text-lg' /></ListItemIcon>
+            <ListItemText>Make H2 (Main Heading)</ListItemText>
+          </MenuItem>
+        )}
+
+        <Divider />
+
+        <MenuItem onClick={handleDelete} className='text-error'>
+          <ListItemIcon><i className='ri-delete-bin-line text-lg text-error' /></ListItemIcon>
+          <ListItemText>Delete</ListItemText>
+        </MenuItem>
+      </Menu>
+
     </Grid>
   )
 }

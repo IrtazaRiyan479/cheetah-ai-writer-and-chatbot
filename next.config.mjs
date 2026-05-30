@@ -22,6 +22,7 @@ const nextConfig = {
                 locale: false
             }
         ];
-    }
+    },
+    serverExternalPackages: ['amazon-paapi']
 };
 export default nextConfig;
