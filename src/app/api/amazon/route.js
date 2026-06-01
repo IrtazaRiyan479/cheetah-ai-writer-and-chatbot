@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import amazonPaapi from 'amazon' + '-paapi'
 
 export async function POST(request) {
   try {
@@ -9,18 +8,22 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Keyword or ASIN is required' }, { status: 400 })
     }
 
+    // 1. Dynamically import the package using string concatenation to bypass Turbopack
+    const amazonModule = await import('amazon' + '-paapi')
+    const amazonPaapi = amazonModule.default
+
     const commonParameters = {
       AccessKey: process.env.AMAZON_ACCESS_KEY,
       SecretKey: process.env.AMAZON_SECRET_KEY,
       PartnerTag: process.env.AMAZON_PARTNER_TAG,
       PartnerType: 'Associates',
-      Marketplace: 'www.amazon.com' // Change if targeting UK, CA, etc.
+      Marketplace: 'www.amazon.com'
     }
 
     const requestParameters = {
       Keywords: keyword,
       SearchIndex: 'All',
-      ItemCount: 3, // Number of products to return
+      ItemCount: 3,
       Resources: [
         'ItemInfo.Title',
         'ItemInfo.Features',
@@ -30,7 +33,7 @@ export async function POST(request) {
       ]
     }
 
-    // Execute the search using the paapi package
+    // 2. Execute the search using the dynamically loaded module
     const response = await amazonPaapi.SearchItems(commonParameters, requestParameters)
 
     // Map the complex Amazon response into a clean, usable array
