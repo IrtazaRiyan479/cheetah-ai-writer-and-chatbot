@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     basePath: process.env.BASEPATH,
+    transpilePackages: ['amazon-paapi'],
     redirects: async () => {
         return [
             {
@@ -22,7 +23,6 @@ const nextConfig = {
                 locale: false
             }
         ];
-    },
-    serverExternalPackages: ['amazon-paapi']
+    }
 };
 export default nextConfig;
