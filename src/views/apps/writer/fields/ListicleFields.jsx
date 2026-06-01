@@ -7,6 +7,13 @@ import MenuItem from '@mui/material/MenuItem'
 import Switch from '@mui/material/Switch'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Divider from '@mui/material/Divider'
+import { clientSites } from '@/configs/clientSites'
+import Checkbox from '@mui/material/Checkbox'
+import ListItemText from '@mui/material/ListItemText'
+import OutlinedInput from '@mui/material/OutlinedInput'
+import Chip from '@mui/material/Chip'
+import { languages } from '@/configs/languages'
+import MediaUploader from '../MediaUploader' // Adjust the path based on where you saved it
 
 const ListicleFields = ({ settings, updateSetting }) => (
   <>
@@ -14,13 +21,39 @@ const ListicleFields = ({ settings, updateSetting }) => (
       <Typography variant='subtitle2' className='font-medium mbe-1'>Target Keyword</Typography>
       <TextField fullWidth size='small' placeholder='e.g. best running shoes for flat feet' value={settings.targetKeyword} onChange={(e) => updateSetting('targetKeyword', e.target.value)} />
     </Grid>
-    <Grid size={{ xs: 12 }}>
+   <Grid size={{ xs: 12 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Automatic Internal Linking</Typography>
-      <FormControl fullWidth size='small'>
-        <Select value={settings.internalLinking} onChange={(e) => updateSetting('internalLinking', e.target.value)}>
-          <MenuItem value='unselected'>Unselected</MenuItem>
+      <FormControl fullWidth size='small' className='mbe-3'>
+        <Select
+          multiple
+          value={Array.isArray(settings.internalLinking) ? settings.internalLinking : []}
+          onChange={(e) => updateSetting('internalLinking', typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+          input={<OutlinedInput size='small' />}
+          renderValue={(selected) => (
+            <div className='flex flex-wrap gap-1'>
+              {selected.map((value) => (
+                <Chip key={value} label={value} size="small" className='h-6' />
+              ))}
+            </div>
+          )}
+        >
+          {clientSites.map((site) => (
+            <MenuItem key={site} value={site}>
+              <Checkbox checked={Array.isArray(settings.internalLinking) && settings.internalLinking.indexOf(site) > -1} />
+              <ListItemText primary={site} />
+            </MenuItem>
+          ))}
         </Select>
       </FormControl>
+
+      <Typography variant='subtitle2' className='font-medium mbe-1'>Custom URLs (Comma Separated)</Typography>
+      <TextField
+        fullWidth
+        size='small'
+        placeholder='https://site1.com, https://site2.com'
+        value={settings.customInternalLink || ''}
+        onChange={(e) => updateSetting('customInternalLink', e.target.value)}
+      />
     </Grid>
 
     <Grid size={{ xs: 12 }}><Divider className='my-2' /></Grid>
@@ -36,58 +69,136 @@ const ListicleFields = ({ settings, updateSetting }) => (
         </Select>
       </FormControl>
     </Grid>
-    <Grid size={{ xs: 12, sm: 6 }}>
+   <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>SEO Optimization</Typography>
-      <FormControl fullWidth size='small'>
-        <Select value={settings.seoOptimization} onChange={(e) => updateSetting('seoOptimization', e.target.value)}>
+
+      {/* We add a bottom margin dynamically if the text box is about to appear below it */}
+      <FormControl fullWidth size='small' className={settings.seoOptimization === 'manual' ? 'mbe-3' : ''}>
+        <Select
+          value={settings.seoOptimization}
+          onChange={(e) => updateSetting('seoOptimization', e.target.value)}
+        >
           <MenuItem value='default'>Default</MenuItem>
           <MenuItem value='manual'>Manual</MenuItem>
           <MenuItem value='ai'>AI-Powered</MenuItem>
         </Select>
       </FormControl>
+
+      {/* Conditionally render manual keyword input */}
+      {settings.seoOptimization === 'manual' && (
+        <TextField
+          fullWidth
+          size='small'
+          placeholder='Enter keywords separated by commas...'
+          value={settings.manualKeywords || ''}
+          onChange={(e) => updateSetting('manualKeywords', e.target.value)}
+        />
+      )}
     </Grid>
-    <Grid size={{ xs: 12, sm: 6 }}>
+   <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>AI Images & YouTube Videos</Typography>
-      <FormControl fullWidth size='small'>
-        <Select value={settings.aiImagesAndVideos} onChange={(e) => updateSetting('aiImagesAndVideos', e.target.value)}>
+      <FormControl fullWidth size='small' className={settings.aiImagesAndVideos.startsWith('upload') ? 'mbe-3' : ''}>
+        <Select
+          value={settings.aiImagesAndVideos}
+          onChange={(e) => updateSetting('aiImagesAndVideos', e.target.value)}
+        >
           <MenuItem value='none'>None</MenuItem>
-          <MenuItem value='images'>Auto-Insert AI Images</MenuItem>
-          <MenuItem value='videos'>Auto-Insert YouTube Videos</MenuItem>
-          <MenuItem value='both'>Both Images & Videos</MenuItem>
+          <MenuItem value='auto'>Auto (Unsplash Images & AI YouTube Videos)</MenuItem>
+          <MenuItem disabled>──────────</MenuItem>
+          <MenuItem value='upload-images'>Upload Custom Images</MenuItem>
+          <MenuItem value='upload-videos'>Upload Custom Videos</MenuItem>
+          <MenuItem value='upload-both'>Upload Both Images & Videos</MenuItem>
         </Select>
       </FormControl>
     </Grid>
-    <Grid size={{ xs: 12, sm: 6 }}>
+
+    {/* Conditionally render the real Materialize File Uploader */}
+    {settings.aiImagesAndVideos.startsWith('upload') && (
+      <Grid size={{ xs: 12 }}>
+         <MediaUploader uploadType={settings.aiImagesAndVideos} />
+      </Grid>
+    )}
+   <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Article Length</Typography>
-      <FormControl fullWidth size='small'>
+      <FormControl fullWidth size='small' className={settings.articleLength === 'custom' ? 'mbe-3' : ''}>
         <Select value={settings.articleLength} onChange={(e) => updateSetting('articleLength', e.target.value)}>
-          <MenuItem value='shorter'>Shorter</MenuItem>
           <MenuItem value='default'>Default</MenuItem>
-          <MenuItem value='longer'>Longer</MenuItem>
+          <MenuItem value='custom'>Custom Number of Sections</MenuItem>
+          <MenuItem value='shorter'>Shorter (2-3 Sections)</MenuItem>
+          <MenuItem value='short'>Short (3-5 Sections)</MenuItem>
+          <MenuItem value='medium'>Medium (5-7 Sections)</MenuItem>
+          <MenuItem value='long'>Long Form (7-10 Sections)</MenuItem>
+          <MenuItem value='longer'>Longer (10-12 Sections)</MenuItem>
         </Select>
       </FormControl>
+
+      {/* Conditionally render custom section count input */}
+       {settings.articleLength === 'custom' && (
+        <TextField
+          fullWidth
+          type='number'
+          size='small'
+          placeholder='e.g. 5'
+          value={settings.customArticleLength || ''}
+          inputProps={{ min: 1, max: 48 }}
+          onChange={(e) => {
+            let value = e.target.value;
+
+            // If the user types a number greater than 48, force it back to 48
+            if (Number(value) > 48) {
+              value = 48;
+            }
+            // Optional: prevent negative numbers or 0
+            else if (value !== '' && Number(value) < 1) {
+              value = 1;
+            }
+
+            updateSetting('customArticleLength', value);
+          }}
+        />
+      )}
     </Grid>
-    <Grid size={{ xs: 12, sm: 6 }}>
+   <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Tone of Voice</Typography>
-      <FormControl fullWidth size='small'>
+      <FormControl fullWidth size='small' className={settings.toneOfVoice === 'custom' ? 'mbe-3' : ''}>
         <Select value={settings.toneOfVoice} onChange={(e) => updateSetting('toneOfVoice', e.target.value)}>
-          <MenuItem value='seo'>SEO Optimized</MenuItem>
+          <MenuItem value='seo'>SEO Optimized (Confident, Knowledgeable, Neutral, and Clear)</MenuItem>
           <MenuItem value='excited'>Excited</MenuItem>
           <MenuItem value='professional'>Professional</MenuItem>
           <MenuItem value='friendly'>Friendly</MenuItem>
+          <MenuItem value='formal'>Formal</MenuItem>
+          <MenuItem value='casual'>Casual</MenuItem>
+          <MenuItem value='humorous'>Humorous</MenuItem>
+          <MenuItem value='custom'>Custom</MenuItem>
         </Select>
       </FormControl>
+
+      {/* Conditionally render custom tone input */}
+      {settings.toneOfVoice === 'custom' && (
+        <TextField
+          fullWidth
+          size='small'
+          placeholder='e.g. Sarcastic but informative...'
+          value={settings.customToneOfVoice || ''}
+          onChange={(e) => updateSetting('customToneOfVoice', e.target.value)}
+        />
+      )}
     </Grid>
-    <Grid size={{ xs: 12, sm: 6 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Language</Typography>
-      <FormControl fullWidth size='small'>
-        <Select value={settings.language} onChange={(e) => updateSetting('language', e.target.value)}>
-          <MenuItem value='en-us'>English (US)</MenuItem>
-          <MenuItem value='en-uk'>English (UK)</MenuItem>
-          <MenuItem value='es'>Spanish</MenuItem>
-        </Select>
-      </FormControl>
-    </Grid>
+   <Grid size={{ xs: 12, sm: 6 }}>
+  <Typography variant='subtitle2' className='font-medium mbe-1'>Language</Typography>
+  <FormControl fullWidth size='small'>
+    <Select
+      value={settings.language}
+      onChange={(e) => updateSetting('language', e.target.value)}
+    >
+      {languages.map((lang) => (
+        <MenuItem key={lang.code} value={lang.code}>
+          {lang.name}
+        </MenuItem>
+      ))}
+    </Select>
+  </FormControl>
+</Grid>
     <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Country</Typography>
       <FormControl fullWidth size='small'>

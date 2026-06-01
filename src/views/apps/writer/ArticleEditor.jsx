@@ -8,6 +8,10 @@ import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import Divider from '@mui/material/Divider'
 import CircularProgress from '@mui/material/CircularProgress'
+import Menu from '@mui/material/Menu'
+import MenuItem from '@mui/material/MenuItem'
+import ListItemIcon from '@mui/material/ListItemIcon'
+import ListItemText from '@mui/material/ListItemText'
 
 // Tiptap imports
 import { Color } from '@tiptap/extension-color'
@@ -16,6 +20,8 @@ import { Placeholder } from '@tiptap/extension-placeholder'
 import { TextStyle } from '@tiptap/extension-text-style'
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
 import { StarterKit } from '@tiptap/starter-kit'
+import Image from '@tiptap/extension-image'
+
 
 // --- TIPTAP TOOLBAR COMPONENT ---
 const EditorToolbar = ({ editor }) => {
@@ -23,7 +29,6 @@ const EditorToolbar = ({ editor }) => {
     return null
   }
 
-  // Track active states and trigger re-renders
   const editorState = useEditorState({
     editor,
     selector: ctx => ({
@@ -51,6 +56,11 @@ const EditorToolbar = ({ editor }) => {
     })
   })
 
+  const insertAfterSelection = (content) => {
+    const { to } = editor.state.selection
+    editor.chain().focus().insertContentAt(to, content).run()
+  }
+
   return (
     <div className='flex flex-wrap gap-x-4 gap-y-2 p-5'>
       <Chip onClick={() => editor.chain().focus().toggleBold().run()} disabled={!editorState.canBold} {...(editorState.isBold && { variant: 'tonal', color: 'primary' })} label='bold' />
@@ -70,119 +80,196 @@ const EditorToolbar = ({ editor }) => {
       <Chip onClick={() => editor.chain().focus().toggleOrderedList().run()} {...(editorState.isOrderedList && { variant: 'tonal', color: 'primary' })} label='orderedlist' />
       <Chip onClick={() => editor.chain().focus().toggleCodeBlock().run()} {...(editorState.isCodeBlock && { variant: 'tonal', color: 'primary' })} label='codeblock' />
       <Chip onClick={() => editor.chain().focus().toggleBlockquote().run()} {...(editorState.isBlockquote && { variant: 'tonal', color: 'primary' })} label='blockquote' />
-      <Chip onClick={() => editor.chain().focus().setHorizontalRule().run()} label='horizontal rule' />
-      <Chip onClick={() => editor.chain().focus().setHardBreak().run()} label='hard break' />
+      <Chip onClick={() => insertAfterSelection('<hr>')} label='horizontal rule' />
+      <Chip onClick={() => insertAfterSelection('<br>')} label='hard break' />
       <Chip onClick={() => editor.chain().focus().undo().run()} disabled={!editorState.canUndo} label='undo' />
       <Chip onClick={() => editor.chain().focus().redo().run()} disabled={!editorState.canRedo} label='redo' />
-      <Chip onClick={() => editor.chain().focus().setColor('var(--mui-palette-primary-main)').run()} label='primary' />
+      <Chip onClick={() => editor.chain().focus().setColor('var(--mui-palette-primary-main, #8C57FF)').run()} label='primary' />
     </div>
   )
 }
 
 const extensions = [
-  Color.configure({ types: [TextStyle.name, ListItem.name] }),
   TextStyle,
+  Color.configure({ types: ['textStyle'] }),
   StarterKit.configure({
     bulletList: { keepMarks: true, keepAttributes: false },
     orderedList: { keepMarks: true, keepAttributes: false }
   }),
-  Placeholder.configure({ placeholder: 'AI is preparing to write...' })
+  Placeholder.configure({ placeholder: 'Document ready.' }),
+  Image.configure({
+    HTMLAttributes: {
+      class: 'rounded-xl max-w-full sm:max-w-2xl mx-auto block shadow-md my-6 object-cover'
+    }
+  })
 ]
+
+// --- HELPER: HTML to MARKDOWN CONVERTER ---
+const convertHtmlToMarkdown = (html) => {
+  if (!html) return ''
+  let md = html
+  // Headers
+  md = md.replace(/<h1>(.*?)<\/h1>/gi, '# $1\n\n')
+  md = md.replace(/<h2>(.*?)<\/h2>/gi, '## $1\n\n')
+  md = md.replace(/<h3>(.*?)<\/h3>/gi, '### $1\n\n')
+  md = md.replace(/<h4>(.*?)<\/h4>/gi, '#### $1\n\n')
+  md = md.replace(/<h5>(.*?)<\/h5>/gi, '##### $1\n\n')
+  md = md.replace(/<h6>(.*?)<\/h6>/gi, '###### $1\n\n')
+  // Text formatting
+  md = md.replace(/<strong>(.*?)<\/strong>/gi, '**$1**')
+  md = md.replace(/<em>(.*?)<\/em>/gi, '*$1*')
+  md = md.replace(/<s>(.*?)<\/s>/gi, '~~$1~~')
+  md = md.replace(/<code>(.*?)<\/code>/gi, '`$1`')
+  // Lists
+  md = md.replace(/<ul>/gi, '\n')
+  md = md.replace(/<\/ul>/gi, '\n')
+  md = md.replace(/<ol>/gi, '\n')
+  md = md.replace(/<\/ol>/gi, '\n')
+  md = md.replace(/<li>(.*?)<\/li>/gi, '- $1\n')
+  // Blocks
+  md = md.replace(/<pre><code.*?>(.*?)<\/code><\/pre>/gis, '```\n$1\n```\n\n')
+  md = md.replace(/<blockquote>(.*?)<\/blockquote>/gi, '> $1\n\n')
+  // Layout
+  md = md.replace(/<p>(.*?)<\/p>/gi, '$1\n\n')
+  md = md.replace(/<br\s*\/?>/gi, '\n')
+  md = md.replace(/<hr\s*\/?>/gi, '---\n\n')
+  // Cleanup remaining HTML tags
+  md = md.replace(/<[^>]*>?/gm, '')
+  // Decode common HTML entities
+  md = md.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  return md.trim()
+}
 
 // --- MAIN ARTICLE EDITOR COMPONENT ---
 const ArticleEditor = ({ settings, setStep, outline }) => {
   const [isGenerating, setIsGenerating] = useState(true)
-  const [currentIndex, setCurrentIndex] = useState(0) // Track which heading is currently being generated
+  const [currentIndex, setCurrentIndex] = useState(0)
 
-  // Refs for tracking generation and aborting requests
+  // Export Menu State
+  const [exportAnchorEl, setExportAnchorEl] = useState(null)
+  const isExportMenuOpen = Boolean(exportAnchorEl)
+
   const abortControllerRef = useRef(null)
   const hasStartedRef = useRef(false)
 
-  // Initialize the single editor instance
   const editor = useEditor({
     extensions,
     content: '',
     immediatelyRender: false,
     editorProps: {
       attributes: {
-        // Removed min-h-[500px] from here so the spinner sits directly under the active text
-        class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none p-6 pb-2',
+        class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none p-6 [&_blockquote]:border-l-4 [&_blockquote]:border-primary [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-textSecondary [&_hr]:border-t-2 [&_hr]:border-solid [&_hr]:border-gray-300 [&_hr]:my-8 [&_hr]:w-full',
       },
     },
   })
 
   useEffect(() => {
-    // Wait until the editor is fully initialized before generating
     if (!editor || hasStartedRef.current) return
 
     hasStartedRef.current = true
     let isCancelled = false
-
-    // Initialize the AbortController for this run
     abortControllerRef.current = new AbortController()
 
     const generateArticleSequentially = async () => {
       setIsGenerating(true)
+      editor.setEditable(false)
+      editor.commands.setContent('')
 
-      // Loop through every item in the outline
-      for (let i = 0; i < outline.length; i++) {
+      const groupedSections = []
+      let currentH2Group = null
+
+      outline.forEach((item, index) => {
+        if (item.type === 'h2') {
+          currentH2Group = { h2: item, h3s: [], originalIndex: index }
+          groupedSections.push(currentH2Group)
+        } else if (item.type === 'h3') {
+          if (currentH2Group) {
+            currentH2Group.h3s.push(item)
+          } else {
+            groupedSections.push({ h2: item, h3s: [], originalIndex: index })
+          }
+        }
+      })
+
+      for (let i = 0; i < groupedSections.length; i++) {
         if (isCancelled) break
 
-        const section = outline[i]
-        setCurrentIndex(i) // Update state to trigger UI spinner text
+        const group = groupedSections[i]
+        setCurrentIndex(group.originalIndex)
 
-        // 1. Instantly append the outline heading to the editor as the active section starts
-        const headingHtml = `<${section.type}>${section.text}</${section.type}>`
-        editor.commands.insertContent(headingHtml)
+        editor.chain().focus('end').insertContent('<' + group.h2.type + '>' + group.h2.text + '</' + group.h2.type + '>').run()
+        const subheadings = group.h3s.map(h3 => h3.text)
 
         try {
+          let allLinks = Array.isArray(settings.internalLinking) ? [...settings.internalLinking] : [];
+          if (settings.customInternalLink) {
+            const customLinks = settings.customInternalLink.split(',').map(l => l.trim()).filter(l => l);
+            allLinks = [...allLinks, ...customLinks];
+          }
+
           const res = await fetch('/api/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            signal: abortControllerRef.current.signal, // Attach the abort signal
+            signal: abortControllerRef.current.signal,
             body: JSON.stringify({
               mode: 'section',
               targetKeyword: settings.targetKeyword,
               model: settings.model,
               outlineContext: outline,
-              heading: section.text
+              heading: group.h2.text,
+              subheadings: subheadings,
+              internalLinks: allLinks,
+              seoOptimization: settings.seoOptimization,
+              manualKeywords: settings.manualKeywords,
+              aiImagesAndVideos: settings.aiImagesAndVideos,
+              sectionIndex: i,
+              totalSections: groupedSections.length,
+              toneOfVoice: settings.toneOfVoice,
+              customToneOfVoice: settings.customToneOfVoice
             })
           })
 
           const data = await res.json()
 
-          if (data.success) {
-            // 2. Format the response and append it below the heading
-            const formattedContent = `<p>${data.text.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br/>')}</p>`
-            editor.commands.insertContent(formattedContent)
+     if (data.success) {
+            let cleanedText = data.text
+              .replace(/^##\s+.*$/gm, '')
+              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+              .replace(/^###\s+(.*)$/gm, '<h3>$1</h3>')
+
+            let formattedContent = cleanedText
+              .replace(/\n\n/g, '</p><p>')
+              .replace(/\n/g, '<br/>')
+              .replace(/<p>(<h3>.*?<\/h3>|<br\/>)<\/p>/g, '$1')
+              .replace(/<p>\s*<\/p>/g, '')
+
+            editor.chain().focus('end').insertContent("<p>" + formattedContent + "</p>").run()
           } else {
-            editor.commands.insertContent(`<p><em>Error generating this section.</em></p>`)
+            editor.chain().focus('end').insertContent("<p><em>❌ Error generating this section.</em></p>").run()
           }
         } catch (error) {
           if (error.name === 'AbortError') {
-            console.log('Generation stopped by user.')
-            editor.commands.insertContent(`<p><em>[Generation Stopped]</em></p>`)
-            break // Exit the loop entirely if stopped
+            editor.chain().focus('end').insertContent("<p><em>🛑 Generation Stopped.</em></p>").run()
+            break
           } else {
-            console.error("Failed to generate section:", error)
-            editor.commands.insertContent(`<p><em>Failed to fetch content.</em></p>`)
+            editor.chain().focus('end').insertContent("<p><em>❌ Failed to fetch content.</em></p>").run()
           }
         }
       }
 
       if (!isCancelled) {
         setIsGenerating(false)
-        setCurrentIndex(outline.length) // Clear the spinner index
+        setCurrentIndex(outline.length)
+        editor.setEditable(true)
       }
     }
 
-    // Start the loop
     generateArticleSequentially()
 
     return () => {
       isCancelled = true
       if (abortControllerRef.current) {
-        abortControllerRef.current.abort() // Cancel any pending fetch requests if unmounted
+        abortControllerRef.current.abort()
       }
     }
   }, [editor, outline, settings.targetKeyword, settings.model])
@@ -192,50 +279,117 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
       abortControllerRef.current.abort()
     }
     setIsGenerating(false)
+    if (editor) editor.setEditable(true)
+  }
+
+  // --- EXPORT HANDLERS ---
+  const handleDownloadFile = (content, filename, type) => {
+    const blob = new Blob([content], { type })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+    setExportAnchorEl(null)
+  }
+
+  const handleCopyClipboard = (content) => {
+    navigator.clipboard.writeText(content)
+    alert("Copied to clipboard!")
+    setExportAnchorEl(null)
+  }
+
+  const performExport = (action) => {
+    if (!editor) return
+    const currentHtml = editor.getHTML()
+    const fileNameBase = (settings.targetKeyword || 'article').replace(/[^a-z0-9]/gi, '_').toLowerCase()
+
+    if (action === 'copy-html') {
+      handleCopyClipboard(currentHtml)
+    } else if (action === 'download-html') {
+      handleDownloadFile(currentHtml, `${fileNameBase}.html`, 'text/html')
+    } else if (action === 'copy-md') {
+      handleCopyClipboard(convertHtmlToMarkdown(currentHtml))
+    } else if (action === 'download-md') {
+      handleDownloadFile(convertHtmlToMarkdown(currentHtml), "${fileNameBase}" + ".md", 'text/markdown')
+    }
   }
 
   return (
     <div className='flex flex-col gap-6'>
       <div className='flex items-center justify-between'>
-        <Typography variant='h4' className='font-bold'>Article Generation</Typography>
+        <Typography variant="h4" className="font-bold">Article Generation</Typography>
         <div className='flex gap-3'>
-          <Button variant='outlined' color='secondary' onClick={() => setStep(1)} disabled={isGenerating}>
+          <Button variant="outlined" color="secondary" onClick={() => setStep(1)} disabled={isGenerating}>
             Back to Outline
           </Button>
 
-          {/* Dynamically swap Export for Stop based on state */}
           {isGenerating ? (
-            <Button variant='contained' color='error' onClick={handleStopGeneration}>
+            <Button variant="contained" color="error" onClick={handleStopGeneration}>
               Stop Generation
             </Button>
           ) : (
-            <Button variant='contained' color='primary'>
-              Export Article
-            </Button>
+            <>
+              <Button variant="contained" color="primary" onClick={(e) => setExportAnchorEl(e.currentTarget)}
+                endIcon={<i className='ri-arrow-down-s-line' />}
+              >
+                Export Article
+              </Button>
+              <Menu anchorEl={exportAnchorEl} open={isExportMenuOpen} onClose={() => setExportAnchorEl(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              >
+                <MenuItem onClick={() => performExport('copy-html')}>
+                  <ListItemIcon><i className='ri-file-copy-line text-lg' /></ListItemIcon>
+                  <ListItemText>Copy HTML</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={() => performExport('download-html')}>
+                  <ListItemIcon><i className='ri-download-line text-lg' /></ListItemIcon>
+                  <ListItemText>Download HTML</ListItemText>
+                </MenuItem>
+                <Divider/>
+                <MenuItem onClick={() => performExport('copy-md')}>
+                  <ListItemIcon><i className='ri-file-text-line text-lg' /></ListItemIcon>
+                  <ListItemText>Copy Markdown</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={() => performExport('download-md')}>
+                  <ListItemIcon><i className='ri-markdown-line text-lg' /></ListItemIcon>
+                  <ListItemText>Download Markdown</ListItemText>
+                </MenuItem>
+              </Menu>
+            </>
           )}
         </div>
       </div>
 
-      <Card className='shadow-sm'>
-        <CardContent className='p-8'>
-          <Typography variant='h3' className='font-bold mbe-8 capitalize'>
-            {settings.targetKeyword || 'Generated Article'}
-          </Typography>
+      <Card className="shadow-sm">
+        <CardContent className="p-8">
 
-          {/* SINGLE EDITOR CONTAINER */}
-          {/* Added flex layout and min-h-[500px] here to contain the spinner cleanly */}
+          <div className='flex items-center justify-between mbe-8'>
+            <Typography variant="h3" className="font-bold capitalize">
+              {settings.targetKeyword || 'Generated Article'}
+            </Typography>
+
+            {isGenerating && (
+              <div className='flex items-center gap-2 text-primary'>
+                <CircularProgress size={20} color="inherit"/>
+                <Typography variant="body2" className="font-bold">AI is writing...</Typography>
+              </div>
+            )}
+          </div>
+
           <div className='border rounded-md min-h-[500px] flex flex-col'>
-             <EditorToolbar editor={editor} />
-             <Divider />
+             <EditorToolbar editor={editor}/>
+             <Divider/>
 
              <div className='flex-1 flex flex-col'>
-               <EditorContent editor={editor} />
+               <EditorContent editor={editor}/>
 
-               {/* DYNAMIC LOADING INDICATOR */}
                {isGenerating && currentIndex < outline.length && (
                  <div className='flex items-center gap-2 text-textSecondary px-6 pb-6 mt-2'>
-                   <CircularProgress size={16} />
-                   <Typography variant='caption' className='italic'>
+                   <CircularProgress size={16}/>
+                   <Typography variant="caption" className="italic">
                      AI is writing: {outline[currentIndex].text}...
                    </Typography>
                  </div>

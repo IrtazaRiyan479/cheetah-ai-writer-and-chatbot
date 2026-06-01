@@ -16,7 +16,8 @@ const defaultSettings = {
   model: 'gemini-3.1-flash-lite',
   type: 'blog',
   targetKeyword: '',
-  internalLinking: 'unselected',
+  internalLinking: [],
+  customInternalLink: '', //
   seoOptimization: 'default',
   aiImagesAndVideos: 'none',
   articleLength: 'default',
@@ -63,6 +64,9 @@ const defaultSettings = {
   includeGoogleMapsLinks: true,
   includeBusinessHours: false,
   includeContactInfo: false,
+  manualKeywords: '',
+  customArticleLength: 5,
+  customToneOfVoice: ''
 }
 
 const CheetahWriter = () => {
