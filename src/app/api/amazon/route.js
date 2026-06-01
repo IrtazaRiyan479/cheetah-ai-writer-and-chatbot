@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import amazonPaapi from 'amazon-paapi'
+import amazonPaapi from 'amazon' + '-paapi'
 
 export async function POST(request) {
   try {
