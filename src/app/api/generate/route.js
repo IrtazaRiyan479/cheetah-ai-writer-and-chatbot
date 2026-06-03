@@ -89,6 +89,17 @@ async function fetchUnsplashImage(query) {
   return null;
 }
 
+async function getSmartImageKeyword(topic, heading, genAI) {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
+    const prompt = `Generate a highly descriptive, aesthetic 2-3 word search query for an Unsplash image related to the topic "${topic}" and specifically the section "${heading}". Reply ONLY with the keywords, no quotes, no extra text.`;
+    const result = await model.generateContent(prompt);
+    return result.response.text().trim().replace(/['"]/g, '');
+  } catch(e) {
+    return `${topic} ${heading}`.trim(); // Fallback if it fails
+  }
+}
+
 async function fetchYouTubeVideo(query) {
   if (!process.env.YOUTUBE_API_KEY) return null;
   try {
@@ -97,8 +108,19 @@ async function fetchYouTubeVideo(query) {
     if (data.items && data.items.length > 0) {
       return { id: data.items[0].id.videoId, title: data.items[0].snippet.title };
     }
-  } catch (e) { console.error('YouTube Error:', e); }
+  } catch (e) { console.error('YouTube Data API Error:', e); }
   return null;
+}
+
+async function getSmartVideoQuery(topic, heading, genAI) {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
+    const prompt = `Generate a highly specific, highly relevant 3-5 word YouTube search query for an educational or informative video related to the topic "${topic}" and specifically the section "${heading}". Do NOT use generic words like 'introduction', 'conclusion', or 'tutorial'. Reply ONLY with the exact search query, no quotes.`;
+    const result = await model.generateContent(prompt);
+    return result.response.text().trim().replace(/['"]/g, '');
+  } catch(e) {
+    return `${topic} ${heading}`.trim(); // Fallback if it fails
+  }
 }
 
 export async function POST(request) {
@@ -106,7 +128,7 @@ export async function POST(request) {
     const body = await request.json()
 
     // Extract all variables including the new Media fields
-    const { prompt, model, mode, targetKeyword, outlineContext, heading, subheadings, internalLinks, seoOptimization, manualKeywords, aiImagesAndVideos, sectionIndex, totalSections, articleLength, customArticleLength, toneOfVoice, customToneOfVoice, language, country, pointOfView, useRealTimeSearchData, realTimeDataSource, externalLinks, automaticExternalLinks, deepSearch, articleTitle, includeFaq, includeKeyTakeaways, improveReadability } = body
+    const { prompt, model, mode, targetKeyword, outlineContext, heading, subheadings, internalLinks, seoOptimization, manualKeywords, aiImagesAndVideos, sectionIndex, totalSections, articleLength, customArticleLength, toneOfVoice, customToneOfVoice, language, country, pointOfView, useRealTimeSearchData, realTimeDataSource, externalLinks, automaticExternalLinks, deepSearch, articleTitle, includeFaq, includeKeyTakeaways, improveReadability, uploadedMedia } = body
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 
     const langObj = languages ? languages[language] : null;
@@ -252,25 +274,44 @@ export async function POST(request) {
         }
       }
 
-      // 3. Build Auto Media Instruction (Unsplash & YouTube)
+      // 3. Advanced Media Infrastructure (Manual Uploads & Structured Auto Pacing)
       let mediaInstruction = '';
-      if (aiImagesAndVideos === 'auto') {
-        const searchQuery = `${articleTitle || targetKeyword} ${heading}`.trim();
+      let assignedMediaElement = null; // Used for the post-processing safety guard
 
-        // Fetch Image for the 1st section
-        if (sectionIndex === 0) {
-          const img = await fetchUnsplashImage(searchQuery);
-          if (img) {
-            mediaInstruction = `\nCRITICAL MEDIA REQUIREMENT: You MUST embed this image directly below the main heading using HTML: <img src="${img.url}" alt="${img.alt}" style="width:100%; border-radius:8px; margin: 1.5rem 0;" />`;
+// 1. Priority to Manual Uploads (1 file per section, NO repeating)
+      if (uploadedMedia && uploadedMedia.length > 0 && sectionIndex < uploadedMedia.length) {
+        const mediaItem = uploadedMedia[sectionIndex];
+
+        if (mediaItem.type.startsWith('image/')) {
+          assignedMediaElement = `<img src="${mediaItem.url}" alt="${mediaItem.name}" class="rounded-xl shadow-md my-8 w-full aspect-video object-cover" />`;
+
+        } else if (mediaItem.type.startsWith('video/')) {
+          assignedMediaElement = `<video src="${mediaItem.url}" controls></video>`;
+        }
+        mediaInstruction = `\n[NOTE: A media file is placed at the end of this section. DO NOT output HTML tags for media.]`;
+
+      }
+      // 2. Fallback to Auto AI Media (Every section gets media)
+      else if (aiImagesAndVideos === 'auto') {
+
+        // Alternate every single section: Even = Unsplash, Odd = YouTube
+        if (sectionIndex % 2 === 0) {
+          // Unsplash Images
+          const smartQuery = await getSmartImageKeyword(articleTitle || targetKeyword, heading, genAI);
+          const unsplashData = await fetchUnsplashImage(smartQuery);
+          const imgUrl = unsplashData ? unsplashData.url : `https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80`;
+          const imgAlt = unsplashData ? unsplashData.alt : heading;
+
+          assignedMediaElement = `<img src="${imgUrl}" alt="${imgAlt}" class="rounded-xl shadow-md my-8 w-full aspect-video object-cover" />`;
+        } else {
+          // YouTube Videos
+          const smartYtQuery = await getSmartVideoQuery(articleTitle || targetKeyword, heading, genAI);
+          const ytVideo = await fetchYouTubeVideo(smartYtQuery);
+          if (ytVideo) {
+            assignedMediaElement = `<div data-youtube-video><iframe src="https://www.youtube.com/embed/${ytVideo.id}" title="${ytVideo.title}"></iframe></div>`;
           }
         }
-        // Fetch Video for the middle section
-        else if (sectionIndex === Math.floor(totalSections / 2)) {
-          const vid = await fetchYouTubeVideo(searchQuery);
-          if (vid) {
-            mediaInstruction = `\nCRITICAL MEDIA REQUIREMENT: You MUST embed this YouTube video directly below the main heading using an iframe: <iframe width="100%" height="450" src="https://www.youtube.com/embed/${vid.id}" title="${vid.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="border-radius:8px; margin: 1.5rem 0;"></iframe>`;
-          }
-        }
+        mediaInstruction = `\n[NOTE: A contextual image or video is placed at the end of this section. DO NOT attempt to generate image/video tags yourself.]`;
       }
 
       // 4. Build Tone Instruction
@@ -324,7 +365,7 @@ export async function POST(request) {
       `
 
       const result = await sectionModel.generateContent(sectionPrompt)
-      return NextResponse.json({ success: true, text: result.response.text() })
+      return NextResponse.json({ success: true, text: result.response.text(), mediaHtml: assignedMediaElement})
     }
 
     // --- FALLBACK: STANDARD GENERATION ---

@@ -97,7 +97,7 @@ const ListicleFields = ({ settings, updateSetting }) => (
       )}
     </Grid>
    <Grid size={{ xs: 12, sm: 6 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>AI Images & YouTube Videos</Typography>
+      <Typography variant='subtitle2' className='font-medium mbe-1'>Auto Images & YouTube Videos</Typography>
       <FormControl fullWidth size='small' className={settings.aiImagesAndVideos.startsWith('upload') ? 'mbe-3' : ''}>
         <Select
           value={settings.aiImagesAndVideos}
@@ -116,7 +116,7 @@ const ListicleFields = ({ settings, updateSetting }) => (
     {/* Conditionally render the real Materialize File Uploader */}
     {settings.aiImagesAndVideos.startsWith('upload') && (
       <Grid size={{ xs: 12 }}>
-         <MediaUploader uploadType={settings.aiImagesAndVideos} />
+         <MediaUploader uploadType={settings.aiImagesAndVideos} onFilesUpdate={(files) => updateSetting('uploadedMedia', files)} />
       </Grid>
     )}
    <Grid size={{ xs: 12, sm: 6 }}>
