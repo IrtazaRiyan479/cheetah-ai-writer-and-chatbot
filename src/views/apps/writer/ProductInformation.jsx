@@ -17,6 +17,8 @@ import YoutubeBlogFields from './fields/YoutubeBlogFields'
 import LocalRoundupFields from './fields/LocalRoundupFields'
 import RewriteFields from './fields/RewriteFields'
 
+import { toast } from 'react-toastify'
+
 const ProductInformation = ({ settings, updateSetting, setStep, setOutline }) => {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -34,10 +36,26 @@ const ProductInformation = ({ settings, updateSetting, setStep, setOutline }) =>
   const ActiveFields = ComponentMap[settings.type] || BlogFields
 
 const handleCreateArticle = async () => {
+
+  if (!settings.targetKeyword || settings.targetKeyword.trim() === '') {
+      toast.error('Please enter a Target Keyword before generating the article.', {
+        position: 'top-right',
+        autoClose: 3000
+      })
+      return
+    }
+
+  if (settings.deepSearch) {
+      toast.error('Premium Feature: You do not have a paid plan. Please upgrade your account to use Deep Search.', {
+        position: 'top-right',
+        autoClose: 5000
+      })
+      return // Stop the function from generating
+    }
+
     setIsGenerating(true)
 
     try {
-      // Hit your newly updated API endpoint in 'outline' mode
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -46,7 +64,10 @@ const handleCreateArticle = async () => {
           targetKeyword: settings.targetKeyword || 'General Topic',
           model: settings.model,
           articleLength: settings.articleLength,
-          customArticleLength: settings.customArticleLength
+          customArticleLength: settings.customArticleLength,
+          language: settings.language,
+          country: settings.country,
+          automaticExternalLinks: settings.automaticExternalLinks
         })
       })
 
@@ -54,6 +75,8 @@ const handleCreateArticle = async () => {
 
       if (data.success) {
         // Save the AI's JSON outline to your global page.jsx state
+        updateSetting('generatedTitle', data.title)
+        if (data.externalLinks) updateSetting('fetchedExternalLinks', data.externalLinks)
         setOutline(data.outline)
 
         // NOW route the user to the correct screen
@@ -105,7 +128,7 @@ const handleCreateArticle = async () => {
             <Typography variant='caption' className='text-sm'>0 / 0 messages</Typography>
           </div>
 
-          <Button
+         <Button
             variant='contained'
             color='primary'
             size='large'
@@ -113,7 +136,13 @@ const handleCreateArticle = async () => {
             onClick={handleCreateArticle}
             disabled={isGenerating}
           >
-            {isGenerating ? <CircularProgress size={24} color="inherit" /> : 'Create Article'}
+            {isGenerating ? (
+              <CircularProgress size={24} color="inherit" />
+            ) : settings.useOutlineEditor ? (
+              'Create Outline'
+            ) : (
+              'Create Article'
+            )}
           </Button>
         </div>
       </CardContent>

@@ -14,6 +14,7 @@ import OutlinedInput from '@mui/material/OutlinedInput'
 import Chip from '@mui/material/Chip'
 import MediaUploader from '../MediaUploader' // Adjust the path based on where you saved it
 import { languages } from '@/configs/languages'
+import { countries } from '@/configs/countries'
 
 const AmazonReviewFields = ({ settings, updateSetting }) => (
   <>
@@ -177,19 +178,28 @@ const AmazonReviewFields = ({ settings, updateSetting }) => (
     <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Country</Typography>
       <FormControl fullWidth size='small'>
-        <Select value={settings.country} onChange={(e) => updateSetting('country', e.target.value)}>
-          <MenuItem value='us'>United States</MenuItem>
-          <MenuItem value='uk'>United Kingdom</MenuItem>
-          <MenuItem value='ca'>Canada</MenuItem>
-          <MenuItem value='au'>Australia</MenuItem>
+        <Select
+          value={settings.country}
+          onChange={(e) => updateSetting('country', e.target.value)}
+        >
+          {countries.map((c) => (
+            <MenuItem key={c.code} value={c.code}>
+              {c.name}
+            </MenuItem>
+          ))}
         </Select>
       </FormControl>
     </Grid>
-    <Grid size={{ xs: 12, sm: 6 }}>
+   <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Point of View</Typography>
       <FormControl fullWidth size='small'>
-        <Select value={settings.pointOfView} onChange={(e) => updateSetting('pointOfView', e.target.value)}>
+        <Select
+          value={settings.pointOfView}
+          onChange={(e) => updateSetting('pointOfView', e.target.value)}
+        >
           <MenuItem value='first'>First Person (I, me, my)</MenuItem>
+          {/* --- ADD THIS NEW OPTION --- */}
+          <MenuItem value='first-plural'>First Person Plural (We, us, our)</MenuItem>
           <MenuItem value='second'>Second Person (You, your)</MenuItem>
           <MenuItem value='third'>Third Person (he, she, it, they)</MenuItem>
         </Select>

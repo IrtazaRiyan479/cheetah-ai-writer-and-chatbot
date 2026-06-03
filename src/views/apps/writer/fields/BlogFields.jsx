@@ -14,6 +14,7 @@ import OutlinedInput from '@mui/material/OutlinedInput'
 import Chip from '@mui/material/Chip'
 import MediaUploader from '../MediaUploader'
 import { languages } from '@/configs/languages'
+import { countries } from '@/configs/countries'
 
 // 1. Accept settings and updateSetting as props
 const BlogFields = ({ settings, updateSetting }) => (
@@ -197,21 +198,22 @@ const BlogFields = ({ settings, updateSetting }) => (
     </Select>
   </FormControl>
 </Grid>
-    <Grid size={{ xs: 12, sm: 6 }}>
+   <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Country</Typography>
       <FormControl fullWidth size='small'>
         <Select
           value={settings.country}
           onChange={(e) => updateSetting('country', e.target.value)}
         >
-          <MenuItem value='us'>United States</MenuItem>
-          <MenuItem value='uk'>United Kingdom</MenuItem>
-          <MenuItem value='ca'>Canada</MenuItem>
-          <MenuItem value='au'>Australia</MenuItem>
+          {countries.map((c) => (
+            <MenuItem key={c.code} value={c.code}>
+              {c.name}
+            </MenuItem>
+          ))}
         </Select>
       </FormControl>
     </Grid>
-    <Grid size={{ xs: 12, sm: 6 }}>
+   <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Point of View</Typography>
       <FormControl fullWidth size='small'>
         <Select
@@ -219,6 +221,8 @@ const BlogFields = ({ settings, updateSetting }) => (
           onChange={(e) => updateSetting('pointOfView', e.target.value)}
         >
           <MenuItem value='first'>First Person (I, me, my)</MenuItem>
+          {/* --- ADD THIS NEW OPTION --- */}
+          <MenuItem value='first-plural'>First Person Plural (We, us, our)</MenuItem>
           <MenuItem value='second'>Second Person (You, your)</MenuItem>
           <MenuItem value='third'>Third Person (he, she, it, they)</MenuItem>
         </Select>
@@ -229,53 +233,37 @@ const BlogFields = ({ settings, updateSetting }) => (
     <Grid size={{ xs: 12 }}><Divider className='my-2' /></Grid>
 
     <Grid size={{ xs: 12 }} className='flex flex-col gap-2'>
-      <div className='flex flex-col'>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={settings.automaticExternalLinks}
-              onChange={(e) => updateSetting('automaticExternalLinks', e.target.checked)}
-            />
-          }
-          label={<Typography className='font-medium text-textPrimary'>Automatic External Links</Typography>}
-        />
-        <Typography variant='caption' color='text.secondary' className='ml-[42px] -mt-1 block mbe-2'>
-          Automatically adds helpful links to reputable external sources.
-        </Typography>
-      </div>
-
-      <FormControlLabel
-        control={<Switch checked={settings.citeSources} onChange={(e) => updateSetting('citeSources', e.target.checked)} />}
-        label={<Typography className='font-medium text-textPrimary'>Cite Sources</Typography>}
-      />
-
+          {/* REAL-TIME DATA & EXTERNAL LINKS */}
+    <Grid size={{ xs: 12, sm: 6 }}>
       <FormControlLabel
         control={<Switch checked={settings.useRealTimeSearchData} onChange={(e) => updateSetting('useRealTimeSearchData', e.target.checked)} />}
-        label={<Typography className='font-medium text-textPrimary'>Use Real-Time Search Data</Typography>}
+        label={<Typography className='font-medium text-textPrimary'>Real-Time Data</Typography>}
       />
+      {settings.useRealTimeSearchData && (
+        <FormControl fullWidth size='small' className='mt-2 mbe-3'>
+          <Select value={settings.realTimeDataSource} onChange={(e) => updateSetting('realTimeDataSource', e.target.value)}>
+            <MenuItem value='search'>Web</MenuItem>
+            <MenuItem value='news'>Google News</MenuItem>
+            <MenuItem value='scholar'>Google Scholar</MenuItem>
+          </Select>
+        </FormControl>
+      )}
+    </Grid>
 
-      <div className='pl-[42px] pr-4 mbe-2 mt-1'>
-        <Grid container>
-          <Grid size={{ xs: 12, sm: 6 }}>
-            <Typography variant='subtitle2' className='font-medium mbe-1'>Real-Time Data Source</Typography>
-            <FormControl fullWidth size='small'>
-              <Select
-                value={settings.realTimeDataSource}
-                onChange={(e) => updateSetting('realTimeDataSource', e.target.value)}
-                disabled={!settings.useRealTimeSearchData} // Bonus: Disables this if the switch above is off!
-              >
-                <MenuItem value='default'>Default</MenuItem>
-                <MenuItem value='news'>News</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
-      </div>
+    <Grid size={{ xs: 12, sm: 6 }}>
+      <FormControlLabel
+        control={<Switch checked={settings.automaticExternalLinks} onChange={(e) => updateSetting('automaticExternalLinks', e.target.checked)} />}
+        label={<Typography className='font-medium text-textPrimary'>Automatic External Links</Typography>}
+      />
+      <Typography variant='caption' color='text.secondary' className='ml-[42px] -mt-1 block mbe-2'>
+        Finds and embeds highly relevant, authoritative outbound links via Google Search.
+      </Typography>
+    </Grid>
 
       <div className='flex flex-col'>
         <FormControlLabel
           control={<Switch checked={settings.deepSearch} onChange={(e) => updateSetting('deepSearch', e.target.checked)} />}
-          label={<Typography className='font-medium text-textPrimary'>Deep Search (Beta)</Typography>}
+          label={<Typography className='font-medium text-textPrimary'>Deep Search ⭐</Typography>}
         />
         <Typography variant='caption' color='text.secondary' className='ml-[42px] -mt-1 block mbe-2'>
           Uses up to 300% more credits, but significantly improves article quality by gathering more web sources.

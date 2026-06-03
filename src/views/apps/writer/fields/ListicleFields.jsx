@@ -13,6 +13,7 @@ import ListItemText from '@mui/material/ListItemText'
 import OutlinedInput from '@mui/material/OutlinedInput'
 import Chip from '@mui/material/Chip'
 import { languages } from '@/configs/languages'
+import { countries } from '@/configs/countries'
 import MediaUploader from '../MediaUploader' // Adjust the path based on where you saved it
 
 const ListicleFields = ({ settings, updateSetting }) => (
@@ -202,19 +203,28 @@ const ListicleFields = ({ settings, updateSetting }) => (
     <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Country</Typography>
       <FormControl fullWidth size='small'>
-        <Select value={settings.country} onChange={(e) => updateSetting('country', e.target.value)}>
-          <MenuItem value='us'>United States</MenuItem>
-          <MenuItem value='uk'>United Kingdom</MenuItem>
-          <MenuItem value='ca'>Canada</MenuItem>
-          <MenuItem value='au'>Australia</MenuItem>
+        <Select
+          value={settings.country}
+          onChange={(e) => updateSetting('country', e.target.value)}
+        >
+          {countries.map((c) => (
+            <MenuItem key={c.code} value={c.code}>
+              {c.name}
+            </MenuItem>
+          ))}
         </Select>
       </FormControl>
     </Grid>
-    <Grid size={{ xs: 12, sm: 6 }}>
+   <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Point of View</Typography>
       <FormControl fullWidth size='small'>
-        <Select value={settings.pointOfView} onChange={(e) => updateSetting('pointOfView', e.target.value)}>
+        <Select
+          value={settings.pointOfView}
+          onChange={(e) => updateSetting('pointOfView', e.target.value)}
+        >
           <MenuItem value='first'>First Person (I, me, my)</MenuItem>
+          {/* --- ADD THIS NEW OPTION --- */}
+          <MenuItem value='first-plural'>First Person Plural (We, us, our)</MenuItem>
           <MenuItem value='second'>Second Person (You, your)</MenuItem>
           <MenuItem value='third'>Third Person (he, she, it, they)</MenuItem>
         </Select>
@@ -224,31 +234,37 @@ const ListicleFields = ({ settings, updateSetting }) => (
     <Grid size={{ xs: 12 }}><Divider className='my-2' /></Grid>
 
     <Grid size={{ xs: 12 }} className='flex flex-col gap-2'>
-      <FormControlLabel control={<Switch checked={settings.automaticExternalLinks} onChange={(e) => updateSetting('automaticExternalLinks', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Automatic External Links</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.citeSources} onChange={(e) => updateSetting('citeSources', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Cite Sources</Typography>} />
+     {/* REAL-TIME DATA & EXTERNAL LINKS */}
+    <Grid size={{ xs: 12, sm: 6 }}>
+      <FormControlLabel
+        control={<Switch checked={settings.useRealTimeSearchData} onChange={(e) => updateSetting('useRealTimeSearchData', e.target.checked)} />}
+        label={<Typography className='font-medium text-textPrimary'>Real-Time Data</Typography>}
+      />
+      {settings.useRealTimeSearchData && (
+        <FormControl fullWidth size='small' className='mt-2 mbe-3'>
+          <Select value={settings.realTimeDataSource} onChange={(e) => updateSetting('realTimeDataSource', e.target.value)}>
+            <MenuItem value='search'>Default (Web)</MenuItem>
+            <MenuItem value='news'>Google News</MenuItem>
+            <MenuItem value='scholar'>Google Scholar</MenuItem>
+          </Select>
+        </FormControl>
+      )}
+    </Grid>
 
-      <FormControlLabel control={<Switch checked={settings.useRealTimeSearchData} onChange={(e) => updateSetting('useRealTimeSearchData', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Real-Time Search Data</Typography>} />
-      <div className='pl-[42px] pr-4 mbe-2 mt-1'>
-        <Grid container>
-          <Grid size={{ xs: 12, sm: 6 }}>
-            <Typography variant='subtitle2' className='font-medium mbe-1'>Real-Time Data Source</Typography>
-            <FormControl fullWidth size='small'>
-              <Select value={settings.realTimeDataSource === 'default' ? 'default' : settings.realTimeDataSource} onChange={(e) => updateSetting('realTimeDataSource', e.target.value)} disabled={!settings.useRealTimeSearchData}>
-                <MenuItem value='default'>Default</MenuItem>
-                <MenuItem value='news'>Google News</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
-      </div>
+    <Grid size={{ xs: 12, sm: 6 }}>
+      <FormControlLabel
+        control={<Switch checked={settings.automaticExternalLinks} onChange={(e) => updateSetting('automaticExternalLinks', e.target.checked)} />}
+        label={<Typography className='font-medium text-textPrimary'>Automatic External Links</Typography>}
+      />
+      <Typography variant='caption' color='text.secondary' className='ml-[42px] -mt-1 block mbe-2'>
+        Finds and embeds highly relevant, authoritative outbound links via Google Search.
+      </Typography>
+    </Grid>
 
       <FormControlLabel control={<Switch checked={settings.useOutlineEditor} onChange={(e) => updateSetting('useOutlineEditor', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Outline Editor</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.deepSearch} onChange={(e) => updateSetting('deepSearch', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Deep Search (Beta)</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.enableFirstHandExperience} onChange={(e) => updateSetting('enableFirstHandExperience', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable First-Hand Experience</Typography>} />
       <FormControlLabel control={<Switch checked={settings.enableSupplementalInformation} onChange={(e) => updateSetting('enableSupplementalInformation', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable Supplemental Information</Typography>} />
       <FormControlLabel control={<Switch checked={settings.enableAutomaticLength} onChange={(e) => updateSetting('enableAutomaticLength', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable Automatic Length</Typography>} />
       <FormControlLabel control={<Switch checked={settings.includeFaq} onChange={(e) => updateSetting('includeFaq', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Include FAQ Section</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.includeKeyTakeaways} onChange={(e) => updateSetting('includeKeyTakeaways', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Include Key Takeaways</Typography>} />
       <FormControlLabel control={<Switch checked={settings.improveReadability} onChange={(e) => updateSetting('improveReadability', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Improve Readability</Typography>} />
 
       <FormControlLabel control={<Switch checked={settings.useDescendingOrder} onChange={(e) => updateSetting('useDescendingOrder', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Descending Order</Typography>} />

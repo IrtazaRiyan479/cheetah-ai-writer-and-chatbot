@@ -175,6 +175,9 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
       editor.setEditable(false)
       editor.commands.setContent('')
 
+      const topTitle = settings.generatedTitle || settings.targetKeyword;
+      editor.commands.setContent(`<h1>${topTitle}</h1><p></p>`);
+
       const groupedSections = []
       let currentH2Group = null
 
@@ -225,7 +228,14 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
               sectionIndex: i,
               totalSections: groupedSections.length,
               toneOfVoice: settings.toneOfVoice,
-              customToneOfVoice: settings.customToneOfVoice
+              customToneOfVoice: settings.customToneOfVoice,
+              language: settings.language,
+              country: settings.country,
+              pointOfView: settings.pointOfView,
+              useRealTimeSearchData: settings.useRealTimeSearchData,
+              realTimeDataSource: settings.realTimeDataSource,
+              externalLinks: settings.fetchedExternalLinks,
+              deepSearch: settings.deepSearch
             })
           })
 
@@ -367,9 +377,9 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
         <CardContent className="p-8">
 
           <div className='flex items-center justify-between mbe-8'>
-            <Typography variant="h3" className="font-bold capitalize">
-              {settings.targetKeyword || 'Generated Article'}
-            </Typography>
+          <Typography variant="h3" className="font-bold capitalize">
+                {settings.generatedTitle || settings.targetKeyword}
+              </Typography>
 
             {isGenerating && (
               <div className='flex items-center gap-2 text-primary'>
