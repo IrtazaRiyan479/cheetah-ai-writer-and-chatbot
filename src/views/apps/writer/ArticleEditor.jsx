@@ -21,6 +21,8 @@ import { TextStyle } from '@tiptap/extension-text-style'
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
 import { StarterKit } from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
+import Link from '@tiptap/extension-link'
+import Youtube from '@tiptap/extension-youtube'
 
 
 // --- TIPTAP TOOLBAR COMPONENT ---
@@ -101,6 +103,19 @@ const extensions = [
     HTMLAttributes: {
       class: 'rounded-xl max-w-full sm:max-w-2xl mx-auto block shadow-md my-6 object-cover'
     }
+  }),
+  Link.configure({
+    openOnClick: false,
+    HTMLAttributes: {
+      class: 'text-primary underline cursor-pointer',
+    },
+  }),
+  Youtube.configure({
+    controls: true,
+    nocookie: true,
+    HTMLAttributes: {
+      class: 'w-full aspect-video rounded-xl shadow-md my-6'
+    }
   })
 ]
 
@@ -120,6 +135,8 @@ const convertHtmlToMarkdown = (html) => {
   md = md.replace(/<em>(.*?)<\/em>/gi, '*$1*')
   md = md.replace(/<s>(.*?)<\/s>/gi, '~~$1~~')
   md = md.replace(/<code>(.*?)<\/code>/gi, '`$1`')
+  md = md.replace(/<a[^>]*href="(https?:\/\/[^"]+)"[^>]*>(.*?)<\/a>/gi, '[$2]($1)')
+
   // Lists
   md = md.replace(/<ul>/gi, '\n')
   md = md.replace(/<\/ul>/gi, '\n')
@@ -235,7 +252,9 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
               useRealTimeSearchData: settings.useRealTimeSearchData,
               realTimeDataSource: settings.realTimeDataSource,
               externalLinks: settings.fetchedExternalLinks,
-              deepSearch: settings.deepSearch
+              deepSearch: settings.deepSearch,
+              articleTitle: settings.generatedTitle,
+              improveReadability: settings.improveReadability
             })
           })
 
@@ -246,6 +265,7 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
               .replace(/^##\s+.*$/gm, '')
               .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
               .replace(/^###\s+(.*)$/gm, '<h3>$1</h3>')
+              .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
 
             let formattedContent = cleanedText
               .replace(/\n\n/g, '</p><p>')
@@ -282,7 +302,7 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
         abortControllerRef.current.abort()
       }
     }
-  }, [editor, outline, settings.targetKeyword, settings.model])
+  }, [editor, outline, settings.targetKeyword, settings.model, settings.generatedTitle])
 
   const handleStopGeneration = () => {
     if (abortControllerRef.current) {

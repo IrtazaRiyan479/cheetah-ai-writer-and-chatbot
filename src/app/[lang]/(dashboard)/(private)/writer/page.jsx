@@ -27,12 +27,13 @@ const defaultSettings = {
   pointOfView: 'third',
   automaticExternalLinks: true,
   citeSources: false,
-  useRealTimeSearchData: true,
-  realTimeDataSource: 'default',
-  deepSearch: true,
+  useRealTimeSearchData: false,
+  realTimeDataSource: 'search',
+  deepSearch: false,
   includeFaq: false,
   includeKeyTakeaways: false,
-  improveReadability: true,
+  improveReadability: false,
+  generatedTitle: '',
 
   // Text Inputs
   amazonProductUrl: '',
@@ -49,8 +50,8 @@ const defaultSettings = {
   listNumberingFormat: '1.',
 
   // Toggles
-  useOutlineEditor: false,
-  enableFirstHandExperience: true,
+  useOutlineEditor: true,
+  enableFirstHandExperience: false,
   enableCondensedMode: false,
   enableSupplementalInformation: false,
   enableAutomaticLength: true,

@@ -89,6 +89,9 @@ importers:
       '@tiptap/extension-italic':
         specifier: ^3.23.1
         version: 3.23.1(@tiptap/core@3.14.0(@tiptap/pm@3.14.0))
+      '@tiptap/extension-link':
+        specifier: ^3.24.0
+        version: 3.24.0(@tiptap/core@3.14.0(@tiptap/pm@3.14.0))(@tiptap/pm@3.14.0)
       '@tiptap/extension-list':
         specifier: 3.14.0
         version: 3.14.0(@tiptap/core@3.14.0(@tiptap/pm@3.14.0))(@tiptap/pm@3.14.0)
@@ -110,6 +113,9 @@ importers:
       '@tiptap/extension-underline':
         specifier: 3.14.0
         version: 3.14.0(@tiptap/core@3.14.0(@tiptap/pm@3.14.0))
+      '@tiptap/extension-youtube':
+        specifier: ^3.24.0
+        version: 3.24.0(@tiptap/core@3.14.0(@tiptap/pm@3.14.0))
       '@tiptap/pm':
         specifier: 3.14.0
         version: 3.14.0
@@ -1717,6 +1723,12 @@ packages:
       '@tiptap/core': 3.23.1
       '@tiptap/pm': 3.23.1
 
+  '@tiptap/extension-link@3.24.0':
+    resolution: {integrity: sha512-MwMoNGG2mL5XGFV1tEGunBRglwsIbW+ZOB2QnKiv+Mcbi2JCWMrorndJZBqpVPR5nM+Bef2KnpchEJmYlQLvKQ==}
+    peerDependencies:
+      '@tiptap/core': 3.24.0
+      '@tiptap/pm': 3.24.0
+
   '@tiptap/extension-list-item@3.14.0':
     resolution: {integrity: sha512-19Dcp8HCFdhINmRy0KQLFfz9ZEuVwFWGAAjYG7BvMvkd9k4sJ5vCv5fej59G99rhsc+tCmik77w+SLksOcxwKQ==}
     peerDependencies:
@@ -1772,6 +1784,11 @@ packages:
     resolution: {integrity: sha512-zmnWlsi2g/tMlThHby0Je9O+v24j4d+qcXF3nuzLUUaDsGCEtOyC9RzwITft59ViK+Nc2PD2W/J14rsB0j+qoQ==}
     peerDependencies:
       '@tiptap/core': ^3.14.0
+
+  '@tiptap/extension-youtube@3.24.0':
+    resolution: {integrity: sha512-/irhKRjUgUV1qGlCld9fbMLZfrjkjJq2Kr5RwJLctafkBRprzn80vyTsxQmi+b65wOJ9Wnsy/v3hnD5OrrbiyA==}
+    peerDependencies:
+      '@tiptap/core': 3.24.0
 
   '@tiptap/extensions@3.23.1':
     resolution: {integrity: sha512-7UIn+idaVTVhdlP0KmgzBh8Csmwck357Dq4te5DuAxhSkN1gsXHlq39mpx907UYKJdSOgd+GMFeyOziPwSmbOQ==}
@@ -3641,6 +3658,9 @@ packages:
 
   linkifyjs@4.3.2:
     resolution: {integrity: sha512-NT1CJtq3hHIreOianA8aSXn6Cw0JzYOuDQbOrSPe7gqFnCpKP++MQe3ODgO3oh2GJFORkAAdqredOa60z63GbA==}
+
+  linkifyjs@4.3.3:
+    resolution: {integrity: sha512-P8aEP5U/D1/IlTY2OeYsErdwh9bGuLE30NcXtKEjgdHcahveQoQwM2yZNsioQHsWFz0P7KKudisbrzCgR0sDHg==}
 
   local-pkg@0.5.1:
     resolution: {integrity: sha512-9rrA30MRRP3gBD3HTGnC6cDFpaE1kVDWxWgqWJUN0RvDNAo+Nz/9GxB+nHOH0ifbVFy0hSA1V6vFDvnx54lTEQ==}
@@ -6479,6 +6499,12 @@ snapshots:
       '@tiptap/pm': 3.14.0
       linkifyjs: 4.3.2
 
+  '@tiptap/extension-link@3.24.0(@tiptap/core@3.14.0(@tiptap/pm@3.14.0))(@tiptap/pm@3.14.0)':
+    dependencies:
+      '@tiptap/core': 3.14.0(@tiptap/pm@3.14.0)
+      '@tiptap/pm': 3.14.0
+      linkifyjs: 4.3.3
+
   '@tiptap/extension-list-item@3.14.0(@tiptap/extension-list@3.14.0(@tiptap/core@3.14.0(@tiptap/pm@3.14.0))(@tiptap/pm@3.14.0))':
     dependencies:
       '@tiptap/extension-list': 3.14.0(@tiptap/core@3.14.0(@tiptap/pm@3.14.0))(@tiptap/pm@3.14.0)
@@ -6521,6 +6547,10 @@ snapshots:
       '@tiptap/core': 3.14.0(@tiptap/pm@3.14.0)
 
   '@tiptap/extension-underline@3.14.0(@tiptap/core@3.14.0(@tiptap/pm@3.14.0))':
+    dependencies:
+      '@tiptap/core': 3.14.0(@tiptap/pm@3.14.0)
+
+  '@tiptap/extension-youtube@3.24.0(@tiptap/core@3.14.0(@tiptap/pm@3.14.0))':
     dependencies:
       '@tiptap/core': 3.14.0(@tiptap/pm@3.14.0)
 
@@ -8645,6 +8675,8 @@ snapshots:
       uc.micro: 2.1.0
 
   linkifyjs@4.3.2: {}
+
+  linkifyjs@4.3.3: {}
 
   local-pkg@0.5.1:
     dependencies:

@@ -21,6 +21,23 @@ async function fetchSerperData(query, type = 'search') {
   } catch (e) { console.error('Serper API Error:', e); return []; }
 }
 
+async function fetchSerperOutlineData(query) {
+  if (!process.env.SERPER_API_KEY) return { organic: [], faqs: [], related: [] };
+  try {
+    const res = await fetch(`https://google.serper.dev/search`, {
+      method: 'POST',
+      headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: query })
+    });
+    const data = await res.json();
+    return {
+      organic: data.organic ? data.organic.slice(0, 4) : [],
+      faqs: data.peopleAlsoAsk ? data.peopleAlsoAsk.map(item => item.question) : [],
+      related: data.relatedSearches ? data.relatedSearches.map(item => item.query) : []
+    };
+  } catch (e) { console.error('Serper Outline Error:', e); return { organic: [], faqs: [], related: [] }; }
+}
+
 // --- HELPER: LIVE SEO KEYWORD FETCHER ---
 async function fetchLiveKeywords(keyword) {
   const keywords = new Set()
@@ -89,7 +106,7 @@ export async function POST(request) {
     const body = await request.json()
 
     // Extract all variables including the new Media fields
-    const { prompt, model, mode, targetKeyword, outlineContext, heading, subheadings, internalLinks, seoOptimization, manualKeywords, aiImagesAndVideos, sectionIndex, totalSections, articleLength, customArticleLength, toneOfVoice, customToneOfVoice, language, country, pointOfView, useRealTimeSearchData, realTimeDataSource, externalLinks, automaticExternalLinks, deepSearch } = body
+    const { prompt, model, mode, targetKeyword, outlineContext, heading, subheadings, internalLinks, seoOptimization, manualKeywords, aiImagesAndVideos, sectionIndex, totalSections, articleLength, customArticleLength, toneOfVoice, customToneOfVoice, language, country, pointOfView, useRealTimeSearchData, realTimeDataSource, externalLinks, automaticExternalLinks, deepSearch, articleTitle, includeFaq, includeKeyTakeaways, improveReadability } = body
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 
     const langObj = languages ? languages[language] : null;
@@ -127,24 +144,50 @@ export async function POST(request) {
       else if (articleLength === 'longer') lengthInstruction = 'CRITICAL REQUIREMENT: Generate exactly 12 main H2 headings.';
       else if (articleLength === 'custom') lengthInstruction = `CRITICAL REQUIREMENT: Generate EXACTLY ${customArticleLength || 9} main H2 headings. No more, no less.`;
 
-      // 2. FORCE Introduction and Conclusion + H3 logic
-  const structureInstruction = `
+      let fetchedExternalLinks = [];
+      let faqInstruction = '';
+      let relatedInstruction = '';
+
+      if (automaticExternalLinks || includeFaq) {
+        const outlineData = await fetchSerperOutlineData(targetKeyword);
+
+        if (automaticExternalLinks) {
+          fetchedExternalLinks = outlineData.organic.map(res => res.link).filter(link => link);
+        }
+
+        if (includeFaq) {
+           if (outlineData.faqs.length > 0) {
+              faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled exactly "Frequently Asked Questions". Under this H2, you MUST nest exactly these questions directly from Google as H3 subheadings:\n${outlineData.faqs.slice(0, 5).map(q => `- ${q}`).join('\n')}`;
+           } else {
+              faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled "Frequently Asked Questions" and nest 3-5 highly relevant questions as H3 subheadings.`;
+           }
+        }
+
+        if (outlineData.related.length > 0) {
+           relatedInstruction = `\nSEO OPTIMIZATION: Naturally incorporate topics from these related Google searches into your H2 and H3 headings where relevant: ${outlineData.related.slice(0, 5).join(', ')}.`;
+        }
+      }
+
+      // --- KEY TAKEAWAYS INSTRUCTION ---
+      let takeawaysInstruction = '';
+      if (includeKeyTakeaways) {
+         takeawaysInstruction = `\nCRITICAL REQUIREMENT - KEY TAKEAWAYS: The second H2 heading (immediately after the Introduction) MUST be titled exactly "Key Takeaways". Do NOT nest any H3 subheadings under it.`;
+      }
+
+      const structureInstruction = `
         IMPORTANT STRUCTURE RULES:
-        1. The FIRST H2 heading MUST be an Introduction (e.g., "Introduction"). Do NOT use the article title here!
+        1. The FIRST H2 heading MUST be an Introduction. Do NOT use the article title here!
+        ${takeawaysInstruction}
         2. The LAST H2 heading MUST be a Conclusion.
+        ${faqInstruction}
         3. For ALL OTHER H2 headings, nest 2 to 3 relevant H3 subheadings.
+        ${relatedInstruction}
       `
 
       const outlinePrompt = `Article Topic: ${targetKeyword || prompt}\n\n${lengthInstruction}\n${structureInstruction}`
 
       const result = await outlineModel.generateContent(outlinePrompt)
       const parsedData = JSON.parse(result.response.text());
-
-      let fetchedExternalLinks = [];
-      if (automaticExternalLinks) {
-        const serperLinks = await fetchSerperData(targetKeyword, 'search');
-        fetchedExternalLinks = serperLinks.map(res => res.link).filter(link => link);
-      }
 
       return NextResponse.json({
         success: true,
@@ -155,31 +198,35 @@ export async function POST(request) {
     }
     // --- MODE 2: GENERATE SINGLE SECTION ---
     if (mode === 'section') {
-      const sectionModel = genAI.getGenerativeModel({
+      const modelConfig = {
         model: deepSearch ? 'deep-research-preview-04-2026' : (model || 'gemini-2.5-pro'),
         systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: You are an expert copywriter. Write highly engaging, SEO-optimized content.`
-      })
+      }
 
-     if (deepSearch) {
+      const isWebSearch = !realTimeDataSource || realTimeDataSource === 'search';
+
+     if (useRealTimeSearchData && isWebSearch) {
         modelConfig.tools = [{
           googleSearchRetrieval: {
             dynamicRetrievalConfig: {
               mode: "MODE_DYNAMIC",
-              dynamicThreshold: 0.3
+              dynamicThreshold: 0.3 // Tells Gemini to actively use Search for this prompt
             }
           }
         }];
       }
 
+      const sectionModel = genAI.getGenerativeModel(modelConfig);
+
       // 1. Live Data Instruction
-   let realTimeInstruction = '';
-      if (useRealTimeSearchData && !deepSearch) {
-        const liveData = await fetchSerperData(`${targetKeyword} ${heading}`, realTimeDataSource || 'search');
-        if (liveData.length > 0) {
-          const dataStrings = typeof liveData[0] === 'string' ? liveData : liveData.map(d => `${d.title}: ${d.snippet}`);
-          realTimeInstruction = `\nREAL-TIME FACTUAL CONTEXT: Use the following recent data points to make your section highly accurate and up-to-date:\n${dataStrings.join('\n')}`;
-        }
-      }
+        let realTimeInstruction = '';
+              if (useRealTimeSearchData && (realTimeDataSource === 'news' || realTimeDataSource === 'scholar')) {
+                const liveData = await fetchSerperData(`${articleTitle || targetKeyword} ${heading}`, realTimeDataSource);
+                if (liveData.length > 0) {
+                  const dataStrings = typeof liveData[0] === 'string' ? liveData : liveData.map(d => `${d.title}: ${d.snippet}`);
+                  realTimeInstruction = `\nREAL-TIME FACTUAL CONTEXT: Use the following recent data points to make your section highly accurate and up-to-date:\n${dataStrings.join('\n')}`;
+                }
+              }
 
       // 2. External Links Instruction
       let extLinkInstruction = '';
@@ -208,7 +255,7 @@ export async function POST(request) {
       // 3. Build Auto Media Instruction (Unsplash & YouTube)
       let mediaInstruction = '';
       if (aiImagesAndVideos === 'auto') {
-        const searchQuery = `${targetKeyword} ${heading}`.trim();
+        const searchQuery = `${articleTitle || targetKeyword} ${heading}`.trim();
 
         // Fetch Image for the 1st section
         if (sectionIndex === 0) {
@@ -247,9 +294,17 @@ export async function POST(request) {
         povInstruction = `\nCRITICAL PERSPECTIVE REQUIREMENT: You MUST write this entire section strictly from a Third Person perspective (using pronouns like 'he', 'she', 'it', 'they', 'their').`;
       }
 
+      // 6. Readability Instruction
+      let readabilityInstruction = '';
+      if (improveReadability) {
+        readabilityInstruction = `\nSTYLING & READABILITY: You MUST heavily format this section to be highly skimmable. Use bullet points, numbered lists, and bold text for important concepts, terms, or key phrases. Avoid writing long, blocky paragraphs. Break text up aggressively.`;
+      } else {
+        readabilityInstruction = `\nSTYLING & READABILITY: Write in standard, flowing paragraph format. Do not aggressively use bullet points or bold text unless explicitly necessary for a list.`;
+      }
+
       // 4. Assemble the Final Prompt
       const sectionPrompt = `
-        Article Topic: ${targetKeyword}
+        Article Title/Context: ${articleTitle || targetKeyword}
         Full Article Outline for Context: ${JSON.stringify(outlineContext)}
 
         TASK: Write a comprehensive section focusing ONLY on the main heading: "${heading}".
@@ -265,6 +320,7 @@ export async function POST(request) {
         ${mediaInstruction}
         ${toneInstruction}
         ${povInstruction}
+        ${readabilityInstruction}
       `
 
       const result = await sectionModel.generateContent(sectionPrompt)

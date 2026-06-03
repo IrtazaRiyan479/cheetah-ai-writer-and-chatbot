@@ -67,7 +67,9 @@ const handleCreateArticle = async () => {
           customArticleLength: settings.customArticleLength,
           language: settings.language,
           country: settings.country,
-          automaticExternalLinks: settings.automaticExternalLinks
+          automaticExternalLinks: settings.automaticExternalLinks,
+          includeFaq: settings.includeFaq,
+          includeKeyTakeaways: settings.includeKeyTakeaways
         })
       })
 
