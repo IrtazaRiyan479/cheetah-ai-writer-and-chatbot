@@ -252,26 +252,26 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
       const groupedSections = []
       let currentH2Group = null
 
-      outline.forEach((item, index) => {
-        if (item.type === 'h2') {
-          currentH2Group = { h2: item, h3s: [], originalIndex: index }
+    outline.forEach((item, index) => {
+        if (['h2', 'intro', 'list_item', 'conclusion'].includes(item.type)) {
+          currentH2Group = { h2: { ...item, htmlTag: 'h2' }, h3s: [], originalIndex: index, originalType: item.type }
           groupedSections.push(currentH2Group)
         } else if (item.type === 'h3') {
           if (currentH2Group) {
             currentH2Group.h3s.push(item)
           } else {
-            groupedSections.push({ h2: item, h3s: [], originalIndex: index })
+            groupedSections.push({ h2: { type: 'h3', htmlTag: 'h2', text: 'Section' }, h3s: [], originalIndex: index, originalType: 'h3' })
           }
         }
       })
 
-      for (let i = 0; i < groupedSections.length; i++) {
+     for (let i = 0; i < groupedSections.length; i++) {
         if (isCancelled) break
 
         const group = groupedSections[i]
         setCurrentIndex(group.originalIndex)
 
-        editor.chain().focus('end').insertContent('<' + group.h2.type + '>' + group.h2.text + '</' + group.h2.type + '>').run()
+        editor.chain().focus('end').insertContent('<' + group.h2.htmlTag + '>' + group.h2.text + '</' + group.h2.htmlTag + '>').run()
         const subheadings = group.h3s.map(h3 => h3.text)
 
         try {
@@ -309,7 +309,10 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
               deepSearch: settings.deepSearch,
               articleTitle: settings.generatedTitle,
               improveReadability: settings.improveReadability,
-              uploadedMedia: settings.uploadedMedia
+              uploadedMedia: settings.uploadedMedia,
+              type: settings.type,
+              listItemsPrompt: settings.listItemsPrompt,
+              sectionType: group.originalType
             })
           })
 

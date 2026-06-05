@@ -22,6 +22,14 @@ const ListicleFields = ({ settings, updateSetting }) => (
       <Typography variant='subtitle2' className='font-medium mbe-1'>Target Keyword</Typography>
       <TextField fullWidth size='small' placeholder='e.g. best running shoes for flat feet' value={settings.targetKeyword} onChange={(e) => updateSetting('targetKeyword', e.target.value)} />
     </Grid>
+
+    <Grid size={{ xs: 12 }}>
+      <FormControlLabel control={<Switch checked={settings.enableAutoLength} onChange={(e) => updateSetting('enableAutoLength', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable Auto Length</Typography>} />
+      {!settings.enableAutoLength && (
+        <TextField fullWidth size='small' type="number" label="Total List Items" value={settings.totalListItems} onChange={(e) => updateSetting('totalListItems', e.target.value)} className="mbe-4 mt-2" />
+      )}
+    </Grid>
+
    <Grid size={{ xs: 12 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Automatic Internal Linking</Typography>
       <FormControl fullWidth size='small' className='mbe-3'>
@@ -59,17 +67,6 @@ const ListicleFields = ({ settings, updateSetting }) => (
 
     <Grid size={{ xs: 12 }}><Divider className='my-2' /></Grid>
 
-    <Grid size={{ xs: 12, sm: 6 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Total List Items</Typography>
-      <FormControl fullWidth size='small'>
-        <Select value={settings.totalListItems} onChange={(e) => updateSetting('totalListItems', e.target.value)}>
-          <MenuItem value='auto'>Auto</MenuItem>
-          <MenuItem value='5'>5</MenuItem>
-          <MenuItem value='10'>10</MenuItem>
-          <MenuItem value='15'>15</MenuItem>
-        </Select>
-      </FormControl>
-    </Grid>
    <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>SEO Optimization</Typography>
 
@@ -119,46 +116,6 @@ const ListicleFields = ({ settings, updateSetting }) => (
          <MediaUploader uploadType={settings.aiImagesAndVideos} onFilesUpdate={(files) => updateSetting('uploadedMedia', files)} />
       </Grid>
     )}
-   <Grid size={{ xs: 12, sm: 6 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Article Length</Typography>
-      <FormControl fullWidth size='small' className={settings.articleLength === 'custom' ? 'mbe-3' : ''}>
-        <Select value={settings.articleLength} onChange={(e) => updateSetting('articleLength', e.target.value)}>
-          <MenuItem value='default'>Default</MenuItem>
-          <MenuItem value='custom'>Custom Number of Sections</MenuItem>
-          <MenuItem value='shorter'>Shorter (2-3 Sections)</MenuItem>
-          <MenuItem value='short'>Short (3-5 Sections)</MenuItem>
-          <MenuItem value='medium'>Medium (5-7 Sections)</MenuItem>
-          <MenuItem value='long'>Long Form (7-10 Sections)</MenuItem>
-          <MenuItem value='longer'>Longer (10-12 Sections)</MenuItem>
-        </Select>
-      </FormControl>
-
-      {/* Conditionally render custom section count input */}
-       {settings.articleLength === 'custom' && (
-        <TextField
-          fullWidth
-          type='number'
-          size='small'
-          placeholder='e.g. 5'
-          value={settings.customArticleLength || ''}
-          inputProps={{ min: 1, max: 48 }}
-          onChange={(e) => {
-            let value = e.target.value;
-
-            // If the user types a number greater than 48, force it back to 48
-            if (Number(value) > 48) {
-              value = 48;
-            }
-            // Optional: prevent negative numbers or 0
-            else if (value !== '' && Number(value) < 1) {
-              value = 1;
-            }
-
-            updateSetting('customArticleLength', value);
-          }}
-        />
-      )}
-    </Grid>
    <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Tone of Voice</Typography>
       <FormControl fullWidth size='small' className={settings.toneOfVoice === 'custom' ? 'mbe-3' : ''}>
@@ -231,6 +188,11 @@ const ListicleFields = ({ settings, updateSetting }) => (
       </FormControl>
     </Grid>
 
+    <Grid size={{ xs: 12 }}>
+      <Typography variant='subtitle2' className='font-medium mbe-1'>List Item Prompt</Typography>
+      <TextField fullWidth size='small' multiline rows={2} placeholder='Custom instructions to apply to EVERY individual list item (e.g. Include pros and cons)...' value={settings.listItemsPrompt} onChange={(e) => updateSetting('listItemsPrompt', e.target.value)} />
+    </Grid>
+
     <Grid size={{ xs: 12 }}><Divider className='my-2' /></Grid>
 
     <Grid size={{ xs: 12 }} className='flex flex-col gap-2'>
@@ -262,8 +224,12 @@ const ListicleFields = ({ settings, updateSetting }) => (
     </Grid>
 
       <FormControlLabel control={<Switch checked={settings.useOutlineEditor} onChange={(e) => updateSetting('useOutlineEditor', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Outline Editor</Typography>} />
+<Grid size={{ xs: 12 }}>
       <FormControlLabel control={<Switch checked={settings.enableSupplementalInformation} onChange={(e) => updateSetting('enableSupplementalInformation', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable Supplemental Information</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.enableAutomaticLength} onChange={(e) => updateSetting('enableAutomaticLength', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable Automatic Length</Typography>} />
+      <Typography variant='caption' color='text.secondary' className='ml-[42px] -mt-1 block mbe-2'>
+        Adds an Introduction, Key Considerations, and Conclusion to the listicle.
+      </Typography>
+    </Grid>
       <FormControlLabel control={<Switch checked={settings.includeFaq} onChange={(e) => updateSetting('includeFaq', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Include FAQ Section</Typography>} />
       <FormControlLabel control={<Switch checked={settings.improveReadability} onChange={(e) => updateSetting('improveReadability', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Improve Readability</Typography>} />
 

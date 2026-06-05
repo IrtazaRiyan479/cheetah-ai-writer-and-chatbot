@@ -45,16 +45,17 @@ const defaultSettings = {
 
   // Select Inputs
   numberOfProducts: 'auto',
-  totalListItems: 'auto',
+  totalListItems: 10,
   numberOfPlaces: 'auto',
   listNumberingFormat: '1.',
+  listItemsPrompt: '',
 
   // Toggles
   useOutlineEditor: true,
   enableFirstHandExperience: false,
   enableCondensedMode: false,
   enableSupplementalInformation: false,
-  enableAutomaticLength: true,
+  enableAutoLength: false,
   useDescendingOrder: false,
   enableRewriting: true,
   includeExternalLinks: false,

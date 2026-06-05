@@ -128,7 +128,7 @@ export async function POST(request) {
     const body = await request.json()
 
     // Extract all variables including the new Media fields
-    const { prompt, model, mode, targetKeyword, outlineContext, heading, subheadings, internalLinks, seoOptimization, manualKeywords, aiImagesAndVideos, sectionIndex, totalSections, articleLength, customArticleLength, toneOfVoice, customToneOfVoice, language, country, pointOfView, useRealTimeSearchData, realTimeDataSource, externalLinks, automaticExternalLinks, deepSearch, articleTitle, includeFaq, includeKeyTakeaways, improveReadability, uploadedMedia } = body
+    const { prompt, model, mode, targetKeyword, outlineContext, heading, subheadings, internalLinks, seoOptimization, manualKeywords, aiImagesAndVideos, sectionIndex, totalSections, articleLength, customArticleLength, toneOfVoice, customToneOfVoice, language, country, pointOfView, useRealTimeSearchData, realTimeDataSource, externalLinks, automaticExternalLinks, deepSearch, articleTitle, includeFaq, includeKeyTakeaways, improveReadability, uploadedMedia, type, listItemsPrompt, enableAutoLength, totalListItems, enableSupplementalInformation, useDescendingOrder, listNumberingFormat, sectionType } = body
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 
     const langObj = languages ? languages[language] : null;
@@ -149,11 +149,16 @@ export async function POST(request) {
 
  // --- MODE 1: GENERATE OUTLINE ---
     if (mode === 'outline') {
+
+          const outlineSchema = type === 'listicle'
+        ? `{ "title": "Catchy Title", "outline": [{ "type": "intro", "text": "Introduction" }, { "type": "list_item", "text": "First Item" }, { "type": "h2", "text": "Supplemental Section" }, { "type": "h3", "text": "Subheading" }, { "type": "conclusion", "text": "Conclusion" }] }`
+        : `{ "title": "Catchy Title", "outline": [{ "type": "h2", "text": "Introduction" }, { "type": "h3", "text": "Subheading" }] }`;
+
           const outlineModel = genAI.getGenerativeModel({
             model: model || 'gemini-3.1-flash-lite',
             generationConfig: { responseMimeType: "application/json" },
             // UPDATED SCHEMA: Now forces a Catchy Title AND the Outline array separately!
-            systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline. You MUST return a JSON object with two keys: "title" (A catchy, click-worthy, viral H1 Title based on the keyword) and "outline" (A flat JSON array of objects). Schema: { "title": "Catchy Title Here", "outline": [{ "type": "h2", "text": "Introduction" }, { "type": "h3", "text": "Subheading" }] }`
+            systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline. You MUST return a JSON object with two keys: "title" (A catchy, click-worthy, viral H1 Title based on the keyword) and "outline" (A flat JSON array of objects). Schema: ${outlineSchema}`
           })
 
       // 1. Give every single option (including default) a strict H2 constraint
@@ -196,7 +201,40 @@ export async function POST(request) {
          takeawaysInstruction = `\nCRITICAL REQUIREMENT - KEY TAKEAWAYS: The second H2 heading (immediately after the Introduction) MUST be titled exactly "Key Takeaways". Do NOT nest any H3 subheadings under it.`;
       }
 
-      const structureInstruction = `
+    let structureInstruction = '';
+
+      if (type === 'listicle') {
+        // FIXED: Strengthened the auto-length rule to strictly default to 10 if no number is found.
+        const countInstruction = enableAutoLength
+          ? `If a specific number is explicitly specified in the target keyword "${targetKeyword}", generate exactly that many list items. Otherwise, you MUST default to exactly 10 list items.`
+          : `Generate exactly ${totalListItems || 10} list items.`;
+
+        const orderInstruction = useDescendingOrder
+          ? `Number the list item texts in strictly descending order (e.g., if there are 10 items, start with 10 and count down to 1).`
+          : `Number the list item texts in ascending order.`;
+
+        const formatInstruction = listNumberingFormat && listNumberingFormat !== 'none'
+          ? `Format the list item texts using the '${listNumberingFormat}' format (e.g., if format is '1.', use '1. Item', '2. Item').`
+          : `Do not include numbers in the list item texts.`;
+
+        // FIXED: Locked the supplemental sections to EXACTLY 2 H2s with nested H3s.
+        const supplementalInstruction = enableSupplementalInformation
+          ? `After the main list items, you MUST add exactly TWO (2) relevant supplemental sections. These MUST use { "type": "h2", ... }. Under EACH of these two H2 headings, you MUST nest 2 to 3 subheadings using { "type": "h3", ... }.`
+          : `Do NOT add any supplemental sections after the list items except for the Conclusion.`;
+
+        structureInstruction = `
+        CRITICAL REQUIREMENT - LISTICLE SCHEMA STRUCTURE:
+        1. The FIRST item in the array MUST be { "type": "intro", "text": "Introduction" }.
+        ${takeawaysInstruction ? `2. ${takeawaysInstruction} Make sure to use { "type": "h2", ... }.` : ''}
+        3. ${countInstruction} These MUST use exactly { "type": "list_item", "text": "..." }. Do not nest subheadings under list items.
+        4. ${orderInstruction}
+        5. ${formatInstruction}
+        6. ${supplementalInstruction}
+        7. The LAST item in the array MUST be { "type": "conclusion", "text": "Conclusion" }.
+        ${faqInstruction ? `8. ${faqInstruction} Make the main FAQ heading { "type": "h2", ... } and the actual questions { "type": "h3", ... }.` : ''}
+        `;
+      } else {
+        structureInstruction = `
         IMPORTANT STRUCTURE RULES:
         1. The FIRST H2 heading MUST be an Introduction. Do NOT use the article title here!
         ${takeawaysInstruction}
@@ -204,9 +242,10 @@ export async function POST(request) {
         ${faqInstruction}
         3. For ALL OTHER H2 headings, nest 2 to 3 relevant H3 subheadings.
         ${relatedInstruction}
-      `
+        `;
+      }
 
-      const outlinePrompt = `Article Topic: ${targetKeyword || prompt}\n\n${lengthInstruction}\n${structureInstruction}`
+      const outlinePrompt = `Article Topic: ${targetKeyword || prompt}\n\n${type !== 'listicle' ? lengthInstruction : ''}\n${structureInstruction}`
 
       const result = await outlineModel.generateContent(outlinePrompt)
       const parsedData = JSON.parse(result.response.text());
@@ -343,6 +382,12 @@ export async function POST(request) {
         readabilityInstruction = `\nSTYLING & READABILITY: Write in standard, flowing paragraph format. Do not aggressively use bullet points or bold text unless explicitly necessary for a list.`;
       }
 
+      // 7. Listicle Custom Prompt Instruction
+      let customListPromptInstruction = '';
+      if (type === 'listicle' && listItemsPrompt && sectionType === 'list_item') {
+        customListPromptInstruction = `\nCRITICAL LIST ITEM PROMPT: You are writing a main list item for a listicle. You MUST strictly apply these custom instructions to this specific section: "${listItemsPrompt}".`;
+      }
+
       // 4. Assemble the Final Prompt
       const sectionPrompt = `
         Article Title/Context: ${articleTitle || targetKeyword}
@@ -362,6 +407,7 @@ export async function POST(request) {
         ${toneInstruction}
         ${povInstruction}
         ${readabilityInstruction}
+        ${customListPromptInstruction}
       `
 
       const result = await sectionModel.generateContent(sectionPrompt)
