@@ -89,6 +89,17 @@ async function fetchUnsplashImage(query) {
   return null;
 }
 
+async function getSmartImageKeyword(topic, heading, genAI) {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
+    const prompt = `Generate a highly descriptive, aesthetic 2-3 word search query for an Unsplash image related to the topic "${topic}" and specifically the section "${heading}". Reply ONLY with the keywords, no quotes, no extra text.`;
+    const result = await model.generateContent(prompt);
+    return result.response.text().trim().replace(/['"]/g, '');
+  } catch(e) {
+    return `${topic} ${heading}`.trim(); // Fallback if it fails
+  }
+}
+
 async function fetchYouTubeVideo(query) {
   if (!process.env.YOUTUBE_API_KEY) return null;
   try {
@@ -97,8 +108,19 @@ async function fetchYouTubeVideo(query) {
     if (data.items && data.items.length > 0) {
       return { id: data.items[0].id.videoId, title: data.items[0].snippet.title };
     }
-  } catch (e) { console.error('YouTube Error:', e); }
+  } catch (e) { console.error('YouTube Data API Error:', e); }
   return null;
+}
+
+async function getSmartVideoQuery(topic, heading, genAI) {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
+    const prompt = `Generate a highly specific, highly relevant 3-5 word YouTube search query for an educational or informative video related to the topic "${topic}" and specifically the section "${heading}". Do NOT use generic words like 'introduction', 'conclusion', or 'tutorial'. Reply ONLY with the exact search query, no quotes.`;
+    const result = await model.generateContent(prompt);
+    return result.response.text().trim().replace(/['"]/g, '');
+  } catch(e) {
+    return `${topic} ${heading}`.trim(); // Fallback if it fails
+  }
 }
 
 export async function POST(request) {
@@ -106,7 +128,7 @@ export async function POST(request) {
     const body = await request.json()
 
     // Extract all variables including the new Media fields
-    const { prompt, model, mode, targetKeyword, outlineContext, heading, subheadings, internalLinks, seoOptimization, manualKeywords, aiImagesAndVideos, sectionIndex, totalSections, articleLength, customArticleLength, toneOfVoice, customToneOfVoice, language, country, pointOfView, useRealTimeSearchData, realTimeDataSource, externalLinks, automaticExternalLinks, deepSearch, articleTitle, includeFaq, includeKeyTakeaways, improveReadability } = body
+    const { prompt, model, mode, targetKeyword, outlineContext, heading, subheadings, internalLinks, seoOptimization, manualKeywords, aiImagesAndVideos, sectionIndex, totalSections, articleLength, customArticleLength, toneOfVoice, customToneOfVoice, language, country, pointOfView, useRealTimeSearchData, realTimeDataSource, externalLinks, automaticExternalLinks, deepSearch, articleTitle, includeFaq, includeKeyTakeaways, improveReadability, uploadedMedia } = body
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 
     const langObj = languages ? languages[language] : null;
@@ -127,16 +149,11 @@ export async function POST(request) {
 
  // --- MODE 1: GENERATE OUTLINE ---
     if (mode === 'outline') {
-
-          const outlineSchema = type === 'listicle'
-        ? `{ "title": "Catchy Title", "outline": [{ "type": "intro", "text": "Introduction" }, { "type": "list_item", "text": "First Item" }, { "type": "h2", "text": "Supplemental Section" }, { "type": "h3", "text": "Subheading" }, { "type": "conclusion", "text": "Conclusion" }] }`
-        : `{ "title": "Catchy Title", "outline": [{ "type": "h2", "text": "Introduction" }, { "type": "h3", "text": "Subheading" }] }`;
-
           const outlineModel = genAI.getGenerativeModel({
             model: model || 'gemini-3.1-flash-lite',
             generationConfig: { responseMimeType: "application/json" },
             // UPDATED SCHEMA: Now forces a Catchy Title AND the Outline array separately!
-            systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline. You MUST return a JSON object with two keys: "title" (A catchy, click-worthy, viral H1 Title based on the keyword) and "outline" (A flat JSON array of objects). Schema: ${outlineSchema}`
+            systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline. You MUST return a JSON object with two keys: "title" (A catchy, click-worthy, viral H1 Title based on the keyword) and "outline" (A flat JSON array of objects). Schema: { "title": "Catchy Title Here", "outline": [{ "type": "h2", "text": "Introduction" }, { "type": "h3", "text": "Subheading" }] }`
           })
 
       // 1. Give every single option (including default) a strict H2 constraint
@@ -179,40 +196,7 @@ export async function POST(request) {
          takeawaysInstruction = `\nCRITICAL REQUIREMENT - KEY TAKEAWAYS: The second H2 heading (immediately after the Introduction) MUST be titled exactly "Key Takeaways". Do NOT nest any H3 subheadings under it.`;
       }
 
-    let structureInstruction = '';
-
-      if (type === 'listicle') {
-        // FIXED: Strengthened the auto-length rule to strictly default to 10 if no number is found.
-        const countInstruction = enableAutoLength
-          ? `If a specific number is explicitly specified in the target keyword "${targetKeyword}", generate exactly that many list items. Otherwise, you MUST default to exactly 10 list items.`
-          : `Generate exactly ${totalListItems || 10} list items.`;
-
-        const orderInstruction = useDescendingOrder
-          ? `Number the list item texts in strictly descending order (e.g., if there are 10 items, start with 10 and count down to 1).`
-          : `Number the list item texts in ascending order.`;
-
-        const formatInstruction = listNumberingFormat && listNumberingFormat !== 'none'
-          ? `Format the list item texts using the '${listNumberingFormat}' format (e.g., if format is '1.', use '1. Item', '2. Item').`
-          : `Do not include numbers in the list item texts.`;
-
-        // FIXED: Locked the supplemental sections to EXACTLY 2 H2s with nested H3s.
-        const supplementalInstruction = enableSupplementalInformation
-          ? `After the main list items, you MUST add exactly TWO (2) relevant supplemental sections. These MUST use { "type": "h2", ... }. Under EACH of these two H2 headings, you MUST nest 2 to 3 subheadings using { "type": "h3", ... }.`
-          : `Do NOT add any supplemental sections after the list items except for the Conclusion.`;
-
-        structureInstruction = `
-        CRITICAL REQUIREMENT - LISTICLE SCHEMA STRUCTURE:
-        1. The FIRST item in the array MUST be { "type": "intro", "text": "Introduction" }.
-        ${takeawaysInstruction ? `2. ${takeawaysInstruction} Make sure to use { "type": "h2", ... }.` : ''}
-        3. ${countInstruction} These MUST use exactly { "type": "list_item", "text": "..." }. Do not nest subheadings under list items.
-        4. ${orderInstruction}
-        5. ${formatInstruction}
-        6. ${supplementalInstruction}
-        7. The LAST item in the array MUST be { "type": "conclusion", "text": "Conclusion" }.
-        ${faqInstruction ? `8. ${faqInstruction} Make the main FAQ heading { "type": "h2", ... } and the actual questions { "type": "h3", ... }.` : ''}
-        `;
-      } else {
-        structureInstruction = `
+      const structureInstruction = `
         IMPORTANT STRUCTURE RULES:
         1. The FIRST H2 heading MUST be an Introduction. Do NOT use the article title here!
         ${takeawaysInstruction}
@@ -220,10 +204,9 @@ export async function POST(request) {
         ${faqInstruction}
         3. For ALL OTHER H2 headings, nest 2 to 3 relevant H3 subheadings.
         ${relatedInstruction}
-        `;
-      }
+      `
 
-      const outlinePrompt = `Article Topic: ${targetKeyword || prompt}\n\n${type !== 'listicle' ? lengthInstruction : ''}\n${structureInstruction}`
+      const outlinePrompt = `Article Topic: ${targetKeyword || prompt}\n\n${lengthInstruction}\n${structureInstruction}`
 
       const result = await outlineModel.generateContent(outlinePrompt)
       const parsedData = JSON.parse(result.response.text());
@@ -291,25 +274,44 @@ export async function POST(request) {
         }
       }
 
-      // 3. Build Auto Media Instruction (Unsplash & YouTube)
+      // 3. Advanced Media Infrastructure (Manual Uploads & Structured Auto Pacing)
       let mediaInstruction = '';
-      if (aiImagesAndVideos === 'auto') {
-        const searchQuery = `${articleTitle || targetKeyword} ${heading}`.trim();
+      let assignedMediaElement = null; // Used for the post-processing safety guard
 
-        // Fetch Image for the 1st section
-        if (sectionIndex === 0) {
-          const img = await fetchUnsplashImage(searchQuery);
-          if (img) {
-            mediaInstruction = `\nCRITICAL MEDIA REQUIREMENT: You MUST embed this image directly below the main heading using HTML: <img src="${img.url}" alt="${img.alt}" style="width:100%; border-radius:8px; margin: 1.5rem 0;" />`;
+// 1. Priority to Manual Uploads (1 file per section, NO repeating)
+      if (uploadedMedia && uploadedMedia.length > 0 && sectionIndex < uploadedMedia.length) {
+        const mediaItem = uploadedMedia[sectionIndex];
+
+        if (mediaItem.type.startsWith('image/')) {
+          assignedMediaElement = `<img src="${mediaItem.url}" alt="${mediaItem.name}" class="rounded-xl shadow-md my-8 w-full aspect-video object-cover" />`;
+
+        } else if (mediaItem.type.startsWith('video/')) {
+          assignedMediaElement = `<video src="${mediaItem.url}" controls></video>`;
+        }
+        mediaInstruction = `\n[NOTE: A media file is placed at the end of this section. DO NOT output HTML tags for media.]`;
+
+      }
+      // 2. Fallback to Auto AI Media (Every section gets media)
+      else if (aiImagesAndVideos === 'auto') {
+
+        // Alternate every single section: Even = Unsplash, Odd = YouTube
+        if (sectionIndex % 2 === 0) {
+          // Unsplash Images
+          const smartQuery = await getSmartImageKeyword(articleTitle || targetKeyword, heading, genAI);
+          const unsplashData = await fetchUnsplashImage(smartQuery);
+          const imgUrl = unsplashData ? unsplashData.url : `https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80`;
+          const imgAlt = unsplashData ? unsplashData.alt : heading;
+
+          assignedMediaElement = `<img src="${imgUrl}" alt="${imgAlt}" class="rounded-xl shadow-md my-8 w-full aspect-video object-cover" />`;
+        } else {
+          // YouTube Videos
+          const smartYtQuery = await getSmartVideoQuery(articleTitle || targetKeyword, heading, genAI);
+          const ytVideo = await fetchYouTubeVideo(smartYtQuery);
+          if (ytVideo) {
+            assignedMediaElement = `<div data-youtube-video><iframe src="https://www.youtube.com/embed/${ytVideo.id}" title="${ytVideo.title}"></iframe></div>`;
           }
         }
-        // Fetch Video for the middle section
-        else if (sectionIndex === Math.floor(totalSections / 2)) {
-          const vid = await fetchYouTubeVideo(searchQuery);
-          if (vid) {
-            mediaInstruction = `\nCRITICAL MEDIA REQUIREMENT: You MUST embed this YouTube video directly below the main heading using an iframe: <iframe width="100%" height="450" src="https://www.youtube.com/embed/${vid.id}" title="${vid.title}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="border-radius:8px; margin: 1.5rem 0;"></iframe>`;
-          }
-        }
+        mediaInstruction = `\n[NOTE: A contextual image or video is placed at the end of this section. DO NOT attempt to generate image/video tags yourself.]`;
       }
 
       // 4. Build Tone Instruction
@@ -341,12 +343,6 @@ export async function POST(request) {
         readabilityInstruction = `\nSTYLING & READABILITY: Write in standard, flowing paragraph format. Do not aggressively use bullet points or bold text unless explicitly necessary for a list.`;
       }
 
-      // 7. Listicle Custom Prompt Instruction
-      let customListPromptInstruction = '';
-      if (type === 'listicle' && listItemsPrompt && sectionType === 'list_item') {
-        customListPromptInstruction = `\nCRITICAL LIST ITEM PROMPT: You are writing a main list item for a listicle. You MUST strictly apply these custom instructions to this specific section: "${listItemsPrompt}".`;
-      }
-
       // 4. Assemble the Final Prompt
       const sectionPrompt = `
         Article Title/Context: ${articleTitle || targetKeyword}
@@ -366,11 +362,10 @@ export async function POST(request) {
         ${toneInstruction}
         ${povInstruction}
         ${readabilityInstruction}
-        ${customListPromptInstruction}
       `
 
       const result = await sectionModel.generateContent(sectionPrompt)
-      return NextResponse.json({ success: true, text: result.response.text() })
+      return NextResponse.json({ success: true, text: result.response.text(), mediaHtml: assignedMediaElement})
     }
 
     // --- FALLBACK: STANDARD GENERATION ---

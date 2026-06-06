@@ -23,6 +23,9 @@ import { StarterKit } from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import Youtube from '@tiptap/extension-youtube'
+import { Node, mergeAttributes } from '@tiptap/core'
+import Heading from '@tiptap/extension-heading'
+import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table'
 
 
 // --- TIPTAP TOOLBAR COMPONENT ---
@@ -91,17 +94,63 @@ const EditorToolbar = ({ editor }) => {
   )
 }
 
+const VideoExtension = Node.create({
+  name: 'video',
+  group: 'block',
+  selectable: true,
+  draggable: true,
+  addAttributes() {
+    return {
+      src: { default: null },
+      controls: { default: true },
+    }
+  },
+  parseHTML() {
+    return [{ tag: 'video' }]
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['video', mergeAttributes(HTMLAttributes, { class: 'w-full aspect-video rounded-xl shadow-md my-6 max-w-3xl mx-auto block' })]
+  },
+})
+
 const extensions = [
   TextStyle,
   Color.configure({ types: ['textStyle'] }),
   StarterKit.configure({
-    bulletList: { keepMarks: true, keepAttributes: false },
-    orderedList: { keepMarks: true, keepAttributes: false }
+    heading: false,
+    bulletList: {
+      keepMarks: true,
+      keepAttributes: false,
+      HTMLAttributes: { class: 'list-disc ml-8 my-4 space-y-2' }
+    },
+    orderedList: {
+      keepMarks: true,
+      keepAttributes: false,
+      HTMLAttributes: { class: 'list-decimal ml-8 my-4 space-y-2' }
+    },
+    blockquote: {
+      HTMLAttributes: { class: 'border-l-4 border-primary pl-4 py-2 my-4 italic text-textSecondary bg-actionHover/50 rounded-r-lg' }
+    }
+  }),
+Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }).extend({
+    renderHTML({ node, HTMLAttributes }) {
+      const hasLevel = this.options.levels.includes(node.attrs.level)
+      const level = hasLevel ? node.attrs.level : this.options.levels[0]
+      const classes = {
+        1: 'text-3xl font-extrabold mt-12 mb-6 text-textPrimary',
+        2: 'text-2xl font-bold mt-10 mb-4 text-textPrimary',
+        3: 'text-xl font-semibold mt-8 mb-3 text-textPrimary',
+        4: 'text-lg font-bold mt-6 mb-2 text-textPrimary',
+        5: 'text-base font-bold mt-4 mb-2 text-textPrimary',
+        6: 'text-sm font-bold mt-4 mb-2 text-textSecondary uppercase tracking-wider',
+      }
+      return ['h' + level, mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, { class: classes[level] }), 0]
+    }
   }),
   Placeholder.configure({ placeholder: 'Document ready.' }),
   Image.configure({
     HTMLAttributes: {
-      class: 'rounded-xl max-w-full sm:max-w-2xl mx-auto block shadow-md my-6 object-cover'
+      class: 'rounded-xl max-w-full sm:max-w-2xl mx-auto block shadow-md my-8 aspect-video object-cover'
     }
   }),
   Link.configure({
@@ -116,7 +165,12 @@ const extensions = [
     HTMLAttributes: {
       class: 'w-full aspect-video rounded-xl shadow-md my-6'
     }
-  })
+  }),
+  Table.configure({ HTMLAttributes: { class: 'w-full border-collapse border border-divider my-8 text-left rounded-lg overflow-hidden shadow-sm' } }),
+  TableRow.configure({ HTMLAttributes: { class: 'border-b border-divider hover:bg-actionHover/50 transition-colors' } }),
+  TableHeader.configure({ HTMLAttributes: { class: 'bg-actionHover p-4 border border-divider font-bold text-textPrimary' } }),
+  TableCell.configure({ HTMLAttributes: { class: 'p-4 border border-divider text-textSecondary' } }),
+  VideoExtension
 ]
 
 // --- HELPER: HTML to MARKDOWN CONVERTER ---
@@ -198,26 +252,26 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
       const groupedSections = []
       let currentH2Group = null
 
-    outline.forEach((item, index) => {
-        if (['h2', 'intro', 'list_item', 'conclusion'].includes(item.type)) {
-          currentH2Group = { h2: { ...item, htmlTag: 'h2' }, h3s: [], originalIndex: index, originalType: item.type }
+      outline.forEach((item, index) => {
+        if (item.type === 'h2') {
+          currentH2Group = { h2: item, h3s: [], originalIndex: index }
           groupedSections.push(currentH2Group)
         } else if (item.type === 'h3') {
           if (currentH2Group) {
             currentH2Group.h3s.push(item)
           } else {
-            groupedSections.push({ h2: { type: 'h3', htmlTag: 'h2', text: 'Section' }, h3s: [], originalIndex: index, originalType: 'h3' })
+            groupedSections.push({ h2: item, h3s: [], originalIndex: index })
           }
         }
       })
 
-     for (let i = 0; i < groupedSections.length; i++) {
+      for (let i = 0; i < groupedSections.length; i++) {
         if (isCancelled) break
 
         const group = groupedSections[i]
         setCurrentIndex(group.originalIndex)
 
-        editor.chain().focus('end').insertContent('<' + group.h2.htmlTag + '>' + group.h2.text + '</' + group.h2.htmlTag + '>').run()
+        editor.chain().focus('end').insertContent('<' + group.h2.type + '>' + group.h2.text + '</' + group.h2.type + '>').run()
         const subheadings = group.h3s.map(h3 => h3.text)
 
         try {
@@ -254,26 +308,97 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
               externalLinks: settings.fetchedExternalLinks,
               deepSearch: settings.deepSearch,
               articleTitle: settings.generatedTitle,
-              improveReadability: settings.improveReadability
+              improveReadability: settings.improveReadability,
+              uploadedMedia: settings.uploadedMedia
             })
           })
 
           const data = await res.json()
 
-     if (data.success) {
-            let cleanedText = data.text
-              .replace(/^##\s+.*$/gm, '')
-              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-              .replace(/^###\s+(.*)$/gm, '<h3>$1</h3>')
-              .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+          if (data.success) {
+            // 🟢 1. THE DEFINITIVE MARKDOWN PARSER
+            let cleanMd = data.text.replace(/^##\s+.*$/gm, '') // Remove redundant main heading
 
-            let formattedContent = cleanedText
-              .replace(/\n\n/g, '</p><p>')
-              .replace(/\n/g, '<br/>')
-              .replace(/<p>(<h3>.*?<\/h3>|<br\/>)<\/p>/g, '$1')
-              .replace(/<p>\s*<\/p>/g, '')
+            // A. CODE BLOCKS (Must happen first! Escape HTML so Tiptap doesn't execute it)
+            cleanMd = cleanMd.replace(/```[a-zA-Z]*\n([\s\S]*?)```/g, (match, code) => {
+              const escapedCode = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              return `<pre class="bg-gray-900 text-gray-100 p-4 rounded-xl my-6 overflow-x-auto font-mono text-sm shadow-md border border-gray-700"><code>${escapedCode}</code></pre>`;
+            });
 
-            editor.chain().focus('end').insertContent("<p>" + formattedContent + "</p>").run()
+            // B. TABLES
+            cleanMd = cleanMd.replace(/(?:\|.*\|\n)+/g, (match) => {
+              const rows = match.trim().split('\n');
+              let html = '<table><tbody>';
+              rows.forEach((row, index) => {
+                if (row.match(/^\|?[\s:-]+\|?$/)) return; // Skip markdown separator row
+                const isHeader = index === 0;
+                const tag = isHeader ? 'th' : 'td';
+                const cells = row.split('|').map(c => c.trim()).filter((c, i, arr) => !(i === 0 && c === '') && !(i === arr.length - 1 && c === ''));
+                html += '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
+              });
+              html += '</tbody></table>';
+              return html;
+            });
+
+            // C. BLOCKQUOTES
+            cleanMd = cleanMd.replace(/^>\s+(.*)$/gm, '<blockquote>$1</blockquote>')
+            cleanMd = cleanMd.replace(/<\/blockquote>\n<blockquote>/g, '<br/>')
+
+            // D. LISTS
+            // Convert unordered list items
+            cleanMd = cleanMd.replace(/^[\s]*(?:-|\*)\s+(.*)$/gm, '<ul><li>$1</li></ul>')
+            // Convert ordered list items
+            cleanMd = cleanMd.replace(/^[\s]*\d+\.\s+(.*)$/gm, '<ol><li>$1</li></ol>')
+
+            // 🟢 CRITICAL FIX 1: Merge adjacent identical lists using \s* to ignore weird line breaks
+            cleanMd = cleanMd.replace(/<\/ul>\s*<ul>/g, '')
+            cleanMd = cleanMd.replace(/<\/ol>\s*<ol>/g, '')
+
+            // E. HEADINGS (H3 through H6)
+            cleanMd = cleanMd.replace(/^######\s+(.*)$/gm, '<h6>$1</h6>')
+            cleanMd = cleanMd.replace(/^#####\s+(.*)$/gm, '<h5>$1</h5>')
+            cleanMd = cleanMd.replace(/^####\s+(.*)$/gm, '<h4>$1</h4>')
+            cleanMd = cleanMd.replace(/^###\s+(.*)$/gm, '<h3>$1</h3>')
+
+            // F. HORIZONTAL RULES
+            cleanMd = cleanMd.replace(/^---$/gm, '<hr class="my-8 border-divider" />')
+
+            // G. HALLUCINATED IMAGES (Catch ![alt](url) and force our UI styles)
+            cleanMd = cleanMd.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, '<img src="$2" alt="$1" class="rounded-xl max-w-full sm:max-w-2xl mx-auto block shadow-md my-8 aspect-video object-cover" />')
+
+            // H. LINKS
+            cleanMd = cleanMd.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" class="text-primary underline font-medium">$1</a>')
+
+            // I. INLINE FORMATTING (Bold, Italics, Code, Strike)
+            cleanMd = cleanMd.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            cleanMd = cleanMd.replace(/(?<!\w)\*(.*?)\*(?!\w)/g, '<em>$1</em>') // Safely catch italics
+            cleanMd = cleanMd.replace(/(?<!\w)_(.*?)_(?!\w)/g, '<em>$1</em>') // Catch underscore italics
+            cleanMd = cleanMd.replace(/`([^`]+)`/g, '<code class="bg-actionHover px-1.5 py-0.5 rounded text-primary font-mono text-sm border border-divider">$1</code>')
+            cleanMd = cleanMd.replace(/~~(.*?)~~/g, '<s>$1</s>')
+
+            // 🟢 CRITICAL FIX 2: Force double newlines around structural blocks before paragraph parsing.
+            // If Tiptap sees <ul> inside <p>, it actively destroys the list structure!
+            cleanMd = cleanMd.replace(/(<(ul|ol|table|blockquote|pre|hr|h[1-6]|img))/g, '\n\n$1')
+            cleanMd = cleanMd.replace(/(<\/(ul|ol|table|blockquote|pre|h[1-6])>)/g, '$1\n\n')
+
+            // J. SAFELY WRAP PARAGRAPHS
+            let formattedContent = cleanMd
+              .split(/\n\n+/)
+              .map(block => {
+                block = block.trim()
+                if (!block) return ''
+                // Do NOT wrap structural HTML block elements in <p> tags
+                if (block.match(/^(<h|<ul|<ol|<blockquote|<pre|<table|<hr|<img)/)) return block
+                return `<p>${block.replace(/\n/g, '<br/>')}</p>`
+              })
+              .join('')
+
+            editor.chain().focus('end').insertContent(formattedContent).run()
+
+            // 🟢 2. INJECT MEDIA AFTER THE TEXT
+            if (data.mediaHtml) {
+              editor.chain().focus('end').insertContent(data.mediaHtml).run()
+            }
           } else {
             editor.chain().focus('end').insertContent("<p><em>❌ Error generating this section.</em></p>").run()
           }
