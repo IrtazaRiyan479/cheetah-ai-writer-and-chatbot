@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import List from '@mui/material/List'
 import Avatar from '@mui/material/Avatar'
 import Button from '@mui/material/Button'
@@ -10,17 +10,10 @@ import Typography from '@mui/material/Typography'
 import { toast } from 'react-toastify'
 import { useDropzone } from 'react-dropzone'
 
-const MediaUploader = ({ uploadType, onFilesUpdate }) => {
+const MediaUploader = ({ uploadType }) => {
   const [files, setFiles] = useState([])
-  const [isUploading, setIsUploading] = useState(false)
 
-  // 🟢 FIX 1: Safely pass data to parent ONLY when files array changes
-  useEffect(() => {
-    if (onFilesUpdate) {
-      onFilesUpdate(files)
-    }
-  }, [files, onFilesUpdate])
-
+  // Dynamically set accepted file types based on selection
   const getAcceptedTypes = () => {
     if (uploadType === 'upload-images') return { 'image/*': ['.png', '.jpg', '.jpeg', '.gif'] }
     if (uploadType === 'upload-videos') return { 'video/*': ['.mp4', '.webm', '.ogg'] }
@@ -31,25 +24,29 @@ const MediaUploader = ({ uploadType, onFilesUpdate }) => {
   }
 
   const { getRootProps, getInputProps } = useDropzone({
-    maxSize: 5000000,
+    maxSize: 5000000, // Upgraded limit to 5MB for flexibility
     accept: getAcceptedTypes(),
-    onDrop: async acceptedFiles => {
-      setIsUploading(true)
-      const newUploadedFiles = []
-
-      for (const file of acceptedFiles) {
-        // Create a safe local URL for the file to prevent createObjectURL crashes
-        const safeUrl = URL.createObjectURL(file)
-        newUploadedFiles.push({ name: file.name, url: safeUrl, type: file.type })
-      }
-
-      setFiles(prev => [...prev, ...newUploadedFiles])
-      setIsUploading(false)
+    onDrop: acceptedFiles => {
+      // FIXED: Appends new files to the list instead of overwriting existing ones
+      setFiles(prev => {
+        const existingNames = new Set(prev.map(f => f.name))
+        const uniqueNew = acceptedFiles.filter(f => !existingNames.has(f.name))
+        return [...prev, ...uniqueNew]
+      })
     },
     onDropRejected: () => {
-      toast.error('File rejected. Max size is 5MB.')
+      toast.error('File rejected. Please ensure it matches requested type restrictions and is under 5MB.', {
+        autoClose: 3000
+      })
     }
   })
+
+  const renderFilePreview = file => {
+    if (file.type.startsWith('image')) {
+      return <img width={38} height={38} alt={file.name} src={URL.createObjectURL(file)} className='rounded object-cover' />
+    }
+    return <i className='ri-video-line text-2xl text-textSecondary' />
+  }
 
   const handleRemoveFile = file => {
     setFiles(prev => prev.filter(i => i.name !== file.name))
@@ -59,27 +56,29 @@ const MediaUploader = ({ uploadType, onFilesUpdate }) => {
     setFiles([])
   }
 
-  // 🟢 FIX 2: Use file.url directly instead of wrapping in createObjectURL again
   const fileList = files.map(file => (
-    <ListItem key={file.name} className='border rounded-md mbe-2 p-2 flex items-center justify-between'>
+    <ListItem key={file.name} className='border rounded-md mbe-2 p-3 flex justify-between items-center bg-backgroundPaper shadow-xs'>
       <div className='flex items-center gap-4'>
-        {file.type.startsWith('image') ? (
-          <img width={38} height={38} alt={file.name} src={file.url} className='rounded-md object-cover' />
-        ) : (
-          <i className='ri-video-line text-2xl text-primary' />
-        )}
+        <div className='flex justify-center items-center w-10 h-10 bg-actionHover rounded overflow-hidden'>
+          {renderFilePreview(file)}
+        </div>
         <div>
-          <Typography variant='body2' className='font-medium'>{file.name}</Typography>
+          <Typography className='font-medium text-sm truncate max-w-[250px]'>{file.name}</Typography>
+          <Typography variant='body2' color='text.secondary'>
+            {Math.round(file.size / 100) / 10 > 1000
+              ? `${(Math.round(file.size / 100) / 10000).toFixed(1)} mb`
+              : `${(Math.round(file.size / 100) / 10).toFixed(1)} kb`}
+          </Typography>
         </div>
       </div>
       <IconButton size='small' onClick={() => handleRemoveFile(file)}>
-        <i className='ri-close-line text-error' />
+        <i className='ri-close-line text-lg' />
       </IconButton>
     </ListItem>
   ))
 
   return (
-    <div>
+    <>
       <div {...getRootProps({ className: 'dropzone border-2 border-dashed border-divider rounded-xl p-8 cursor-pointer hover:bg-actionHover transition-colors bg-backgroundPaper/50' })}>
         <input {...getInputProps()} />
         <div className='flex items-center flex-col text-center'>
@@ -98,17 +97,18 @@ const MediaUploader = ({ uploadType, onFilesUpdate }) => {
         </div>
       </div>
 
-      {files.length > 0 && (
+      {files.length ? (
         <div className='mt-4'>
           <List className='p-0'>{fileList}</List>
           <div className='flex justify-end mt-4'>
+            {/* FIXED: Removed the unnecessary "Upload Files" action button */}
             <Button color='error' variant='outlined' size='small' onClick={handleRemoveAllFiles}>
               Remove All
             </Button>
           </div>
         </div>
-      )}
-    </div>
+      ) : null}
+    </>
   )
 }
 

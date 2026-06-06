@@ -18,22 +18,6 @@ export default function ApiDiagnostics() {
     setLogs(prev => ({ ...prev, [service]: JSON.stringify(data, null, 2) }))
   }
 
-  const testYouTube = async () => {
-  setLoading({ ...loading, youtube: true })
-  try {
-    const res = await fetch('/api/youtube', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keyword: 'running shoes review' })
-    })
-    const data = await res.json()
-    updateLog('youtube', data)
-  } catch (err) {
-    updateLog('youtube', { error: err.message })
-  }
-  setLoading({ ...loading, youtube: false })
-}
-
   const testAmazon = async () => {
     setLoading({ ...loading, amazon: true })
     try {
@@ -177,32 +161,6 @@ export default function ApiDiagnostics() {
             </CardContent>
           </Card>
         </Grid>
-
-        <Grid size={{ xs: 12 }}>
-  <Card className='shadow-sm'>
-    <CardContent>
-      <div className='flex items-center justify-between mbe-4'>
-        <div>
-          <Typography variant='h6'>YouTube API</Typography>
-          <Typography variant='caption' color='text.secondary'>Testing keyword: "running shoes review"</Typography>
-        </div>
-        <Button
-          variant='contained'
-          onClick={testYouTube}
-          disabled={loading.youtube}
-        >
-          {loading.youtube ? 'Testing...' : 'Run Test'}
-        </Button>
-      </div>
-      <Divider className='mbe-4' />
-      <TextField
-        multiline fullWidth rows={6}
-        value={logs.youtube || 'Awaiting test...'}
-        slotProps={{ input: { readOnly: true, style: { fontFamily: 'monospace', fontSize: '12px' } } }}
-      />
-    </CardContent>
-  </Card>
-</Grid>
       </Grid>
     </Container>
   )
