@@ -19,18 +19,23 @@ import MediaUploader from '../MediaUploader' // Adjust the path based on where y
 const LocalRoundupFields = ({ settings, updateSetting }) => (
   <>
     {/* Top Section */}
-    <Grid size={{ xs: 12 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Location</Typography>
-      <TextField fullWidth size='small' placeholder='e.g. San Diego, California' value={settings.location} onChange={(e) => updateSetting('location', e.target.value)} />
-      <Typography variant='caption' color='text.secondary' className='mt-1 block'>
-        Enable Real-Time Search below to get accurate, up-to-date information.
-      </Typography>
-    </Grid>
 
     <Grid size={{ xs: 12 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Target Keyword (Optional)</Typography>
       <TextField fullWidth size='small' placeholder='e.g. best running shoes for flat feet' value={settings.targetKeyword} onChange={(e) => updateSetting('targetKeyword', e.target.value)} />
     </Grid>
+
+    <Grid size={{ xs: 12, sm: 6 }}>
+          <Typography variant='subtitle2' className='font-medium mbe-1'>Number of Places</Typography>
+          <TextField
+            fullWidth
+            type="number"
+            size='small'
+            disabled={settings.enableAutoLength}
+            value={settings.numberOfPlaces}
+            onChange={(e) => updateSetting('numberOfPlaces', e.target.value)}
+          />
+        </Grid>
 
     <Grid size={{ xs: 12 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Automatic Internal Linking</Typography>
@@ -69,17 +74,6 @@ const LocalRoundupFields = ({ settings, updateSetting }) => (
 
     <Grid size={{ xs: 12 }}><Divider className='my-2' /></Grid>
 
-    <Grid size={{ xs: 12, sm: 6 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Number of Places</Typography>
-      <FormControl fullWidth size='small'>
-        <Select value={settings.numberOfPlaces} onChange={(e) => updateSetting('numberOfPlaces', e.target.value)}>
-          <MenuItem value='auto'>Auto</MenuItem>
-          <MenuItem value='5'>5</MenuItem>
-          <MenuItem value='10'>10</MenuItem>
-          <MenuItem value='15'>15</MenuItem>
-        </Select>
-      </FormControl>
-    </Grid>
    <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>SEO Optimization</Typography>
 
@@ -103,46 +97,6 @@ const LocalRoundupFields = ({ settings, updateSetting }) => (
           placeholder='Enter keywords separated by commas...'
           value={settings.manualKeywords || ''}
           onChange={(e) => updateSetting('manualKeywords', e.target.value)}
-        />
-      )}
-    </Grid>
-    <Grid size={{ xs: 12, sm: 6 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Article Length</Typography>
-      <FormControl fullWidth size='small' className={settings.articleLength === 'custom' ? 'mbe-3' : ''}>
-        <Select value={settings.articleLength} onChange={(e) => updateSetting('articleLength', e.target.value)}>
-          <MenuItem value='default'>Default</MenuItem>
-          <MenuItem value='custom'>Custom Number of Sections</MenuItem>
-          <MenuItem value='shorter'>Shorter (2-3 Sections)</MenuItem>
-          <MenuItem value='short'>Short (3-5 Sections)</MenuItem>
-          <MenuItem value='medium'>Medium (5-7 Sections)</MenuItem>
-          <MenuItem value='long'>Long Form (7-10 Sections)</MenuItem>
-          <MenuItem value='longer'>Longer (10-12 Sections)</MenuItem>
-        </Select>
-      </FormControl>
-
-      {/* Conditionally render custom section count input */}
-       {settings.articleLength === 'custom' && (
-        <TextField
-          fullWidth
-          type='number'
-          size='small'
-          placeholder='e.g. 5'
-          value={settings.customArticleLength || ''}
-          inputProps={{ min: 1, max: 48 }}
-          onChange={(e) => {
-            let value = e.target.value;
-
-            // If the user types a number greater than 48, force it back to 48
-            if (Number(value) > 48) {
-              value = 48;
-            }
-            // Optional: prevent negative numbers or 0
-            else if (value !== '' && Number(value) < 1) {
-              value = 1;
-            }
-
-            updateSetting('customArticleLength', value);
-          }}
         />
       )}
     </Grid>
@@ -230,7 +184,7 @@ const LocalRoundupFields = ({ settings, updateSetting }) => (
       {settings.useRealTimeSearchData && (
         <FormControl fullWidth size='small' className='mt-2 mbe-3'>
           <Select value={settings.realTimeDataSource} onChange={(e) => updateSetting('realTimeDataSource', e.target.value)}>
-            <MenuItem value='search'>Default (Web)</MenuItem>
+            <MenuItem value='search'>⭐ Web</MenuItem>
             <MenuItem value='news'>Google News</MenuItem>
             <MenuItem value='scholar'>Google Scholar</MenuItem>
           </Select>
@@ -238,7 +192,7 @@ const LocalRoundupFields = ({ settings, updateSetting }) => (
       )}
     </Grid>
 
-    <Grid size={{ xs: 12, sm: 6 }}>
+    <Grid size={{ xs: 12, sm: 12 }}>
       <FormControlLabel
         control={<Switch checked={settings.automaticExternalLinks} onChange={(e) => updateSetting('automaticExternalLinks', e.target.checked)} />}
         label={<Typography className='font-medium text-textPrimary'>Automatic External Links</Typography>}
@@ -247,36 +201,55 @@ const LocalRoundupFields = ({ settings, updateSetting }) => (
         Finds and embeds highly relevant, authoritative outbound links via Google Search.
       </Typography>
     </Grid>
+      <div className='flex flex-col'>
+              <FormControlLabel
+                control={<Switch checked={settings.deepSearch} onChange={(e) => updateSetting('deepSearch', e.target.checked)} />}
+                label={<Typography className='font-medium text-textPrimary'>Deep Search ⭐</Typography>}
+              />
+              <Typography variant='caption' color='text.secondary' className='ml-[42px] -mt-1 block mbe-2'>
+                Uses up to 300% more credits, but significantly improves article quality by gathering more web sources.
+              </Typography>
+            </div>
 
+      <FormControlLabel
+        control={<Switch checked={settings.enableAutoLength} onChange={(e) => updateSetting('enableAutoLength', e.target.checked)} />}
+        label={<Typography className='font-medium text-textPrimary'>Enable Auto Length</Typography>}
+      />
+      <FormControlLabel control={<Switch checked={settings.generateUniqueMapImages} onChange={(e) => updateSetting('generateUniqueMapImages', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Generate Unique Map Images</Typography>} />
       <FormControlLabel control={<Switch checked={settings.enableFirstHandExperience} onChange={(e) => updateSetting('enableFirstHandExperience', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable First-Hand Experience</Typography>} />
       <FormControlLabel control={<Switch checked={settings.enableSupplementalInformation} onChange={(e) => updateSetting('enableSupplementalInformation', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable Supplemental Information</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.enableAutomaticLength} onChange={(e) => updateSetting('enableAutomaticLength', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable Automatic Length</Typography>} />
 
-      <FormControlLabel control={<Switch checked={settings.useDescendingOrder} onChange={(e) => updateSetting('useDescendingOrder', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Descending Order</Typography>} />
+
+      <FormControlLabel control={<Switch checked={settings.useOutlineEditor} onChange={(e) => updateSetting('useOutlineEditor', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Outline Editor</Typography>} />
+      <FormControlLabel control={<Switch checked={settings.includeFaq} onChange={(e) => updateSetting('includeFaq', e.target.checked)} />}
+      label={<Typography className='font-medium text-textPrimary'>Include FAQ Section</Typography>}/>
+      <FormControlLabel control={<Switch checked={settings.improveReadability} onChange={(e) => updateSetting('improveReadability', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Improve Readability</Typography>} />
+      <FormControlLabel
+        control={<Switch checked={settings.useDescendingOrder} onChange={(e) => updateSetting('useDescendingOrder', e.target.checked)} />}
+        label={<Typography className='font-medium text-textPrimary'>Use Descending Order</Typography>}
+      />
       <div className='pl-[42px] pr-4 mbe-2 mt-1'>
         <Grid container>
           <Grid size={{ xs: 12, sm: 6 }}>
             <Typography variant='subtitle2' className='font-medium mbe-1'>List Numbering Format</Typography>
             <FormControl fullWidth size='small'>
               <Select value={settings.listNumberingFormat} onChange={(e) => updateSetting('listNumberingFormat', e.target.value)}>
-                <MenuItem value='1)'>1), 2), 3)</MenuItem>
-                <MenuItem value='1.'>1., 2., 3.</MenuItem>
-                <MenuItem value='1:'>1:, 2:, 3:</MenuItem>
+                <MenuItem value='1)'>
+                  {settings.useDescendingOrder ? '10), 9), 8)' : '1), 2), 3)'}
+                </MenuItem>
+                <MenuItem value='1.'>
+                  {settings.useDescendingOrder ? '10., 9., 8.' : '1., 2., 3.'}
+                </MenuItem>
+                <MenuItem value='1:'>
+                  {settings.useDescendingOrder ? '10:, 9:, 8:' : '1:, 2:, 3:'}
+                </MenuItem>
                 <MenuItem value='none'>None</MenuItem>
               </Select>
             </FormControl>
           </Grid>
         </Grid>
       </div>
-
-      <FormControlLabel control={<Switch checked={settings.useOutlineEditor} onChange={(e) => updateSetting('useOutlineEditor', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Outline Editor</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.generateUniqueMapImages} onChange={(e) => updateSetting('generateUniqueMapImages', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Generate Unique Map Images</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.includeGoogleMapsLinks} onChange={(e) => updateSetting('includeGoogleMapsLinks', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Include Google Maps Links</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.includeBusinessHours} onChange={(e) => updateSetting('includeBusinessHours', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Include Business Hours</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.includeContactInfo} onChange={(e) => updateSetting('includeContactInfo', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Include Contact Info (Phone/Website)</Typography>} />
       {/* --------------------------------------- */}
-
-      <FormControlLabel control={<Switch checked={settings.improveReadability} onChange={(e) => updateSetting('improveReadability', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Improve Readability</Typography>} />
     </Grid>
   </>
 )

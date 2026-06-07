@@ -12,11 +12,9 @@ async function fetchSerperData(query, type = 'search') {
       body: JSON.stringify({ q: query })
     });
     const data = await res.json();
-
-    // Format based on the endpoint used
     if (type === 'news' && data.news) return data.news.slice(0, 4).map(n => `${n.title}: ${n.snippet}`);
     if (type === 'scholar' && data.organic) return data.organic.slice(0, 4).map(o => `${o.title}: ${o.snippet}`);
-    if (data.organic) return data.organic.slice(0, 4); // Returns full object for Web/Search
+    if (data.organic) return data.organic.slice(0, 4);
     return [];
   } catch (e) { console.error('Serper API Error:', e); return []; }
 }
@@ -38,11 +36,30 @@ async function fetchSerperOutlineData(query) {
   } catch (e) { console.error('Serper Outline Error:', e); return { organic: [], faqs: [], related: [] }; }
 }
 
+async function fetchSerperPlacesData(query, count = 10, countryCode = 'us', languageCode = 'en') {
+  if (!process.env.SERPER_API_KEY) return [];
+  try {
+    const res = await fetch(`https://google.serper.dev/places`, {
+      method: 'POST',
+      headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        q: query,
+        gl: countryCode.toLowerCase(), // 'gl' forces the Google Search country
+        hl: languageCode.toLowerCase() // 'hl' forces the Google Search language
+      })
+    });
+    const data = await res.json();
+    return data.places ? data.places.slice(0, count) : [];
+  } catch (e) {
+    console.error('Serper Places API Error:', e);
+    return [];
+  }
+}
+
 // --- HELPER: LIVE SEO KEYWORD FETCHER ---
 async function fetchLiveKeywords(keyword) {
   const keywords = new Set()
   if (!keyword) return []
-
   try {
     const gsRes = await fetch(`http://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(keyword)}`)
     if (gsRes.ok) {
@@ -50,7 +67,6 @@ async function fetchLiveKeywords(keyword) {
       if (gsData[1] && Array.isArray(gsData[1])) gsData[1].forEach(k => keywords.add(k))
     }
   } catch (e) { console.error('Google Suggest Error:', e) }
-
   try {
     const dmRes = await fetch(`https://api.datamuse.com/words?ml=${encodeURIComponent(keyword)}&max=10`)
     if (dmRes.ok) {
@@ -58,7 +74,6 @@ async function fetchLiveKeywords(keyword) {
       dmData.forEach(item => keywords.add(item.word))
     }
   } catch (e) { console.error('Datamuse Error:', e) }
-
   if (process.env.SERPER_API_KEY) {
     try {
       const serperRes = await fetch('https://google.serper.dev/search', {
@@ -72,7 +87,6 @@ async function fetchLiveKeywords(keyword) {
       }
     } catch (e) { console.error('Serper API Error:', e) }
   }
-
   return Array.from(keywords).slice(0, 15)
 }
 
@@ -96,7 +110,7 @@ async function getSmartImageKeyword(topic, heading, genAI) {
     const result = await model.generateContent(prompt);
     return result.response.text().trim().replace(/['"]/g, '');
   } catch(e) {
-    return `${topic} ${heading}`.trim(); // Fallback if it fails
+    return `${topic} ${heading}`.trim();
   }
 }
 
@@ -119,7 +133,7 @@ async function getSmartVideoQuery(topic, heading, genAI) {
     const result = await model.generateContent(prompt);
     return result.response.text().trim().replace(/['"]/g, '');
   } catch(e) {
-    return `${topic} ${heading}`.trim(); // Fallback if it fails
+    return `${topic} ${heading}`.trim();
   }
 }
 
@@ -127,15 +141,29 @@ export async function POST(request) {
   try {
     const body = await request.json()
 
+    const {
+      mode, // Previously causing the action error
+      prompt,
+      outlineContext,
+      heading,
+      subheadings,
+      sectionIndex,
+      uploadedMedia,
+      settings = {}
+    } = body;
+
     // Extract all variables including the new Media fields
-    const { prompt, model, mode, targetKeyword, outlineContext, heading, subheadings, internalLinks, seoOptimization, manualKeywords, aiImagesAndVideos, sectionIndex, totalSections, articleLength, customArticleLength, toneOfVoice, customToneOfVoice, language, country, pointOfView, useRealTimeSearchData, realTimeDataSource, externalLinks, automaticExternalLinks, deepSearch, articleTitle, includeFaq, includeKeyTakeaways, improveReadability, uploadedMedia } = body
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+    const {type, model, targetKeyword, articleTitle, language, country, articleLength, customArticleLength, toneOfVoice, customToneOfVoice,
+          pointOfView, useRealTimeSearchData, realTimeDataSource, externalLinks, internalLinks, automaticExternalLinks, deepSearch, includeFaq, includeKeyTakeaways, improveReadability, seoOptimization, manualKeywords, aiImagesAndVideos, enableAutoLength, totalListItems, listNumberingFormat, useDescendingOrder, enableSupplementalInformation, listItemPrompt, numberOfPlaces, generateUniqueMapImages, enableFirstHandExperience
+    } = settings;
+
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
     const langObj = languages ? languages[language] : null;
     const langName = langObj ? langObj.name : (language || 'English');
-
     const countryObj = countries ? countries.find(c => c.code === country) : null;
     const countryName = countryObj ? countryObj.name : (country || 'United States');
+
 
     const baseSystemInstruction = `You are an advanced, lightning-fast AI writing assistant.
       CRITICAL RULE: Do NOT introduce yourself, say "Hello", or mention the name "Cheetah AI" in normal conversation. Just answer the user's prompt directly and naturally.
@@ -156,17 +184,7 @@ export async function POST(request) {
             systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline. You MUST return a JSON object with two keys: "title" (A catchy, click-worthy, viral H1 Title based on the keyword) and "outline" (A flat JSON array of objects). Schema: { "title": "Catchy Title Here", "outline": [{ "type": "h2", "text": "Introduction" }, { "type": "h3", "text": "Subheading" }] }`
           })
 
-      // 1. Give every single option (including default) a strict H2 constraint
-      let lengthInstruction = '';
-      if (articleLength === 'default') lengthInstruction = 'CRITICAL REQUIREMENT: Generate exactly 6 main H2 headings.';
-      else if (articleLength === 'shorter') lengthInstruction = 'CRITICAL REQUIREMENT: Generate exactly 3 main H2 headings.';
-      else if (articleLength === 'short') lengthInstruction = 'CRITICAL REQUIREMENT: Generate exactly 5 main H2 headings.';
-      else if (articleLength === 'medium') lengthInstruction = 'CRITICAL REQUIREMENT: Generate exactly 7 main H2 headings.';
-      else if (articleLength === 'long') lengthInstruction = 'CRITICAL REQUIREMENT: Generate exactly 9 main H2 headings.';
-      else if (articleLength === 'longer') lengthInstruction = 'CRITICAL REQUIREMENT: Generate exactly 12 main H2 headings.';
-      else if (articleLength === 'custom') lengthInstruction = `CRITICAL REQUIREMENT: Generate EXACTLY ${customArticleLength || 9} main H2 headings. No more, no less.`;
-
-      let fetchedExternalLinks = [];
+          let fetchedExternalLinks = [];
       let faqInstruction = '';
       let relatedInstruction = '';
 
@@ -196,15 +214,84 @@ export async function POST(request) {
          takeawaysInstruction = `\nCRITICAL REQUIREMENT - KEY TAKEAWAYS: The second H2 heading (immediately after the Introduction) MUST be titled exactly "Key Takeaways". Do NOT nest any H3 subheadings under it.`;
       }
 
-      const structureInstruction = `
-        IMPORTANT STRUCTURE RULES:
-        1. The FIRST H2 heading MUST be an Introduction. Do NOT use the article title here!
-        ${takeawaysInstruction}
-        2. The LAST H2 heading MUST be a Conclusion.
-        ${faqInstruction}
-        3. For ALL OTHER H2 headings, nest 2 to 3 relevant H3 subheadings.
-        ${relatedInstruction}
-      `
+      let structureInstruction = '';
+      let lengthInstruction = '';
+
+      if (type === 'local-roundup') {
+        const itemCount = enableAutoLength ? 10 : (parseInt(numberOfPlaces) || 10);
+
+        // 1. Fetch real places from Serper to build the outline!
+        const placesData = await fetchSerperPlacesData(targetKeyword || prompt, itemCount, country, language);
+        let placesInstruction = '';
+
+        if (placesData.length > 0) {
+          const placeNames = placesData.map((p, i) => `${i + 1}. ${p.title}`).join('\n');
+          placesInstruction = `You MUST use EXACTLY these locations for the core H2 headings in order:\n${placeNames}`;
+        } else {
+          placesInstruction = `Generate exactly ${itemCount} H2 headings representing specific real-world locations related to the topic. Number them.`;
+        }
+
+        lengthInstruction = `CRITICAL: Generate exactly ${itemCount} location items.`;
+        structureInstruction = `
+          === STRICT LOCAL ROUNDUP STRUCTURE RULES ===
+          1. The FIRST H2 heading MUST be an "Introduction".
+          2. The next H2 headings MUST be the core locations:
+          ${placesInstruction}
+          - CRITICAL: Do NOT nest any H3 subheadings under the location items.
+          3. ${enableSupplementalInformation ? 'After the locations, add exactly TWO additional H2 informational sections (e.g., "What to look for"). Nest 2-3 H3 headings under each.' : 'Do NOT add extra informational sections at the bottom.'}
+          4. ${includeFaq ? 'At the very end, add an H2 heading titled "Frequently Asked Questions" and nest 3-5 relevant questions as H3s.' : ''}
+        `;
+      }
+      // --- BRANCH B: LISTICLE (WITH FAQ FIX) ---
+      else if (type === 'listicle') {
+        const itemCount = enableAutoLength ? 10 : (parseInt(totalListItems) || 10);
+        const format = listNumberingFormat || '1.';
+
+        let numberingArray = [];
+        for (let i = 1; i <= itemCount; i++) {
+          numberingArray.push(format === 'none' ? '' : format.replace('1', i));
+        }
+        if (useDescendingOrder) numberingArray.reverse();
+        const explicitNumberingStr = format === 'none' ? 'Do not use numbering.' : `Use EXACTLY these prefixes in this order for your list items: ${numberingArray.join(', ')}`;
+
+        lengthInstruction = `CRITICAL REQUIREMENT: Generate exactly ${itemCount} list items.`;
+        structureInstruction = `
+          === STRICT LISTICLE STRUCTURE RULES ===
+          1. The FIRST H2 heading MUST be an "Introduction".
+          2. The next ${itemCount} H2 headings MUST be the core list items/products.
+             - ${explicitNumberingStr}
+             ${!enableAutoLength ? '- CRITICAL: Do NOT nest any H3 subheadings under these list items.' : ''}
+          3. ${enableAutoLength ? 'After the list items, add exactly TWO additional H2 informational sections (e.g., "Buying Guide"). Nest 2-3 H3 headings under each.' : 'Do NOT add extra informational sections at the bottom.'}
+          4. ${enableSupplementalInformation ? 'At the very end, add an H2 heading titled "Supplemental Information" with nested H3 subheadings.' : ''}
+          5. ${includeFaq ? 'Add an H2 titled "Frequently Asked Questions" with nested H3s.' : ''}
+        `;
+      }
+      // BRANCH B: STANDARD BLOG OUTLINE LOGIC
+      else {
+        if (articleLength === 'default') lengthInstruction = 'Generate exactly 6 main H2 headings.';
+        else if (articleLength === 'shorter') lengthInstruction = 'Generate exactly 3 main H2 headings.';
+        else if (articleLength === 'short') lengthInstruction = 'Generate exactly 5 main H2 headings.';
+        else if (articleLength === 'medium') lengthInstruction = 'Generate exactly 7 main H2 headings.';
+        else if (articleLength === 'long') lengthInstruction = 'Generate exactly 9 main H2 headings.';
+        else if (articleLength === 'longer') lengthInstruction = 'Generate exactly 12 main H2 headings.';
+        else if (articleLength === 'custom') lengthInstruction = `Generate EXACTLY ${customArticleLength || 9} main H2 headings.`;
+
+        let faqInstruction = '';
+        let takeawaysInstruction = includeKeyTakeaways ? `\nThe second H2 heading MUST be "Key Takeaways" with NO nested H3 subheadings.` : '';
+
+        if (includeFaq) {
+            faqInstruction = `\nYou MUST include an H2 heading titled "Frequently Asked Questions" and nest 3-5 highly relevant questions as H3 subheadings.`;
+        }
+
+        structureInstruction = `
+          IMPORTANT STRUCTURE RULES:
+          1. The FIRST H2 heading MUST be an Introduction.
+          ${takeawaysInstruction}
+          2. The LAST H2 heading MUST be a Conclusion.
+          ${faqInstruction}
+          3. For ALL OTHER H2 headings, nest 2 to 3 relevant H3 subheadings.
+        `;
+      }
 
       const outlinePrompt = `Article Topic: ${targetKeyword || prompt}\n\n${lengthInstruction}\n${structureInstruction}`
 
@@ -232,7 +319,7 @@ export async function POST(request) {
           googleSearchRetrieval: {
             dynamicRetrievalConfig: {
               mode: "MODE_DYNAMIC",
-              dynamicThreshold: 0.3 // Tells Gemini to actively use Search for this prompt
+              dynamicThreshold: 0.3
             }
           }
         }];
@@ -343,17 +430,87 @@ export async function POST(request) {
         readabilityInstruction = `\nSTYLING & READABILITY: Write in standard, flowing paragraph format. Do not aggressively use bullet points or bold text unless explicitly necessary for a list.`;
       }
 
+      let sectionStructureRequirements = '';
+        if (type === 'local-roundup') {
+            const isCoreLocation = (!subheadings || subheadings.length === 0) && !heading.toLowerCase().includes('introduction') && !heading.toLowerCase().includes('faq') && !heading.toLowerCase().includes('supplemental');
+            if (isCoreLocation) {
+          // 1. Fetch exact data for this specific location
+          const placeInfo = await fetchSerperPlacesData(`${heading} ${targetKeyword || ''}`, 1, country, language);
+          const p = placeInfo.length > 0 ? placeInfo[0] : null;
+          let placeDataStr = '';
+          if (p) {
+            // Build Map Link & Unique Map Image
+            const mapLink = p.cid ? `https://maps.google.com/?cid=${p.cid}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.title + ' ' + (p.address || ''))}`;
+
+            if (generateUniqueMapImages) {
+              // Using Yandex Static Map API if coordinates exist, otherwise Placehold fallback
+              const mapImgUrl = (p.latitude && p.longitude)
+                ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${p.longitude},${p.latitude}&z=16&l=map&size=600,300&pt=${p.longitude},${p.latitude},pm2rdm`
+                : `https://placehold.co/800x400/ececec/555555?text=Map+Location:+${encodeURIComponent(p.title)}`;
+
+              assignedMediaElement = `<a href="${mapLink}" target="_blank" rel="noopener noreferrer" class="block w-full my-6 transition-transform hover:scale-[1.02]"><img src="${mapImgUrl}" alt="Map of ${p.title}" class="w-full h-auto rounded-xl shadow-md border border-gray-200 object-cover aspect-[2/1]" /></a>`;
+              mediaInstruction = `\n[NOTE: A map image has been automatically inserted. Do NOT output image HTML.]`;
+            }
+
+            placeDataStr = `
+              REAL LOCATION DATA TO USE:
+              - Ratings: ${p.rating ? `${p.rating} / 5 (${p.ratingCount} reviews)` : 'Not Available'}
+              - Address: ${p.address || 'Address Not Available'}
+              - Map URL: ${mapLink}
+              - Phone: ${p.phoneNumber || 'Not Available'}
+              - Website URL: ${p.website || 'Not Available'}
+            `;
+          }
+
+          const narrativeRequirement = enableFirstHandExperience
+            ? 'Write a compelling "First-Hand Experience" review (2 paragraphs) as if you personally visited this location. Use words like "When I visited", "My experience", etc.'
+            : 'Write a highly detailed, objective description (2 paragraphs) of this location, its atmosphere, and its best offerings.';
+
+          sectionStructureRequirements = `
+            CRITICAL LOCAL ROUNDUP LAYOUT:
+            You are writing the section for the location: "${heading}".
+            ${placeDataStr}
+
+            1. First, ${narrativeRequirement}
+            2. Then, you MUST output an exact bulleted list exactly matching this HTML/Markdown format. Ensure the links are properly formatted HTML ` + "`<a>`" + ` tags:
+
+            * **Ratings:** [Insert Rating Data]
+            * **Location:** <a href="[Insert Map URL]" target="_blank">[Insert Address]</a>
+            * **Contact Info:** [Insert Phone]
+            * **Visit Website:** <a href="[Insert Website URL]" target="_blank" rel="noopener nofollow">View Website</a>
+
+            Do NOT add any H3s or other text after the bullet points. Follow this structure strictly.
+          `;
+        }
+        } else if (type === 'listicle') {
+        // Only apply List Item Custom Prompt if there are NO subheadings (indicating it is a core list item)
+        const isCoreListItem = (!subheadings || subheadings.length === 0);
+        const listPromptInject = isCoreListItem && listItemPrompt
+          ? `\nSPECIAL LIST ITEM REQUIREMENT: ${listItemPrompt}`
+          : '';
+
+        sectionStructureRequirements = `
+          CRITICAL STRUCTURE REQUIREMENTS (LISTICLE MODE):
+          1. You are writing content strictly for the heading: "${heading}".
+          2. Do NOT add an introduction paragraph before your subheadings if you have subheadings. Go straight to the content.
+          ${subheadings && subheadings.length > 0 ? `3. You MUST cover the following subheadings exactly as H3s (### [Title]):\n${subheadings.join('\n')}` : '3. Do NOT add any H3 subheadings. Write the content directly under the main heading.'}
+          ${listPromptInject}
+        `;
+      } else {
+        sectionStructureRequirements = `
+          CRITICAL STRUCTURE REQUIREMENTS (STANDARD MODE):
+          1. You MUST first write a strong introductory paragraph directly under the main heading "${heading}". Do not leave it blank!
+          ${subheadings && subheadings.length > 0 ? `2. After the intro, cover these subheadings exactly as H3s (### [Title]):\n${subheadings.join('\n')}` : ''}
+        `;
+      }
+
       // 4. Assemble the Final Prompt
       const sectionPrompt = `
         Article Title/Context: ${articleTitle || targetKeyword}
         Full Article Outline for Context: ${JSON.stringify(outlineContext)}
 
         TASK: Write a comprehensive section focusing ONLY on the main heading: "${heading}".
-
-        CRITICAL STRUCTURE REQUIREMENTS:
-        1. You MUST first write a strong introductory paragraph (or two) directly under the main heading "${heading}" before moving to any subheadings. Do not leave the space under the main heading blank!
-        ${subheadings && subheadings.length > 0 ? `2. After your introductory paragraph(s), you MUST structure the rest of the response to cover the following subheadings. Use exactly '### [Subheading Title]' to denote them so they format correctly:\n${subheadings.join('\n')}` : ''}
-
+        ${sectionStructureRequirements}
         ${realTimeInstruction}
         ${extLinkInstruction}
         ${linkInstruction}
@@ -368,7 +525,6 @@ export async function POST(request) {
       return NextResponse.json({ success: true, text: result.response.text(), mediaHtml: assignedMediaElement})
     }
 
-    // --- FALLBACK: STANDARD GENERATION ---
     if (!prompt) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 })
     }

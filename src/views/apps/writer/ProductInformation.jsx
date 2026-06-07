@@ -61,6 +61,7 @@ const handleCreateArticle = async () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode: 'outline',
+          settings: settings,
           targetKeyword: settings.targetKeyword || 'General Topic',
           model: settings.model,
           articleLength: settings.articleLength,

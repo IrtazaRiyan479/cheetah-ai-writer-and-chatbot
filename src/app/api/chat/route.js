@@ -10,7 +10,6 @@ export async function GET() {
     })
     return NextResponse.json(messages)
   } catch (error) {
-    console.error("Prisma GET Error:", error)
     return NextResponse.json({ error: 'Failed to fetch' }, { status: 500 })
   }
 }
@@ -23,7 +22,6 @@ export async function POST(request) {
     })
     return NextResponse.json(newMsg)
   } catch (error) {
-    console.error("Prisma POST Error:", error)
     return NextResponse.json({ error: 'Failed to save' }, { status: 500 })
   }
 }
@@ -33,7 +31,6 @@ export async function DELETE() {
     await prisma.chatMessage.deleteMany({})
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Prisma DELETE Error:", error)
     return NextResponse.json({ error: 'Failed to clear' }, { status: 500 })
   }
 }

@@ -114,7 +114,7 @@ const BlogFields = ({ settings, updateSetting }) => (
     {/* Conditionally render the real Materialize File Uploader */}
     {settings.aiImagesAndVideos.startsWith('upload') && (
       <Grid size={{ xs: 12 }}>
-         <MediaUploader uploadType={settings.aiImagesAndVideos} />
+         <MediaUploader uploadType={settings.aiImagesAndVideos} onFilesUpdate={(files) => updateSetting('uploadedMedia', files)} />
       </Grid>
     )}
    <Grid size={{ xs: 12, sm: 6 }}>
@@ -250,7 +250,7 @@ const BlogFields = ({ settings, updateSetting }) => (
       )}
     </Grid>
 
-    <Grid size={{ xs: 12, sm: 6 }}>
+    <Grid size={{ xs: 12, sm: 12 }}>
       <FormControlLabel
         control={<Switch checked={settings.automaticExternalLinks} onChange={(e) => updateSetting('automaticExternalLinks', e.target.checked)} />}
         label={<Typography className='font-medium text-textPrimary'>Automatic External Links</Typography>}

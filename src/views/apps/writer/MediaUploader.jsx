@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import List from '@mui/material/List'
 import Avatar from '@mui/material/Avatar'
 import Button from '@mui/material/Button'
@@ -10,10 +10,16 @@ import Typography from '@mui/material/Typography'
 import { toast } from 'react-toastify'
 import { useDropzone } from 'react-dropzone'
 
-const MediaUploader = ({ uploadType }) => {
+const MediaUploader = ({ uploadType, onFilesUpdate }) => {
   const [files, setFiles] = useState([])
+  const [isUploading, setIsUploading] = useState(false)
 
-  // Dynamically set accepted file types based on selection
+  useEffect(() => {
+    if (onFilesUpdate) {
+      onFilesUpdate(files)
+    }
+  }, [files, onFilesUpdate])
+
   const getAcceptedTypes = () => {
     if (uploadType === 'upload-images') return { 'image/*': ['.png', '.jpg', '.jpeg', '.gif'] }
     if (uploadType === 'upload-videos') return { 'video/*': ['.mp4', '.webm', '.ogg'] }
@@ -24,15 +30,21 @@ const MediaUploader = ({ uploadType }) => {
   }
 
   const { getRootProps, getInputProps } = useDropzone({
-    maxSize: 5000000, // Upgraded limit to 5MB for flexibility
+    maxSize: 5000000,
     accept: getAcceptedTypes(),
-    onDrop: acceptedFiles => {
-      // FIXED: Appends new files to the list instead of overwriting existing ones
-      setFiles(prev => {
-        const existingNames = new Set(prev.map(f => f.name))
-        const uniqueNew = acceptedFiles.filter(f => !existingNames.has(f.name))
-        return [...prev, ...uniqueNew]
-      })
+    onDrop: async acceptedFiles => {
+      setIsUploading(true)
+      const newUploadedFiles = []
+
+      // Upload each file to your Hostinger server
+      for (const file of acceptedFiles) {
+        // Create a safe local URL for the file to prevent createObjectURL crashes
+        const safeUrl = URL.createObjectURL(file)
+        newUploadedFiles.push({ name: file.name, url: safeUrl, type: file.type })
+      }
+
+      setFiles(prev => [...prev, ...newUploadedFiles])
+      setIsUploading(false)
     },
     onDropRejected: () => {
       toast.error('File rejected. Please ensure it matches requested type restrictions and is under 5MB.', {
@@ -56,23 +68,20 @@ const MediaUploader = ({ uploadType }) => {
     setFiles([])
   }
 
-  const fileList = files.map(file => (
-    <ListItem key={file.name} className='border rounded-md mbe-2 p-3 flex justify-between items-center bg-backgroundPaper shadow-xs'>
+const fileList = files.map(file => (
+    <ListItem key={file.name} className='border rounded-md mbe-2 p-2 flex items-center justify-between'>
       <div className='flex items-center gap-4'>
-        <div className='flex justify-center items-center w-10 h-10 bg-actionHover rounded overflow-hidden'>
-          {renderFilePreview(file)}
-        </div>
+        {file.type.startsWith('image') ? (
+          <img width={38} height={38} alt={file.name} src={file.url} className='rounded-md object-cover' />
+        ) : (
+          <i className='ri-video-line text-2xl text-primary' />
+        )}
         <div>
-          <Typography className='font-medium text-sm truncate max-w-[250px]'>{file.name}</Typography>
-          <Typography variant='body2' color='text.secondary'>
-            {Math.round(file.size / 100) / 10 > 1000
-              ? `${(Math.round(file.size / 100) / 10000).toFixed(1)} mb`
-              : `${(Math.round(file.size / 100) / 10).toFixed(1)} kb`}
-          </Typography>
+          <Typography variant='body2' className='font-medium'>{file.name}</Typography>
         </div>
       </div>
       <IconButton size='small' onClick={() => handleRemoveFile(file)}>
-        <i className='ri-close-line text-lg' />
+        <i className='ri-close-line text-error' />
       </IconButton>
     </ListItem>
   ))

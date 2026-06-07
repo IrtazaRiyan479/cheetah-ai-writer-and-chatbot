@@ -156,6 +156,8 @@ Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }).extend({
   Link.configure({
     openOnClick: false,
     HTMLAttributes: {
+      target: '_blank',
+      rel: 'noopener noreferrer',
       class: 'text-primary underline cursor-pointer',
     },
   }),
@@ -287,6 +289,7 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
             signal: abortControllerRef.current.signal,
             body: JSON.stringify({
               mode: 'section',
+              settings: settings,
               targetKeyword: settings.targetKeyword,
               model: settings.model,
               outlineContext: outline,

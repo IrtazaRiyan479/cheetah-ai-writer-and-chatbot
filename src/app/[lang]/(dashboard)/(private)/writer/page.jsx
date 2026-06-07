@@ -39,16 +39,15 @@ const defaultSettings = {
   amazonProductUrl: '',
   amazonSearchUrl: '',
   amazonTrackingId: '',
-  location: '',
   articleUrlToRewrite: '',
   youtubeUrl: '',
 
   // Select Inputs
   numberOfProducts: 'auto',
-  totalListItems: 10,
-  numberOfPlaces: 'auto',
+  totalListItems: '10',
+  listItemPrompt: '',
+  numberOfPlaces: '10',
   listNumberingFormat: '1.',
-  listItemsPrompt: '',
 
   // Toggles
   useOutlineEditor: true,
@@ -63,9 +62,6 @@ const defaultSettings = {
 
   // --- LOCAL ROUNDUP SPECIFIC FIELDS ---
   generateUniqueMapImages: true,
-  includeGoogleMapsLinks: true,
-  includeBusinessHours: false,
-  includeContactInfo: false,
   manualKeywords: '',
   customArticleLength: 5,
   customToneOfVoice: ''
@@ -80,9 +76,21 @@ const CheetahWriter = () => {
 
   // Load presets on mount
   const fetchPresets = async () => {
-    const res = await fetch('/api/presets')
-    const data = await res.json()
-    setPresets(data)
+    try {
+      const res = await fetch('/api/presets')
+      const data = await res.json()
+
+      // Check if it's an array before setting the state!
+      if (Array.isArray(data)) {
+        setPresets(data)
+      } else {
+        console.error("API did not return an array:", data)
+        setPresets([]) // Keep it as an array to prevent the crash
+      }
+    } catch (error) {
+      console.error("Failed to fetch presets:", error)
+      setPresets([]) // Fallback to empty array on network failure
+    }
   }
 
   useEffect(() => {
