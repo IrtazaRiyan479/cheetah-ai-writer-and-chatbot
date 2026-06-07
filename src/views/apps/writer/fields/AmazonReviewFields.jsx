@@ -69,71 +69,6 @@ const AmazonReviewFields = ({ settings, updateSetting }) => (
       <Typography variant='subtitle2' className='font-medium mbe-1'>Amazon Tracking ID (Optional)</Typography>
       <TextField fullWidth size='small' placeholder='your-tag-20' value={settings.amazonTrackingId} onChange={(e) => updateSetting('amazonTrackingId', e.target.value)} />
     </Grid>
-    <Grid size={{ xs: 12, sm: 6 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>SEO Optimization</Typography>
-
-      {/* We add a bottom margin dynamically if the text box is about to appear below it */}
-      <FormControl fullWidth size='small' className={settings.seoOptimization === 'manual' ? 'mbe-3' : ''}>
-        <Select
-          value={settings.seoOptimization}
-          onChange={(e) => updateSetting('seoOptimization', e.target.value)}
-        >
-          <MenuItem value='default'>Default</MenuItem>
-          <MenuItem value='manual'>Manual</MenuItem>
-          <MenuItem value='ai'>AI-Powered</MenuItem>
-        </Select>
-      </FormControl>
-
-      {/* Conditionally render manual keyword input */}
-      {settings.seoOptimization === 'manual' && (
-        <TextField
-          fullWidth
-          size='small'
-          placeholder='Enter keywords separated by commas...'
-          value={settings.manualKeywords || ''}
-          onChange={(e) => updateSetting('manualKeywords', e.target.value)}
-        />
-      )}
-    </Grid>
-    <Grid size={{ xs: 12, sm: 6 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Article Length</Typography>
-      <FormControl fullWidth size='small' className={settings.articleLength === 'custom' ? 'mbe-3' : ''}>
-        <Select value={settings.articleLength} onChange={(e) => updateSetting('articleLength', e.target.value)}>
-          <MenuItem value='default'>Default</MenuItem>
-          <MenuItem value='custom'>Custom Number of Sections</MenuItem>
-          <MenuItem value='shorter'>Shorter (2-3 Sections)</MenuItem>
-          <MenuItem value='short'>Short (3-5 Sections)</MenuItem>
-          <MenuItem value='medium'>Medium (5-7 Sections)</MenuItem>
-          <MenuItem value='long'>Long Form (7-10 Sections)</MenuItem>
-          <MenuItem value='longer'>Longer (10-12 Sections)</MenuItem>
-        </Select>
-      </FormControl>
-
-        {settings.articleLength === 'custom' && (
-        <TextField
-          fullWidth
-          type='number'
-          size='small'
-          placeholder='e.g. 5'
-          value={settings.customArticleLength || ''}
-          inputProps={{ min: 1, max: 48 }}
-          onChange={(e) => {
-            let value = e.target.value;
-
-            // If the user types a number greater than 48, force it back to 48
-            if (Number(value) > 48) {
-              value = 48;
-            }
-            // Optional: prevent negative numbers or 0
-            else if (value !== '' && Number(value) < 1) {
-              value = 1;
-            }
-
-            updateSetting('customArticleLength', value);
-          }}
-        />
-      )}
-    </Grid>
    <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Tone of Voice</Typography>
       <FormControl fullWidth size='small' className={settings.toneOfVoice === 'custom' ? 'mbe-3' : ''}>
@@ -175,21 +110,6 @@ const AmazonReviewFields = ({ settings, updateSetting }) => (
     </Select>
   </FormControl>
 </Grid>
-    <Grid size={{ xs: 12, sm: 6 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Country</Typography>
-      <FormControl fullWidth size='small'>
-        <Select
-          value={settings.country}
-          onChange={(e) => updateSetting('country', e.target.value)}
-        >
-          {countries.map((c) => (
-            <MenuItem key={c.code} value={c.code}>
-              {c.name}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-    </Grid>
    <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Point of View</Typography>
       <FormControl fullWidth size='small'>
@@ -209,7 +129,6 @@ const AmazonReviewFields = ({ settings, updateSetting }) => (
     <Grid size={{ xs: 12 }}><Divider className='my-2' /></Grid>
 
     <Grid size={{ xs: 12 }} className='flex flex-col gap-2'>
-      <FormControlLabel control={<Switch checked={settings.useOutlineEditor} onChange={(e) => updateSetting('useOutlineEditor', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Outline Editor</Typography>} />
       <FormControlLabel control={<Switch checked={settings.enableFirstHandExperience} onChange={(e) => updateSetting('enableFirstHandExperience', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable First-Hand Experience</Typography>} />
 
       <div className='flex flex-col'>
@@ -219,6 +138,7 @@ const AmazonReviewFields = ({ settings, updateSetting }) => (
         </Typography>
       </div>
 
+      <FormControlLabel control={<Switch checked={settings.useOutlineEditor} onChange={(e) => updateSetting('useOutlineEditor', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Outline Editor</Typography>} />
       <FormControlLabel control={<Switch checked={settings.includeFaq} onChange={(e) => updateSetting('includeFaq', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Include FAQ Section</Typography>} />
       <FormControlLabel control={<Switch checked={settings.improveReadability} onChange={(e) => updateSetting('improveReadability', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Improve Readability</Typography>} />
     </Grid>

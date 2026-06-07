@@ -43,7 +43,7 @@ const defaultSettings = {
   youtubeUrl: '',
 
   // Select Inputs
-  numberOfProducts: 'auto',
+  numberOfProducts: '5',
   totalListItems: '10',
   listItemPrompt: '',
   numberOfPlaces: '10',
@@ -64,7 +64,8 @@ const defaultSettings = {
   generateUniqueMapImages: true,
   manualKeywords: '',
   customArticleLength: 5,
-  customToneOfVoice: ''
+  customToneOfVoice: '',
+  amazonDomain: 'amazon.com'
 }
 
 const CheetahWriter = () => {

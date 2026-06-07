@@ -95,46 +95,22 @@ const RewriteFields = ({ settings, updateSetting }) => (
         />
       )}
     </Grid>
-   <Grid size={{ xs: 12, sm: 6 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Article Length</Typography>
-      <FormControl fullWidth size='small' className={settings.articleLength === 'custom' ? 'mbe-3' : ''}>
-        <Select value={settings.articleLength} onChange={(e) => updateSetting('articleLength', e.target.value)}>
-          <MenuItem value='default'>Default</MenuItem>
-          <MenuItem value='custom'>Custom Number of Sections</MenuItem>
-          <MenuItem value='shorter'>Shorter (2-3 Sections)</MenuItem>
-          <MenuItem value='short'>Short (3-5 Sections)</MenuItem>
-          <MenuItem value='medium'>Medium (5-7 Sections)</MenuItem>
-          <MenuItem value='long'>Long Form (7-10 Sections)</MenuItem>
-          <MenuItem value='longer'>Longer (10-12 Sections)</MenuItem>
-        </Select>
-      </FormControl>
-
-      {/* Conditionally render custom section count input */}
-       {settings.articleLength === 'custom' && (
-        <TextField
-          fullWidth
-          type='number'
-          size='small'
-          placeholder='e.g. 5'
-          value={settings.customArticleLength || ''}
-          inputProps={{ min: 1, max: 48 }}
-          onChange={(e) => {
-            let value = e.target.value;
-
-            // If the user types a number greater than 48, force it back to 48
-            if (Number(value) > 48) {
-              value = 48;
-            }
-            // Optional: prevent negative numbers or 0
-            else if (value !== '' && Number(value) < 1) {
-              value = 1;
-            }
-
-            updateSetting('customArticleLength', value);
-          }}
-        />
-      )}
-    </Grid>
+     <Grid size={{ xs: 12, sm: 6 }}>
+          <Typography variant='subtitle2' className='font-medium mbe-1'>AI Images & YouTube Videos</Typography>
+          <FormControl fullWidth size='small' className={settings.aiImagesAndVideos.startsWith('upload') ? 'mbe-3' : ''}>
+            <Select
+              value={settings.aiImagesAndVideos}
+              onChange={(e) => updateSetting('aiImagesAndVideos', e.target.value)}
+            >
+              <MenuItem value='none'>None</MenuItem>
+              <MenuItem value='auto'>Auto (Unsplash Images & AI YouTube Videos)</MenuItem>
+              <MenuItem disabled>──────────</MenuItem>
+              <MenuItem value='upload-images'>Upload Custom Images</MenuItem>
+              <MenuItem value='upload-videos'>Upload Custom Videos</MenuItem>
+              <MenuItem value='upload-both'>Upload Both Images & Videos</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
    <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Tone of Voice</Typography>
       <FormControl fullWidth size='small' className={settings.toneOfVoice === 'custom' ? 'mbe-3' : ''}>
