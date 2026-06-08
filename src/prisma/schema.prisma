@@ -41,6 +41,7 @@ model User {
   name          String?
   email         String?   @unique
   emailVerified DateTime?
+  password      String?   // Add this! Must be optional for Google users.
   image         String?
   accounts      Account[]
   sessions      Session[]
@@ -67,3 +68,4 @@ model Preset {
   settings  String   @db.Text // This will hold our JSON object of all fields
   createdAt DateTime @default(now())
 }
+

@@ -38,20 +38,27 @@ async function fetchInternalAmazonData(keyword, settings) {
  * 2. Formatter: Cleans the raw Amazon data
  */
 function formatAmazonProducts(apiData, settings) {
-  const rawData = apiData?.data?.searchResult?.items || apiData?.searchResult?.items || apiData?.items || [];
+  // 10. Navigates the exact data format you provided
+  const rawData = apiData?.data?.searchResult?.items || [];
   const numberOfProducts = settings.numberOfProducts || 5;
-  const domain = settings.domain || 'www.amazon.com';
-  const partnerTag = settings.partnerTag || 'babiescarrier-20';
+  const limitedProducts = rawData.slice(0, numberOfProducts);
 
-  const rawProducts = rawData.slice(0, numberOfProducts);
+  return limitedProducts.map(item => {
+    // Graceful fallbacks in case a specific product is missing data
+    const title = item?.itemInfo?.title?.displayValue || 'Amazon Product';
+    // 9. Uses the detailPageURL which already contains your affiliate tag!
+    const affiliateUrl = item?.detailPageURL || `https://www.amazon.com/dp/${item.asin}?tag=${settings.partnerTag}`;
+    // 8. Digs into the deeply nested image object
+    const imageUrl = item?.images?.primary?.large?.url || '';
+    const price = item?.offersV2?.listings?.[0]?.price?.money?.displayAmount || 'Check Price on Amazon';
 
-  return rawProducts.map(item => ({
-    asin: item.asin,
-    title: item.itemInfo?.title?.displayValue || 'Product',
-    price: item.offersV2?.listings?.[0]?.price?.displayAmount || 'Check Price',
-    imageUrl: item.images?.primary?.large?.url || '',
-    affiliateUrl: `https://${domain}/dp/${item.asin}?tag=${partnerTag}`
-  }));
+    return {
+      productName: title,
+      amazonUrl: affiliateUrl,
+      imageUrl: imageUrl,
+      price: price
+    };
+  });
 }
 
 /**
@@ -88,7 +95,7 @@ For standard sections (intro, buying_guide, faq), use this schema:
 For "product" sections, you MUST include the rich product data provided to you using this schema:
 {
   "type": "h2",
-  "text": "Best Overall: [Product Name]",
+  "text": "[Product Name]",
   "sectionType": "product",
   "productData": {
     "productName": "Exact Amazon Title",

@@ -1,3 +1,5 @@
+'use client' // Make sure this is a client component since we are using useSession
+
 // Next Imports
 import { useParams } from 'next/navigation'
 
@@ -27,6 +29,9 @@ import StyledVerticalNavExpandIcon from '@menu/styles/vertical/StyledVerticalNav
 import menuItemStyles from '@core/styles/vertical/menuItemStyles'
 import menuSectionStyles from '@core/styles/vertical/menuSectionStyles'
 
+// NextAuth Import
+import { useSession } from 'next-auth/react'
+
 const RenderExpandIcon = ({ open, transitionDuration }) => (
   <StyledVerticalNavExpandIcon open={open} transitionDuration={transitionDuration}>
     <i className='ri-arrow-right-s-line' />
@@ -39,6 +44,9 @@ const VerticalMenu = ({ dictionary, scrollMenu }) => {
   const verticalNavOptions = useVerticalNav()
   const params = useParams()
 
+  // --- FETCH USER SESSION ---
+  const { data: session } = useSession()
+
   // Vars
   const { isBreakpointReached, transitionDuration } = verticalNavOptions
   const { lang: locale } = params
@@ -47,7 +55,7 @@ const VerticalMenu = ({ dictionary, scrollMenu }) => {
   return (
     // eslint-disable-next-line lines-around-comment
     /* Custom scrollbar instead of browser scroll, remove if you want browser scroll only */
-<ScrollWrapper
+    <ScrollWrapper
       className='bs-full overflow-y-auto overflow-x-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
       onScroll={container => scrollMenu(container, false)}
     >
@@ -60,7 +68,8 @@ const VerticalMenu = ({ dictionary, scrollMenu }) => {
         renderExpandedMenuItemIcon={{ icon: <i className='ri-circle-fill' /> }}
         menuSectionStyles={menuSectionStyles(verticalNavOptions, theme)}
       >
-        <GenerateVerticalMenu menuData={menuData(dictionary, params)} />
+        {/* Pass the session to menuData so it can decide which links to render */}
+        <GenerateVerticalMenu menuData={menuData(session, dictionary, params)} />
       </Menu>
     </ScrollWrapper>
   )

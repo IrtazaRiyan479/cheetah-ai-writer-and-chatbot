@@ -26,6 +26,8 @@ import Youtube from '@tiptap/extension-youtube'
 import { Node, mergeAttributes } from '@tiptap/core'
 import Heading from '@tiptap/extension-heading'
 import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table'
+import TaskList from '@tiptap/extension-task-list'
+import TaskItem from '@tiptap/extension-task-item'
 
 
 // --- TIPTAP TOOLBAR COMPONENT ---
@@ -131,6 +133,10 @@ const extensions = [
     blockquote: {
       HTMLAttributes: { class: 'border-l-4 border-primary pl-4 py-2 my-4 italic text-textSecondary bg-actionHover/50 rounded-r-lg' }
     }
+  }),
+  TaskList,
+  TaskItem.configure({
+    nested: true,
   }),
 Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }).extend({
     renderHTML({ node, HTMLAttributes }) {

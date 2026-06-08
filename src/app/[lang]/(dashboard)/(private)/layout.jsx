@@ -36,7 +36,7 @@ const Layout = async props => {
 
   return (
     <Providers direction={direction}>
-      <AuthGuard locale={lang}>
+      {/* <AuthGuard locale={lang}> */}
         <LayoutWrapper
           systemMode={systemMode}
           verticalLayout={
@@ -58,7 +58,7 @@ const Layout = async props => {
             <i className='ri-arrow-up-line' />
           </Button>
         </ScrollToTop>
-      </AuthGuard>
+      {/* </AuthGuard> */}
     </Providers>
   )
 }

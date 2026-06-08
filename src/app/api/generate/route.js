@@ -7,6 +7,7 @@ import { generateStandardBlogOutline, generateStandardBlogSection } from './serv
 import { generateYoutubeBlogOutline, generateYoutubeBlogSection } from './services/youtubeBlog'
 import { generateRewriteOutline, generateRewriteSection } from './services/rewrite'
 import { generateAmazonRoundupOutline, generateAmazonRoundupSection } from './services/amazonRoundUp'
+import { generateAmazonReviewOutline, generateAmazonReviewSection } from './services/amazonReview'
 
 
 export async function POST(request) {
@@ -35,6 +36,9 @@ export async function POST(request) {
         case 'amazon-roundup':
           result = await generateAmazonRoundupOutline(body, genAI);
           break;
+        case 'amazon-review':
+          result = await generateAmazonReviewOutline(body, genAI);
+          break;
         default:
           result = await generateStandardBlogOutline(body, genAI);
           break;
@@ -59,6 +63,9 @@ export async function POST(request) {
           break;
         case 'amazon-roundup':
           result = await generateAmazonRoundupSection(body, genAI);
+          break;
+        case 'amazon-review':
+          result = await generateAmazonReviewSection(body, genAI);
           break;
         default:
           result = await generateStandardBlogSection(body, genAI);

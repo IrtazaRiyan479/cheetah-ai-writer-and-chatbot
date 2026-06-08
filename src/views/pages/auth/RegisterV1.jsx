@@ -5,7 +5,7 @@ import { useState } from 'react'
 
 // Next Imports
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation' // Added useRouter
 
 // MUI Imports
 import Card from '@mui/material/Card'
@@ -18,6 +18,9 @@ import Checkbox from '@mui/material/Checkbox'
 import Button from '@mui/material/Button'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Divider from '@mui/material/Divider'
+import Alert from '@mui/material/Alert' // Added for error messages
+import CircularProgress from '@mui/material/CircularProgress' // Added for loading state
+import { signIn } from 'next-auth/react' // Add this import
 
 // Component Imports
 import Logo from '@components/layout/shared/Logo'
@@ -29,8 +32,15 @@ import { useImageVariant } from '@core/hooks/useImageVariant'
 import { getLocalizedUrl } from '@/utils/i18n'
 
 const RegisterV1 = ({ mode }) => {
-  // States
+  // UI States
   const [isPasswordShown, setIsPasswordShown] = useState(false)
+  const [error, setError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+
+  // Form States
+  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
 
   // Vars
   const darkImg = '/images/pages/auth-v1-mask-2-dark.png'
@@ -38,41 +48,107 @@ const RegisterV1 = ({ mode }) => {
 
   // Hooks
   const { lang: locale } = useParams()
+  const router = useRouter() // Added for redirection
   const authBackground = useImageVariant(mode, lightImg, darkImg)
+
   const handleClickShowPassword = () => setIsPasswordShown(show => !show)
 
+  // --- SUBMISSION HANDLER ---
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    setIsLoading(true)
+
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password })
+      })
+
+      const data = await res.json()
+
+      if (res.ok) {
+        // 2. Account created! Now Auto-Login
+        const signInRes = await signIn('credentials', {
+          redirect: false,
+          email: email,
+          password: password,
+        })
+
+        if (signInRes?.error) {
+          // If auto-login fails, send them to login page manually
+          router.push(getLocalizedUrl('/login1', locale))
+        } else {
+          // 3. Success! Redirect to your app (e.g., /writer)
+          router.push(getLocalizedUrl('/writer', locale))
+        }
+      }else {
+        // Registration failed
+        setError(data.error || 'Registration failed.')
+        setIsLoading(false)
+      }
+    } catch (err) {
+      setError('An unexpected error occurred.')
+      setIsLoading(false)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   return (
-    <div className='flex flex-col justify-center items-center min-bs-[100dvh] is-full relative p-6'>
-      <Card className='flex flex-col sm:is-[460px]'>
+    <div className='flex flex-col justify-center items-center min-bs-[100dvh] relative p-6'>
+      <Card className='flex flex-col sm:is-[450px]'>
         <CardContent className='p-6 sm:!p-12'>
-          <Link href={getLocalizedUrl('/', locale)} className='flex justify-center items-start mbe-6'>
+          <Link href={getLocalizedUrl('/', locale)} className='flex justify-center items-center mbe-6'>
             <Logo />
           </Link>
-          <Typography variant='h4'>Adventure starts here 🚀</Typography>
           <div className='flex flex-col gap-5'>
-            <Typography className='mbs-1'>Make your app management easy and fun!</Typography>
-            <form noValidate autoComplete='off' onSubmit={e => e.preventDefault()} className='flex flex-col gap-5'>
-              <TextField autoFocus fullWidth label='Username' />
-              <TextField fullWidth label='Email' />
+            <div>
+              <Typography variant='h4'>Adventure starts here 🚀</Typography>
+              <Typography className='mbs-1'>Make your app management easy and fun!</Typography>
+            </div>
+
+            {/* Display Error Message */}
+            {error && <Alert severity="error">{error}</Alert>}
+
+            <form noValidate autoComplete='off' onSubmit={handleSubmit} className='flex flex-col gap-5'>
+              <TextField
+                autoFocus
+                fullWidth
+                label='Username'
+                required
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
+              <TextField
+                fullWidth
+                label='Email'
+                type='email'
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
               <TextField
                 fullWidth
                 label='Password'
+                required
                 type={isPasswordShown ? 'text' : 'password'}
-                slotProps={{
-                  input: {
-                    endAdornment: (
-                      <InputAdornment position='end'>
-                        <IconButton
-                          size='small'
-                          edge='end'
-                          onClick={handleClickShowPassword}
-                          onMouseDown={e => e.preventDefault()}
-                        >
-                          <i className={isPasswordShown ? 'ri-eye-off-line' : 'ri-eye-line'} />
-                        </IconButton>
-                      </InputAdornment>
-                    )
-                  }
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position='end'>
+                      <IconButton
+                        size='small'
+                        edge='end'
+                        onClick={handleClickShowPassword}
+                        onMouseDown={e => e.preventDefault()}
+                      >
+                        <i className={isPasswordShown ? 'ri-eye-off-line' : 'ri-eye-line'} />
+                      </IconButton>
+                    </InputAdornment>
+                  )
                 }}
               />
               <FormControlLabel
@@ -86,8 +162,8 @@ const RegisterV1 = ({ mode }) => {
                   </>
                 }
               />
-              <Button fullWidth variant='contained' type='submit'>
-                Sign Up
+              <Button fullWidth variant='contained' type='submit' disabled={isLoading}>
+                {isLoading ? <CircularProgress size={24} color="inherit" /> : 'Sign Up'}
               </Button>
               <div className='flex justify-center items-center flex-wrap gap-2'>
                 <Typography>Already have an account?</Typography>
@@ -98,21 +174,6 @@ const RegisterV1 = ({ mode }) => {
                 >
                   Sign in instead
                 </Typography>
-              </div>
-              <Divider className='gap-3 text-textPrimary'>Or</Divider>
-              <div className='flex justify-center items-center gap-2'>
-                <IconButton size='small' className='text-facebook'>
-                  <i className='ri-facebook-fill' />
-                </IconButton>
-                <IconButton size='small' className='text-twitter'>
-                  <i className='ri-twitter-fill' />
-                </IconButton>
-                <IconButton size='small' className='text-textPrimary'>
-                  <i className='ri-github-fill' />
-                </IconButton>
-                <IconButton size='small' className='text-googlePlus'>
-                  <i className='ri-google-fill' />
-                </IconButton>
               </div>
             </form>
           </div>

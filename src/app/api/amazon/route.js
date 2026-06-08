@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
-    const { keyword, domain, partnerTag } = await request.json();
+    const { keyword, domain, trackingID } = await request.json();
 
     // ---------------------------------------------------------
     // 1. Get OAuth 2.0 Access Token from Creators API
@@ -43,7 +43,7 @@ export async function POST(request) {
       },
       body: JSON.stringify({
         keywords: keyword || 'running shoes',
-        partnerTag: partnerTag || 'babiescarrier-20',
+        partnerTag: 'babiescarrier-20',
         partnerType: 'Associates',
 
         resources: [
