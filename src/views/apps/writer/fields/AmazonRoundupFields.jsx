@@ -75,6 +75,7 @@ const AmazonRoundupFields = ({ settings, updateSetting }) => (
             onChange={(e) => updateSetting('numberOfProducts', e.target.value)}
           />
         </Grid>
+
     <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Amazon Tracking ID (Optional)</Typography>
       <TextField fullWidth size='small' placeholder='your-tag-20' value={settings.amazonTrackingId} onChange={(e) => updateSetting('amazonTrackingId', e.target.value)} />

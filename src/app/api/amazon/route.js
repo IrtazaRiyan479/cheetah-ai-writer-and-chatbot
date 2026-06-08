@@ -1,81 +1,72 @@
-// import { NextResponse } from 'next/server'
-
-// export async function POST(request) {
-//   try {
-//     const { keyword } = await request.json()
-
-//     if (!keyword) {
-//       return NextResponse.json({ error: 'Keyword or ASIN is required' }, { status: 400 })
-//     }
-
-//     // 1. Dynamically import the package using string concatenation to bypass Turbopack
-//     const amazonModule = await import('amazon' + '-paapi')
-//     const amazonPaapi = amazonModule.default
-
-//     const commonParameters = {
-//       AccessKey: process.env.AMAZON_ACCESS_KEY,
-//       SecretKey: process.env.AMAZON_SECRET_KEY,
-//       PartnerTag: process.env.AMAZON_PARTNER_TAG,
-//       PartnerType: 'Associates',
-//       Marketplace: 'www.amazon.com'
-//     }
-
-//     const requestParameters = {
-//       Keywords: keyword,
-//       SearchIndex: 'All',
-//       ItemCount: 3,
-//       Resources: [
-//         'ItemInfo.Title',
-//         'ItemInfo.Features',
-//         'Offers.Listings.Price',
-//         'Images.Primary.Large',
-//         'ItemInfo.ByLineInfo'
-//       ]
-//     }
-
-//     // 2. Execute the search using the dynamically loaded module
-//     const response = await amazonPaapi.SearchItems(commonParameters, requestParameters)
-
-//     // Map the complex Amazon response into a clean, usable array
-//     const products = response.SearchResult.Items.map(item => ({
-//       asin: item.ASIN,
-//       title: item.ItemInfo?.Title?.DisplayValue,
-//       url: item.DetailPageURL,
-//       imageUrl: item.Images?.Primary?.Large?.URL,
-//       price: item.Offers?.Listings?.[0]?.Price?.DisplayAmount || 'Price unavailable',
-//       features: item.ItemInfo?.Features?.DisplayValues || []
-//     }))
-
-//     return NextResponse.json({ success: true, products })
-
-//   } catch (error) {
-//     console.error('Amazon API Error:', error)
-//     return NextResponse.json({
-//       success: false,
-//       error: error.message || 'Failed to fetch from Amazon'
-//     }, { status: 500 })
-//   }
-// }
-
-// --- API ROUTE: /api/amazon --- Temporarily simplified to return mock data due to build issues with the Amazon package. The original implementation is commented out above for reference and future reactivation once the integration is stable.
-import { NextResponse } from 'next/server'
+import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
-    // Temporarily bypass the Amazon package to unblock the build
-    const mockProducts = [
-      {
-        asin: 'B000000000',
-        title: 'Mock Amazon Product (Integration Paused)',
-        url: 'https://amazon.com',
-        imageUrl: '',
-        price: '$99.99',
-        features: ['Feature 1', 'Feature 2']
-      }
-    ]
+    const { keyword, domain, partnerTag } = await request.json();
 
-    return NextResponse.json({ success: true, products: mockProducts })
+    // ---------------------------------------------------------
+    // 1. Get OAuth 2.0 Access Token from Creators API
+    // ---------------------------------------------------------
+    const tokenRes = await fetch('https://api.amazon.com/auth/o2/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: 'amzn1.application-oa2-client.becc27b1cae54ec6b6950c8ea1101b8b',
+        client_secret: 'amzn1.oa2-cs.v1.6003e9bc35967b3e96fcc2a3ac969c16cfb8b7cd5fdec07de734bbc89f6ff12c',
+        scope: 'creatorsapi::default'
+      })
+    });
+
+    const tokenData = await tokenRes.json();
+
+    if (!tokenRes.ok) {
+      return NextResponse.json({
+        error: 'Authentication Failed',
+        details: tokenData
+      }, { status: tokenRes.status });
+    }
+
+    const accessToken = tokenData.access_token;
+
+    // ---------------------------------------------------------
+    // 2. Fetch Products using the Access Token
+    // ---------------------------------------------------------
+    const searchRes = await fetch('https://creatorsapi.amazon/catalog/v1/searchItems', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json; charset=utf-8',
+        'x-marketplace': domain || 'www.amazon.com',
+      },
+      body: JSON.stringify({
+        keywords: keyword || 'running shoes',
+        partnerTag: partnerTag || 'babiescarrier-20',
+        partnerType: 'Associates',
+
+        resources: [
+          'images.primary.large',
+          'itemInfo.title',
+          'offersV2.listings.price'
+        ]
+      })
+    });
+
+    const searchData = await searchRes.json();
+
+    if (!searchRes.ok) {
+       return NextResponse.json({
+         error: 'SearchItems Failed',
+         details: searchData
+       }, { status: searchRes.status });
+    }
+
+    return NextResponse.json({ success: true, data: searchData });
+
   } catch (error) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+    console.error('Amazon API Error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

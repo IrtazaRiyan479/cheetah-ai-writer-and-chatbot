@@ -115,7 +115,7 @@ const OutlineEditor = ({ settings, setStep, outline, setOutline }) => {
           <CardContent className='flex flex-col gap-4'>
             {outline.map((item, index) => (
               <div
-                key={item.id}
+                key={`${index}-${item.text || 'empty'}`}
                 className={`flex gap-3 items-start transition-all ${item.type === 'h3' ? 'ml-8' : ''}`}
                 draggable
                 onDragStart={(e) => handleDragStart(e, index)}

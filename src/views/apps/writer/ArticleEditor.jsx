@@ -149,6 +149,7 @@ Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }).extend({
   }),
   Placeholder.configure({ placeholder: 'Document ready.' }),
   Image.configure({
+    inline: true,
     HTMLAttributes: {
       class: 'rounded-xl max-w-full sm:max-w-2xl mx-auto block shadow-md my-8 aspect-video object-cover'
     }

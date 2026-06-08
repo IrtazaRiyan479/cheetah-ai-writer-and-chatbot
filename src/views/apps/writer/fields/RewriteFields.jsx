@@ -1,4 +1,5 @@
 import Grid from '@mui/material/Grid'
+import { useState, useEffect } from 'react'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import FormControl from '@mui/material/FormControl'
@@ -14,19 +15,95 @@ import OutlinedInput from '@mui/material/OutlinedInput'
 import Chip from '@mui/material/Chip'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
-import MediaUploader from '../MediaUploader' // Adjust the path based on where you saved it
+import CircularProgress from '@mui/material/CircularProgress'
 
-const RewriteFields = ({ settings, updateSetting }) => (
+const RewriteFields = ({ settings, updateSetting }) => {
+  const [statusText, setStatusText] = useState('');
+  const [statusColor, setStatusColor] = useState('text-textSecondary');
+  const [isValidating, setIsValidating] = useState(false);
+
+  // --- Auto-Validate Article URL ---
+  useEffect(() => {
+    const validateUrl = async () => {
+      const url = settings.articleUrlToRewrite;
+
+      // Clear status if empty or not a full URL
+      if (!url || !url.startsWith('http')) {
+        setStatusText('');
+        return;
+      }
+
+      setIsValidating(true);
+      setStatusText('Validating article URL...');
+      setStatusColor('text-textSecondary');
+
+      try {
+        const res = await fetch('/api/article-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          // Success text styling
+          setStatusText(`Successfully fetched: ${data.title}`);
+          setStatusColor('text-success');
+          updateSetting('targetKeyword', data.title);
+        } else {
+          // Error text styling
+          setStatusText('Failed to fetch article data. Check URL or try another.');
+          setStatusColor('text-error');
+        }
+      } catch (error) {
+        setStatusText('Error connecting to the validation service.');
+        setStatusColor('text-error');
+      } finally {
+        setIsValidating(false);
+      }
+    };
+
+    // Debounce to wait 800ms after the user stops typing before fetching
+    const timeoutId = setTimeout(() => {
+      validateUrl();
+    }, 800);
+
+    return () => clearTimeout(timeoutId);
+  }, [settings.articleUrlToRewrite]);
+
+  return (
   <>
     <Grid size={{ xs: 12 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Article URL to Rewrite</Typography>
-      <TextField fullWidth size='small' placeholder='https://example.com/article' value={settings.articleUrlToRewrite} onChange={(e) => updateSetting('articleUrlToRewrite', e.target.value)} />
-    </Grid>
+        <Typography variant='subtitle2' className='font-medium mbe-1'>Article URL to Rewrite</Typography>
+        <TextField
+          fullWidth
+          size='small'
+          placeholder='https://example.com/article'
+          value={settings.articleUrlToRewrite || ''}
+          onChange={(e) => updateSetting('articleUrlToRewrite', e.target.value)}
+          InputProps={{
+            endAdornment: isValidating ? <CircularProgress size={20} color="inherit" /> : null,
+          }}
+        />
+        {statusText && (
+          <Typography variant='caption' className={`mt-1 block ${statusColor}`}>
+            {statusText}
+          </Typography>
+        )}
+      </Grid>
 
-    <Grid size={{ xs: 12 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Target Keyword (Optional)</Typography>
-      <TextField fullWidth size='small' placeholder='e.g. best running shoes for flat feet' value={settings.targetKeyword} onChange={(e) => updateSetting('targetKeyword', e.target.value)} />
-    </Grid>
+      {/* 2. TARGET KEYWORD */}
+      <Grid size={{ xs: 12 }}>
+        <Typography variant='subtitle2' className='font-medium mbe-1'>Target Keyword (Optional)</Typography>
+        <TextField
+          fullWidth
+          size='small'
+          placeholder='e.g. best running shoes for flat feet'
+          value={settings.targetKeyword || ''}
+          onChange={(e) => updateSetting('targetKeyword', e.target.value)}
+        />
+      </Grid>
 
     <Grid size={{ xs: 12 }}>
       <FormControlLabel control={<Switch checked={settings.enableRewriting} onChange={(e) => updateSetting('enableRewriting', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable Rewriting</Typography>} />
@@ -220,4 +297,6 @@ const RewriteFields = ({ settings, updateSetting }) => (
     </Grid>
   </>
 )
+
+}
 export default RewriteFields

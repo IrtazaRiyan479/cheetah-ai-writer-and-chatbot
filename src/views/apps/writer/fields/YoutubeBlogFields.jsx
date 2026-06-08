@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import Grid from '@mui/material/Grid'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
@@ -13,24 +14,88 @@ import ListItemText from '@mui/material/ListItemText'
 import OutlinedInput from '@mui/material/OutlinedInput'
 import Chip from '@mui/material/Chip'
 import { languages } from '@/configs/languages'
-import { countries } from '@/configs/countries'
-import MediaUploader from '../MediaUploader' // Adjust the path based on where you saved it
+import CircularProgress from '@mui/material/CircularProgress'
 
-const YoutubeBlogFields = ({ settings, updateSetting }) => (
+const YoutubeBlogFields = ({ settings, updateSetting }) => {
+  const [statusText, setStatusText] = useState('');
+  const [statusColor, setStatusColor] = useState('text-textSecondary');
+  const [isValidating, setIsValidating] = useState(false);
+
+  // Auto-validate YouTube URL when it changes
+  useEffect(() => {
+    const validateUrl = async () => {
+      const url = settings.youtubeUrl;
+      if (!url || !url.includes('youtu')) {
+        setStatusText('');
+        return;
+      }
+
+      setIsValidating(true);
+      setStatusText('Connecting to YouTube...');
+      setStatusColor('text-textSecondary');
+
+      try {
+        const res = await fetch('/api/youtube-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          setStatusText(`✓ Success: Linked to "${data.title}"`);
+          setStatusColor('text-success'); // Tailwind green class
+          // Auto-fill the target keyword with the video title if it's empty!
+          if (!settings.targetKeyword) updateSetting('targetKeyword', data.title);
+        } else {
+          setStatusText(`✕ Error: ${data.error}`);
+          setStatusColor('text-error'); // Tailwind red class
+        }
+      } catch (error) {
+        setStatusText('✕ Error connecting to validation server.');
+        setStatusColor('text-error');
+      } finally {
+        setIsValidating(false);
+      }
+    };
+
+    // Debounce the check so it doesn't fire on every single keystroke
+    const timeoutId = setTimeout(validateUrl, 800);
+    return () => clearTimeout(timeoutId);
+  }, [settings.youtubeUrl]);
+
+  return (
   <>
-    <Grid size={{ xs: 12 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>YouTube URL</Typography>
-      <TextField fullWidth size='small' placeholder='https://youtube.com/watch?v=...' value={settings.youtubeUrl} onChange={(e) => updateSetting('youtubeUrl', e.target.value)} />
-    </Grid>
+<Grid size={{ xs: 12 }}>
+        <Typography variant='subtitle2' className='font-medium mbe-1'>YouTube URL</Typography>
+        <TextField
+          fullWidth
+          size='small'
+          placeholder='https://youtube.com/watch?v=...'
+          value={settings.youtubeUrl}
+          onChange={(e) => updateSetting('youtubeUrl', e.target.value)}
+          error={statusColor === 'text-error'}
+        />
+        {/* Dynamic Status Text */}
+        <div className='mt-2 flex items-center gap-2 min-h-[24px]'>
+          {isValidating && <CircularProgress size={14} color="inherit" />}
+          <Typography variant='caption' className={`font-medium ${statusColor}`}>
+            {statusText}
+          </Typography>
+        </div>
+      </Grid>
 
-    <Grid size={{ xs: 12 }}>
-      <div className='flex flex-col'>
-        <FormControlLabel control={<Switch checked={settings.enableCaptionRewriting} onChange={(e) => updateSetting('enableCaptionRewriting', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable Caption Rewriting</Typography>} />
-        <Typography variant='caption' color='text.secondary' className='ml-[42px] -mt-1 block mbe-2'>
-          When enabled, it will rewrite the captions as an article. It is cheaper and more accurate, but won't be formatted like a standard blog post.
-        </Typography>
-      </div>
-    </Grid>
+      <Grid size={{ xs: 12 }}>
+        <div className='flex flex-col'>
+          <FormControlLabel
+            control={<Switch checked={settings.enableCaptionRewriting} onChange={(e) => updateSetting('enableCaptionRewriting', e.target.checked)} />}
+            label={<Typography className='font-medium text-textPrimary'>Directly Rewrite Captions</Typography>}
+          />
+          <Typography variant='caption' className='text-textSecondary ml-10 -mt-2'>
+            If ON, the AI acts like a transcriber formatting spoken words into an article.
+          </Typography>
+        </div>
+      </Grid>
 
     <Grid size={{ xs: 12 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Automatic Internal Linking</Typography>
@@ -134,4 +199,5 @@ const YoutubeBlogFields = ({ settings, updateSetting }) => (
     </Grid>
   </>
 )
+}
 export default YoutubeBlogFields
