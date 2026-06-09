@@ -146,7 +146,7 @@ const Profile = () => {
         <Grid container spacing={6}>
 
           {/* STEP 1: DOMAIN INPUT */}
-          <Grid item xs={12}>
+          <Grid size={{ xs: 12 }}>
             <Box className="flex flex-col md:flex-row gap-4 items-stretch">
               <TextField
                 fullWidth
@@ -155,7 +155,7 @@ const Profile = () => {
                 value={domain}
                 onChange={(e) => setDomain(e.target.value)}
                 disabled={isCrawling || isAnalyzing}
-                InputProps={{
+                inputprops={{
                   startAdornment: <LanguageIcon color="action" className="mr-2" />,
                 }}
               />
@@ -173,7 +173,7 @@ const Profile = () => {
 
           {/* STEP 2: CRAWLED PAGES TABLE */}
           {crawledPages.length > 0 && suggestions.length === 0 && (
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Typography variant="h6" className="font-bold mb-4">
                 Pages Discovered ({crawledPages.length})
               </Typography>
@@ -248,7 +248,7 @@ const Profile = () => {
 
           {/* STEP 3: ANALYSIS RESULTS */}
           {suggestions.length > 0 && (
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Box className="flex items-center gap-2 mb-6">
                 <CheckCircleIcon color="success" fontSize="large" />
                 <Typography variant="h5" className="font-bold">
