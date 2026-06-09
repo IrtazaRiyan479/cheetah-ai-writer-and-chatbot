@@ -1,175 +1,190 @@
 'use client'
 
-// React Imports
 import { useState } from 'react'
 
 // MUI Imports
-import Grid from '@mui/material/Grid'
-import Card from '@mui/material/Card'
-import CardContent from '@mui/material/CardContent'
 import Typography from '@mui/material/Typography'
-import TextField from '@mui/material/TextField'
 import Button from '@mui/material/Button'
-import Select from '@mui/material/Select'
-import MenuItem from '@mui/material/MenuItem'
-import FormControl from '@mui/material/FormControl'
-import InputLabel from '@mui/material/InputLabel'
-import Checkbox from '@mui/material/Checkbox'
-import FormControlLabel from '@mui/material/FormControlLabel'
-import Alert from '@mui/material/Alert'
-import AlertTitle from '@mui/material/AlertTitle'
-import Avatar from '@mui/material/Avatar'
+import Box from '@mui/material/Box'
 import Divider from '@mui/material/Divider'
+import LinearProgress from '@mui/material/LinearProgress'
+import IconButton from '@mui/material/IconButton'
+import Chip from '@mui/material/Chip'
+import Paper from '@mui/material/Paper'
+import Tooltip from '@mui/material/Tooltip'
+
+// MUI Icons
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 
 const AccountSettings = () => {
-  // State for the deactivation checkbox
-  const [isConfirmed, setIsConfirmed] = useState(false)
-
-  // State for form fields (Add your own state handlers as needed)
-  const [formData, setFormData] = useState({
-    firstName: 'John',
-    lastName: 'Doe',
-    email: 'john.doe@example.com',
-    organization: 'ThemeSelection',
-    phoneNumber: '+1 (917) 543-9876',
-    address: '123 Main St, New York, NY 10001',
-    state: 'New York',
-    zipCode: '10001',
-    country: 'USA',
-    language: 'English',
-    timezone: '(GMT-11:00) International Date Line West'
+  const [userData] = useState({
+    email: 'raoahsn84@gmail.com',
+    userId: 'bce72e27-c15a-434d-bb2c-b05aae954104',
+    supportPin: '3457',
+    wordsLimit: '5,000 / 5,000 words',
+    chatsLimit: '25 / 25 chats'
   })
 
   return (
-    <Grid container spacing={6}>
-      {/* Top Details Card */}
-      <Grid item xs={12}>
-        <Card>
-          <CardContent className='flex flex-col gap-6'>
-            {/* Profile Picture Section */}
-            <div className='flex items-center gap-5'>
-              <Avatar
-                src='/images/avatars/1.png'
-                alt='Profile Pic'
-                className='is-[100px] bs-[100px] rounded'
-              />
-              <div className='flex flex-col gap-3'>
-                <div className='flex items-center gap-3 flex-wrap'>
-                  <Button variant='contained' component='label'>
-                    Upload New Photo
-                    <input hidden accept='image/png, image/jpeg' type='file' />
-                  </Button>
-                  <Button variant='outlined' color='secondary'>
-                    Reset
-                  </Button>
-                </div>
-                <Typography variant='body2'>
-                  Allowed PNG or JPEG. Max size of 800K.
+    <Box sx={{ maxWidth: '900px', p: { xs: 2, md: 4 } }}>
+      <Typography variant="h4" component="h2" sx={{ fontWeight: 'bold', mb: 5 }}>
+        Account Settings
+      </Typography>
+
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+
+        {/* Profile Section */}
+        <Box>
+          <Typography variant="h6" component="h3" sx={{ fontWeight: 600, mb: 2 }}>
+            Profile
+          </Typography>
+          <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
+
+            {/* Email Row */}
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, p: 3, gap: 2 }}>
+              <Box>
+                <Typography variant="body2" color="text.secondary" fontWeight={500} mb={0.5}>
+                  Email Address
                 </Typography>
-              </div>
-            </div>
+                <Typography variant="body1" fontWeight={600}>
+                  {userData.email}
+                </Typography>
+              </Box>
+              <Button variant="contained" disableElevation sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}>
+                Update Email
+              </Button>
+            </Box>
 
             <Divider />
 
-            {/* Form Fields Section */}
-            <form onSubmit={e => e.preventDefault()}>
-              <Grid container spacing={5}>
-                <Grid item xs={12} sm={6}>
-                  <TextField fullWidth label='First Name' value={formData.firstName} />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField fullWidth label='Last Name' value={formData.lastName} />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField fullWidth label='E-mail' value={formData.email} />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField fullWidth label='Organization' value={formData.organization} />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField fullWidth label='Phone Number' value={formData.phoneNumber} />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField fullWidth label='Address' value={formData.address} />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField fullWidth label='State' value={formData.state} />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField fullWidth label='Zip Code' value={formData.zipCode} />
-                </Grid>
+            {/* User ID Row */}
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, p: 3, gap: 2 }}>
+              <Box>
+                <Typography variant="body2" color="text.secondary" fontWeight={500} mb={0.5}>
+                  User ID
+                </Typography>
+                <Typography variant="body1" sx={{ fontFamily: 'monospace', fontWeight: 500, bgcolor: 'action.hover', px: 1, py: 0.5, borderRadius: 1 }}>
+                  {userData.userId}
+                </Typography>
+              </Box>
+              <Tooltip title="Copy ID">
+                <IconButton color="primary" sx={{ bgcolor: 'primary.50' }}>
+                  <ContentCopyIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
 
-                {/* Dropdowns */}
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>Country</InputLabel>
-                    <Select label='Country' value={formData.country}>
-                      <MenuItem value='USA'>USA</MenuItem>
-                      <MenuItem value='UK'>UK</MenuItem>
-                      <MenuItem value='Australia'>Australia</MenuItem>
-                      <MenuItem value='Germany'>Germany</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>Language</InputLabel>
-                    <Select label='Language' value={formData.language}>
-                      <MenuItem value='English'>English</MenuItem>
-                      <MenuItem value='Spanish'>Spanish</MenuItem>
-                      <MenuItem value='French'>French</MenuItem>
-                      <MenuItem value='German'>German</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>Timezone</InputLabel>
-                    <Select label='Timezone' value={formData.timezone}>
-                      <MenuItem value='(GMT-11:00) International Date Line West'>(GMT-11:00) International Date Line West</MenuItem>
-                      <MenuItem value='(GMT-11:00) Midway Island'>(GMT-11:00) Midway Island</MenuItem>
-                      <MenuItem value='(GMT-10:00) Hawaii'>(GMT-10:00) Hawaii</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
+            <Divider />
 
-                {/* Form Action Buttons */}
-                <Grid item xs={12} className='flex gap-4'>
-                  <Button variant='contained'>Save Changes</Button>
-                  <Button variant='outlined' color='secondary'>Discard</Button>
-                </Grid>
-              </Grid>
-            </form>
-          </CardContent>
-        </Card>
-      </Grid>
+            {/* Support PIN Row */}
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, p: 3, gap: 2 }}>
+              <Box>
+                <Typography variant="body2" color="text.secondary" fontWeight={500} mb={0.5}>
+                  Support PIN
+                </Typography>
+                <Typography variant="body1" fontWeight={600}>
+                  {userData.supportPin}
+                </Typography>
+              </Box>
+            </Box>
 
-      {/* Delete Account Card */}
-      <Grid item xs={12}>
-        <Card>
-          <CardContent className='flex flex-col gap-4'>
-            <Typography variant='h5'>Delete Account</Typography>
+          </Paper>
+        </Box>
 
-            <Alert severity='warning' icon={false} className='bg-warningLight text-warning'>
-              <AlertTitle className='font-bold mbe-2'>Are you sure you want to delete your account?</AlertTitle>
-              Once you delete your account, there is no going back. Please be certain.
-            </Alert>
+        {/* Beta Features Section */}
+        <Box>
+          <Typography variant="h6" component="h3" sx={{ fontWeight: 600, mb: 2 }}>
+            Beta Features
+          </Typography>
+          <Paper variant="outlined" sx={{ borderRadius: 3, p: 3, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 2 }}>
+            <Box>
+              <Typography variant="body2" color="text.secondary" fontWeight={500} mb={1}>
+                Program Status
+              </Typography>
+              <Chip label="Disabled" size="small" sx={{ fontWeight: 600, borderRadius: 1.5 }} />
+            </Box>
+            <Button variant="outlined" sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}>
+              Manage Features
+            </Button>
+          </Paper>
+        </Box>
 
-            <div className='flex flex-col gap-4'>
-              <FormControlLabel
-                control={<Checkbox checked={isConfirmed} onChange={e => setIsConfirmed(e.target.checked)} />}
-                label='I confirm my account deactivation'
+        {/* Subscription Section */}
+        <Box>
+          <Typography variant="h6" component="h3" sx={{ fontWeight: 600, mb: 2 }}>
+            Subscription
+          </Typography>
+          <Paper variant="outlined" sx={{ borderRadius: 3, p: 3, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 2 }}>
+            <Box>
+              <Typography variant="body2" color="text.secondary" fontWeight={500} mb={1}>
+                Current Plan
+              </Typography>
+              <Chip
+                label="Inactive"
+                size="small"
+                sx={{ fontWeight: 600, borderRadius: 1.5, bgcolor: 'error.main', color: 'error.contrastText' }}
               />
-              <div>
-                <Button variant='contained' color='error' disabled={!isConfirmed}>
-                  Deactivate Account
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </Grid>
-    </Grid>
+            </Box>
+            <Button variant="contained" color="primary" disableElevation sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}>
+              View Pricing
+            </Button>
+          </Paper>
+        </Box>
+
+        {/* Usage Section */}
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="h6" component="h3" sx={{ fontWeight: 600, mb: 2 }}>
+            Current Usage
+          </Typography>
+          <Paper variant="outlined" sx={{ borderRadius: 3, p: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+
+            {/* Words Progress */}
+            <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                <Typography variant="subtitle2" fontWeight={600}>
+                  Words Generated
+                </Typography>
+                <Typography variant="body2" color="text.secondary" fontWeight={500}>
+                  {userData.wordsLimit}
+                </Typography>
+              </Box>
+              <LinearProgress
+                variant="determinate"
+                value={100}
+                color="error"
+                sx={{ height: 8, borderRadius: 4, bgcolor: 'action.hover' }}
+              />
+            </Box>
+
+            {/* Chats Progress */}
+            <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="subtitle2" fontWeight={600}>
+                    Active Chats
+                  </Typography>
+                  <Tooltip title="Total chat threads initiated this billing cycle">
+                    <InfoOutlinedIcon sx={{ fontSize: 18, color: 'text.secondary', cursor: 'pointer' }} />
+                  </Tooltip>
+                </Box>
+                <Typography variant="body2" color="text.secondary" fontWeight={500}>
+                  {userData.chatsLimit}
+                </Typography>
+              </Box>
+              <LinearProgress
+                variant="determinate"
+                value={100}
+                color="error"
+                sx={{ height: 8, borderRadius: 4, bgcolor: 'action.hover' }}
+              />
+            </Box>
+
+          </Paper>
+        </Box>
+
+      </Box>
+    </Box>
   )
 }
 

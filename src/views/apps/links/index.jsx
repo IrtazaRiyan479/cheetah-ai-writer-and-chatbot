@@ -32,15 +32,6 @@ const Settings = ({ tabContentList }) => {
                 {tabContentList[activeTab]}
               </TabPanel>
             </Grid>
-            <Grid size={{ xs: 12 }}>
-              <div className='flex justify-end gap-4'>
-                <span className='cursor-not-allowed'>
-                  <Button variant='contained' disabled>
-                    Create
-                  </Button>
-                </span>
-              </div>
-            </Grid>
           </Grid>
         </Grid>
       </Grid>
