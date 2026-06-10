@@ -307,14 +307,14 @@ export async function getRealTimeInstruction(useRealTimeSearchData, realTimeData
 export function getExternalLinkInstruction(externalLinks) {
         let extLinkInstruction = '';
       if (externalLinks && externalLinks.length > 0) {
-        extLinkInstruction = `\nCRITICAL EXTERNAL LINKING: Naturally weave 3 or 4 of these high-authority external URLs into the text using relevant anchor text: ${externalLinks.join(', ')}. Do not force them if they don't fit perfectly.`;
+        extLinkInstruction = `\nCRITICAL EXTERNAL LINKING: Naturally weave 3 or 4 of these high-authority external URLs into the text using properly formatted Markdown links (e.g., [anchor text](URL)). URLs to use: ${externalLinks.join(', ')}. Do not force them if they don't fit perfectly.`;
       }
       return extLinkInstruction;
     }
 
-export async function getLinkInstruction(internalLinks) {
+export function getLinkInstruction(internalLinks) {
         const linkInstruction = internalLinks && internalLinks.length > 0
-        ? `\nCRITICAL INTERNAL LINKING: Naturally integrate 1 or 2 of the following URLs into your paragraphs using highly relevant, descriptive anchor text. Do not force them if they don't fit perfectly. URLs to use: ${internalLinks.join(', ')}`
+        ? `\nCRITICAL INTERNAL LINKING: Naturally integrate 1 or 2 of the following URLs into your paragraphs using properly formatted Markdown links (e.g., [anchor text](URL)). URLs to use: ${internalLinks.join(', ')}. Do not force them if they don't fit perfectly.`
         : '';
         return linkInstruction;
 }

@@ -43,7 +43,7 @@ export async function POST(request) {
       },
       body: JSON.stringify({
         keywords: keyword || 'running shoes',
-        partnerTag: 'babiescarrier-20',
+        partnerTag: trackingID || 'babiescarrier-20',
         partnerType: 'Associates',
 
         resources: [

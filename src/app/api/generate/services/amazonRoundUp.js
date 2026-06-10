@@ -139,7 +139,7 @@ For "product" sections, you MUST include the rich product data provided to you u
  * GENERATOR 2: Section Content Generator
  */
 export async function generateAmazonRoundupSection(body, genAI) {
-  const { heading, text, section = {}, articleTitle, outlineContext, settings = {}, targetKeyword } = body;
+  const { heading, text, section = {}, articleTitle, outlineContext, settings = {}, targetKeyword, internalLinks, externalLinks } = body;
 
   const {
     model,
@@ -147,8 +147,6 @@ export async function generateAmazonRoundupSection(body, genAI) {
     improveReadability,
     pointOfView,
     toneOfVoice,
-    internalLinks = [],
-    externalLinks = []
   } = settings;
 
   // Automatically fetch the data again so the section generator knows about the products statelessly
@@ -164,12 +162,12 @@ export async function generateAmazonRoundupSection(body, genAI) {
   const toneInstruction = getToneInstruction(toneOfVoice);
   const povInstruction = getPovInstruction(pointOfView);
   const readabilityInstruction = getReadabilityInstruction(improveReadability);
-  const seoInstruction = getSeoInstruction(targetKeyword);
+  const seoInstruction = await getSeoInstruction(targetKeyword);
 
   let linkInstruction = '';
   let extLinkInstruction = '';
   if (activeSectionType === 'intro' || activeSectionType === 'buying_guide') {
-    linkInstruction = await getLinkInstruction(internalLinks);
+    linkInstruction = getLinkInstruction(internalLinks);
     extLinkInstruction = getExternalLinkInstruction(externalLinks);
   }
 

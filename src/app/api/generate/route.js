@@ -8,12 +8,13 @@ import { generateYoutubeBlogOutline, generateYoutubeBlogSection } from './servic
 import { generateRewriteOutline, generateRewriteSection } from './services/rewrite'
 import { generateAmazonRoundupOutline, generateAmazonRoundupSection } from './services/amazonRoundUp'
 import { generateAmazonReviewOutline, generateAmazonReviewSection } from './services/amazonReview'
+import { getBaseSystemInstruction } from './utils/helpers'
 
 
 export async function POST(request) {
   try {
    const body = await request.json();
-    const { mode, prompt, settings = {} } = body;
+    const { mode, prompt, settings = {}, history = [] } = body;
     const { type } = settings;
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -77,11 +78,34 @@ export async function POST(request) {
     if (!prompt) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 })
     }
+
     const defaultModel = genAI.getGenerativeModel({
-      model: model || 'gemini-3.1-flash-lite',
-      systemInstruction: baseSystemInstruction
-    })
-    const result = await defaultModel.generateContent(prompt)
+      model: 'gemini-3.1-flash-lite',
+      systemInstruction: getBaseSystemInstruction()
+    });
+
+    let cleanHistory = [];
+    let lastRole = null;
+
+    for (const msg of history) {
+      const role = msg.senderId === 'ai-assistant' ? 'model' : 'user';
+
+      if (cleanHistory.length === 0 && role === 'model') continue;
+
+      if (role !== lastRole) {
+        cleanHistory.push({ role: role, parts: [{ text: msg.message }] });
+        lastRole = role;
+      } else {
+        cleanHistory[cleanHistory.length - 1].parts[0].text += `\n\n${msg.message}`;
+      }
+    }
+
+    const chat = defaultModel.startChat({
+      history: cleanHistory
+    });
+
+    const result = await chat.sendMessage(prompt);
+
     return NextResponse.json({ success: true, text: result.response.text() })
 
   } catch (error) {

@@ -86,11 +86,13 @@ export async function generateListicleSection(body, genAI) {
       subheadings,
       sectionIndex,
       uploadedMedia,
-      settings = {}
+      settings = {},
+      externalLinks,
+    internalLinks,
     } = body;
 
         const {model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice,
-          pointOfView, useRealTimeSearchData, realTimeDataSource, externalLinks, internalLinks, deepSearch, improveReadability, seoOptimization, manualKeywords, aiImagesAndVideos, listItemPrompt, language, country} = settings;
+          pointOfView, useRealTimeSearchData, realTimeDataSource, deepSearch, improveReadability, seoOptimization, manualKeywords, aiImagesAndVideos, listItemPrompt, language, country} = settings;
   const isCoreListItem = (!subheadings || subheadings.length === 0);
         const listPromptInject = isCoreListItem && listItemPrompt
           ? `\nSPECIAL LIST ITEM REQUIREMENT: ${listItemPrompt}`
@@ -116,10 +118,10 @@ export async function generateListicleSection(body, genAI) {
 
   const sectionModel = genAI.getGenerativeModel(modelConfig);
 
-  let realTimeInstruction = getRealTimeInstruction(useRealTimeSearchData, realTimeDataSource, articleTitle, targetKeyword, heading);
+  let realTimeInstruction = await getRealTimeInstruction(useRealTimeSearchData, realTimeDataSource, articleTitle, targetKeyword, heading);
   let extLinkInstruction = getExternalLinkInstruction(externalLinks);
   let linkInstruction = getLinkInstruction(internalLinks);
-  let seoInstruction = getSeoInstruction(seoOptimization, manualKeywords, targetKeyword);
+  let seoInstruction = await getSeoInstruction(seoOptimization, manualKeywords, targetKeyword);
   let { mediaInstruction, assignedMediaElement } = await getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI);
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
   let povInstruction = getPovInstruction(pointOfView);

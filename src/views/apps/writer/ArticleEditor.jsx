@@ -334,11 +334,12 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
             });
 
             // B. TABLES
+            cleanMd = cleanMd.replace(/:\-\-+/g, '').replace(/\-\-+:/g, '');
             cleanMd = cleanMd.replace(/(?:\|.*\|\n)+/g, (match) => {
               const rows = match.trim().split('\n');
               let html = '<table><tbody>';
               rows.forEach((row, index) => {
-                if (row.match(/^\|?[\s:-]+\|?$/)) return; // Skip markdown separator row
+                if (row.match(/^\|?[\s:|-]+\|?$/)) return;
                 const isHeader = index === 0;
                 const tag = isHeader ? 'th' : 'td';
                 const cells = row.split('|').map(c => c.trim()).filter((c, i, arr) => !(i === 0 && c === '') && !(i === arr.length - 1 && c === ''));

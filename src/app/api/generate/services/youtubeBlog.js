@@ -84,14 +84,16 @@ export async function generateYoutubeBlogSection(body, genAI) {
     subheadings,
     fetchedTranscript,
     fetchedVideoTitle,
-    settings = {}
+    settings = {},
+    externalLinks,
+    internalLinks,
   } = body;
 
   let transcriptText = fetchedTranscript || '';
 
   const {
     model, targetKeyword, toneOfVoice, customToneOfVoice,
-    pointOfView, useRealTimeSearchData, realTimeDataSource, internalLinks,
+    pointOfView, useRealTimeSearchData, realTimeDataSource,
     seoOptimization, manualKeywords, improveReadability, enableCaptionRewriting, deepSearch, language, country
   } = settings;
 
@@ -118,7 +120,7 @@ export async function generateYoutubeBlogSection(body, genAI) {
   const sectionModel = genAI.getGenerativeModel(modelConfig);
 
   // 3. Ensuring helper arguments match your helpers.js signature
-  let linkInstruction = await getLinkInstruction(internalLinks);
+  let linkInstruction = getLinkInstruction(internalLinks);
   let seoInstruction = await getSeoInstruction(seoOptimization, manualKeywords, targetKeyword);
 
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);

@@ -54,7 +54,7 @@ const ChatContent = props => {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: userText })
+        body: JSON.stringify({ prompt: userText, history: messages })
       })
 
       const data = await res.json()

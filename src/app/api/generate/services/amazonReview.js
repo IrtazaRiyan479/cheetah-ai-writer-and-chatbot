@@ -95,7 +95,9 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     sectionIndex,
     outlineContext,
     settings,
-    amazonProductData // Optional: Pass in data from your route.js Amazon API fetch
+    amazonProductData,
+    externalLinks,
+    internalLinks,
   } = sectionData;
 
   const {
@@ -108,8 +110,6 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     customToneOfVoice,
     pointOfView,
     improveReadability,
-    automaticExternalLinks,
-    internalLinks
   } = settings;
 
   // Now genAI is properly defined and this will not crash!
@@ -119,9 +119,9 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
 
   // Fetch Instructions from Helpers
   let realTimeInstruction = await getRealTimeInstruction(settings.realTimeDataSource, articleTitle, heading, targetKeyword);
-  let extLinkInstruction = getExternalLinkInstruction(automaticExternalLinks);
-  let linkInstruction = await getLinkInstruction(internalLinks);
-  let seoInstruction = getSeoInstruction(targetKeyword);
+  let extLinkInstruction = getExternalLinkInstruction(externalLinks);
+  let linkInstruction = getLinkInstruction(internalLinks);
+  let seoInstruction = await getSeoInstruction(targetKeyword);
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
 
   // Force First-Person POV if First-Hand Experience is enabled

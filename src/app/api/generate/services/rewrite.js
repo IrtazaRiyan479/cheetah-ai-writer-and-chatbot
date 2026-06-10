@@ -73,12 +73,12 @@ export async function generateRewriteOutline(body, genAI) {
 
 
 export async function generateRewriteSection(body, genAI) {
-  const { prompt, settings } = body;
+  const { prompt, settings, externalLinks,
+    internalLinks, } = body;
   const {
     model, targetKeyword, language, country, articleUrlToRewrite,
     heading, subheadings, sectionIndex, outlineContext, articleTitle,
-    toneOfVoice, customToneOfVoice, pointOfView, improveReadability,
-    automaticExternalLinks, internalLinks
+    toneOfVoice, customToneOfVoice, pointOfView, improveReadability
   } = settings;
 
   // Re-fetch the article text (In a production app, you might want to cache this in state/DB to avoid re-fetching)
@@ -93,9 +93,9 @@ export async function generateRewriteSection(body, genAI) {
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
   let povInstruction = getPovInstruction(pointOfView);
   let readabilityInstruction = getReadabilityInstruction(improveReadability);
-  let extLinkInstruction = getExternalLinkInstruction(automaticExternalLinks);
-  let linkInstruction = await getLinkInstruction(internalLinks);
-  let seoInstruction = getSeoInstruction(targetKeyword);
+  let extLinkInstruction = getExternalLinkInstruction(externalLinks);
+  let linkInstruction = getLinkInstruction(internalLinks);
+  let seoInstruction = await getSeoInstruction(targetKeyword);
 
   let sectionStructureRequirements = `
     CRITICAL STRUCTURE REQUIREMENTS (REWRITE MODE):

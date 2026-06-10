@@ -67,13 +67,13 @@ export async function generateStandardBlogOutline(body, genAI) {
     2. The LAST H2 heading MUST be a Conclusion.
     ${faqInstruction}
     3. For ALL OTHER H2 headings, nest 2 to 3 relevant H3 subheadings.
+    ${relatedInstruction}
   `;
 
   const outlinePrompt = `Article Topic: ${targetKeyword || prompt}\n\n${lengthInstruction}\n${structureInstruction}`
   const result = await outlineModel.generateContent(outlinePrompt)
   const parsedData = JSON.parse(result.response.text());
 
-  console.log('Generated Outline:', parsedData.outline[2].subheadings);
   return {
         success: true,
         title: parsedData.title,
@@ -89,10 +89,11 @@ export async function generateStandardBlogSection(body, genAI) {
       subheadings,
       sectionIndex,
       uploadedMedia,
+      externalLinks,
+      internalLinks,
       settings = {} } = body;
 
-const { model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice,
-          pointOfView, useRealTimeSearchData, realTimeDataSource, externalLinks, internalLinks, deepSearch, improveReadability, seoOptimization, manualKeywords, aiImagesAndVideos, country, language } = settings;
+const { model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice, pointOfView, useRealTimeSearchData, realTimeDataSource, deepSearch, improveReadability, seoOptimization, manualKeywords, aiImagesAndVideos, country, language } = settings;
 
         const langObj = languages ? languages[language] : null;
     const langName = langObj ? langObj.name : (language || 'English');
@@ -114,10 +115,10 @@ const { model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice,
 
   const sectionModel = genAI.getGenerativeModel(modelConfig);
 
-  let realTimeInstruction = getRealTimeInstruction(useRealTimeSearchData, realTimeDataSource, articleTitle, targetKeyword, heading);
+  let realTimeInstruction = await getRealTimeInstruction(useRealTimeSearchData, realTimeDataSource, articleTitle, targetKeyword, heading);
   let extLinkInstruction = getExternalLinkInstruction(externalLinks);
   let linkInstruction = getLinkInstruction(internalLinks);
-  let seoInstruction = getSeoInstruction(seoOptimization, manualKeywords, targetKeyword);
+  let seoInstruction = await getSeoInstruction(seoOptimization, manualKeywords, targetKeyword);
   let { mediaInstruction, assignedMediaElement } = await getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI);
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
   let povInstruction = getPovInstruction(pointOfView);
