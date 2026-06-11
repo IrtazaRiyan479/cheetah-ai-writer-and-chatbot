@@ -164,5 +164,5 @@ let sectionStructureRequirements = `
 
   const result = await sectionModel.generateContent(sectionPrompt);
 
-  return { success: true, text: result.response.text(), mediaHtml: assignedMediaElement };
+  return { success: true, text: result.response.text()};
 }

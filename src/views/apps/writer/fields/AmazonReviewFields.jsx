@@ -12,11 +12,12 @@ import Checkbox from '@mui/material/Checkbox'
 import ListItemText from '@mui/material/ListItemText'
 import OutlinedInput from '@mui/material/OutlinedInput'
 import Chip from '@mui/material/Chip'
-import MediaUploader from '../MediaUploader' // Adjust the path based on where you saved it
 import { languages } from '@/configs/languages'
-import { countries } from '@/configs/countries'
+import {useEffect} from 'react';
 
-const AmazonReviewFields = ({ settings, updateSetting }) => (
+const AmazonReviewFields = ({ settings, updateSetting }) => {
+
+  return (
   <>
     <Grid size={{ xs: 12 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Amazon Product URL</Typography>
@@ -144,4 +145,5 @@ const AmazonReviewFields = ({ settings, updateSetting }) => (
     </Grid>
   </>
 )
+}
 export default AmazonReviewFields

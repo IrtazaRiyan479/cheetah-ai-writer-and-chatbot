@@ -43,12 +43,17 @@ export async function POST(request) {
       },
       body: JSON.stringify({
         keywords: keyword || 'running shoes',
-        partnerTag: trackingID || 'babiescarrier-20',
+        partnerTag: 'babiescarrier-20',
         partnerType: 'Associates',
-
         resources: [
+          'browseNodeInfo.websiteSalesRank',
           'images.primary.large',
+          'itemInfo.byLineInfo',
+          'itemInfo.contentRating',
+          'itemInfo.features',
           'itemInfo.title',
+          'offersV2.listings.availability',
+          'offersV2.listings.merchantInfo',
           'offersV2.listings.price'
         ]
       })

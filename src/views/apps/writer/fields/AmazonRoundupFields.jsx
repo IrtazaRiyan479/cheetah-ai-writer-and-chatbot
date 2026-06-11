@@ -13,8 +13,32 @@ import ListItemText from '@mui/material/ListItemText'
 import OutlinedInput from '@mui/material/OutlinedInput'
 import Chip from '@mui/material/Chip'
 import { languages } from '@/configs/languages'
+import {useEffect} from 'react';
 
 const AmazonRoundupFields = ({ settings, updateSetting }) => {
+
+  useEffect(() => {
+    if (settings.amazonSearchUrl) {
+      try {
+        const url = new URL(settings.amazonSearchUrl);
+
+        const keyword = url.searchParams.get('k') || url.searchParams.get('field-keywords');
+        if (keyword && keyword !== settings.targetKeyword) {
+          updateSetting('targetKeyword', keyword);
+        }
+
+        if (url.hostname && url.hostname.replace(/^www\./, '') !== settings.amazonDomain) {
+          updateSetting('amazonDomain', url.hostname.replace(/^www\./, ''));
+        }
+
+        const tag = url.searchParams.get('crid');
+        if (tag && tag !== settings.amazonTrackingId) {
+          updateSetting('amazonTrackingId', tag);
+        }
+      } catch (e) {
+      }
+    }
+  }, [settings.amazonSearchUrl, settings.targetKeyword, settings.amazonDomain, settings.amazonTrackingId, updateSetting]);
 
     return (
   <>
@@ -24,7 +48,7 @@ const AmazonRoundupFields = ({ settings, updateSetting }) => {
     </Grid>
 
     <Grid size={{ xs: 12 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Amazon Search URL</Typography>
+      <Typography variant='subtitle2' className='font-medium mbe-1'>Amazon Search URL (Optional)</Typography>
       <TextField fullWidth size='small' placeholder='https://amazon.com/s?k=...' value={settings.amazonSearchUrl} onChange={(e) => updateSetting('amazonSearchUrl', e.target.value)} />
     </Grid>
 
