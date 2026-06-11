@@ -278,7 +278,10 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
         const group = groupedSections[i]
         setCurrentIndex(group.originalIndex)
 
+
+        if (!group.h2.text.toLowerCase().includes('introduction')) {
         editor.chain().focus('end').insertContent('<' + group.h2.type + '>' + group.h2.text + '</' + group.h2.type + '>').run()
+        }
         const subheadings = group.h3s.map(h3 => h3.text)
 
         try {
