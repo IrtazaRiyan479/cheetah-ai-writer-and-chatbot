@@ -1,3 +1,5 @@
+'use client'
+
 // MUI Imports
 import Grid from '@mui/material/Grid'
 import Typography from '@mui/material/Typography'
@@ -20,7 +22,47 @@ import { frontLayoutClasses } from '@layouts/utils/layoutClasses'
 import styles from './styles.module.css'
 import frontCommonStyles from '@views/apps/styles.module.css'
 
+import CircularProgress from '@mui/material/CircularProgress'
+import { useState } from 'react'
+
 const Footer = () => {
+
+  const [email, setEmail] = useState('');
+  const [status, setStatus] = useState('idle');
+
+  const handleSubscribe = async (e) => {
+    if (e) e.preventDefault();
+    if (!email) return;
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setStatus('invalid');
+      setTimeout(() => setStatus('idle'), 4000);
+      return;
+    }
+    setStatus('loading');
+
+    try {
+      const res = await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      if (res.ok) {
+        setStatus('success');
+        setEmail('');
+        setTimeout(() => setStatus('idle'), 4000);
+      } else {
+        setStatus('error');
+        setTimeout(() => setStatus('idle'), 4000);
+      }
+    } catch (error) {
+      setStatus('error');
+      setTimeout(() => setStatus('idle'), 4000);
+    }
+  };
+
   return (
     <footer className={frontLayoutClasses.footer}>
       <div className='relative'>
@@ -39,27 +81,48 @@ const Footer = () => {
                 <Typography color='white' className='lg:max-is-[390px] opacity-[0.78]'>
                   Cheetah AI is your all in one platform for intelligent content generation, automated marketing, and custom chatbot development. Built for efficiency.
                 </Typography>
-                <div className='flex gap-4'>
-                  <TextField
-                    size='small'
-                    className={styles.inputBorder}
-                    label='Subscribe to newsletter'
-                    placeholder='Your email'
-                    sx={{
-                      ' & .MuiInputBase-root:hover:not(.Mui-focused) fieldset': {
-                        borderColor: 'rgb(var(--mui-mainColorChannels-dark) / 0.6) !important'
-                      },
-                      '& .MuiInputBase-root.Mui-focused fieldset': {
-                        borderColor: 'var(--mui-palette-primary-main)!important'
-                      },
-                      '& .MuiFormLabel-root.Mui-focused': {
-                        color: 'var(--mui-palette-primary-main) !important'
-                      }
-                    }}
-                  />
-                  <Button variant='contained' color='primary'>
-                    Subscribe
-                  </Button>
+                {/* --- RESTORED UI: Subscription Block --- */}
+                <div>
+                  <div className='flex gap-4'>
+                    <TextField
+                      size='small'
+                      className={styles.inputBorder}
+                      label='Subscribe to newsletter'
+                      placeholder='Your email'
+                      type='email'
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSubscribe(e)}
+                      disabled={status === 'loading' || status === 'success'}
+                      sx={{
+                        ' & .MuiInputBase-root:hover:not(.Mui-focused) fieldset': {
+                          borderColor: 'rgb(var(--mui-mainColorChannels-dark) / 0.6) !important'
+                        },
+                        '& .MuiInputBase-root.Mui-focused fieldset': {
+                          borderColor: 'var(--mui-palette-primary-main)!important'
+                        },
+                        '& .MuiFormLabel-root.Mui-focused': {
+                          color: 'var(--mui-palette-primary-main) !important'
+                        }
+                      }}
+                    />
+                    <Button
+                      variant='contained'
+                      color='primary'
+                      onClick={handleSubscribe}
+                      disabled={status === 'loading' || status === 'success'}
+                      sx={{ minWidth: '110px' }} // Keeps button from shrinking when spinner shows
+                    >
+                      {status === 'loading' ? <CircularProgress size={24} color="inherit" /> : 'Subscribe'}
+                    </Button>
+                  </div>
+
+                  {/* Feedback Messages */}
+                  <div className='min-h-[20px] mbs-2'>
+                    {status === 'success' && <Typography variant="caption" sx={{ color: '#4ade80' }}>✅ Subscribed successfully!</Typography>}
+                    {status === 'error' && <Typography variant="caption" sx={{ color: '#f87171' }}>❌ Failed to subscribe. Please try again.</Typography>}
+                    {status === 'invalid' && <Typography variant="caption" sx={{ color: '#f87171' }}>❌ Please enter a valid email address.</Typography>}
+                  </div>
                 </div>
               </div>
             </Grid>

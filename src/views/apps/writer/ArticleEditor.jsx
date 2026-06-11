@@ -30,6 +30,19 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 
 
+const ProgressCircularWithLabel = ({ value, color }) => {
+  return (
+    <div className='relative inline-flex'>
+      <CircularProgress variant='determinate' value={value} color={color} size={40} />
+      <div className='flex absolute top-0 left-0 right-0 bottom-0 items-center justify-center'>
+        <Typography variant='caption' component='div' color='text.secondary' className="font-bold">
+          {`${Math.round(value)}%`}
+        </Typography>
+      </div>
+    </div>
+  )
+}
+
 // --- TIPTAP TOOLBAR COMPONENT ---
 const EditorToolbar = ({ editor }) => {
   if (!editor) {
@@ -184,37 +197,35 @@ Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }).extend({
 const convertHtmlToMarkdown = (html) => {
   if (!html) return ''
   let md = html
-  // Headers
-  md = md.replace(/<h1>(.*?)<\/h1>/gi, '# $1\n\n')
-  md = md.replace(/<h2>(.*?)<\/h2>/gi, '## $1\n\n')
-  md = md.replace(/<h3>(.*?)<\/h3>/gi, '### $1\n\n')
-  md = md.replace(/<h4>(.*?)<\/h4>/gi, '#### $1\n\n')
-  md = md.replace(/<h5>(.*?)<\/h5>/gi, '##### $1\n\n')
-  md = md.replace(/<h6>(.*?)<\/h6>/gi, '###### $1\n\n')
-  // Text formatting
-  md = md.replace(/<strong>(.*?)<\/strong>/gi, '**$1**')
-  md = md.replace(/<em>(.*?)<\/em>/gi, '*$1*')
-  md = md.replace(/<s>(.*?)<\/s>/gi, '~~$1~~')
-  md = md.replace(/<code>(.*?)<\/code>/gi, '`$1`')
-  md = md.replace(/<a[^>]*href="(https?:\/\/[^"]+)"[^>]*>(.*?)<\/a>/gi, '[$2]($1)')
 
-  // Lists
-  md = md.replace(/<ul>/gi, '\n')
+  md = md.replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n')
+  md = md.replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n\n')
+  md = md.replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n\n')
+  md = md.replace(/<h4[^>]*>(.*?)<\/h4>/gi, '#### $1\n\n')
+  md = md.replace(/<h5[^>]*>(.*?)<\/h5>/gi, '##### $1\n\n')
+  md = md.replace(/<h6[^>]*>(.*?)<\/h6>/gi, '###### $1\n\n')
+  md = md.replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
+  md = md.replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
+  md = md.replace(/<s[^>]*>(.*?)<\/s>/gi, '~~$1~~')
+  md = md.replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`')
+  md = md.replace(/<a[^>]*href="(https?:\/\/[^"]+)"[^>]*>(.*?)<\/a>/gi, '[$2]($1)')
+  md = md.replace(/<ul[^>]*>/gi, '\n')
   md = md.replace(/<\/ul>/gi, '\n')
-  md = md.replace(/<ol>/gi, '\n')
+  md = md.replace(/<ol[^>]*>/gi, '\n')
   md = md.replace(/<\/ol>/gi, '\n')
-  md = md.replace(/<li>(.*?)<\/li>/gi, '- $1\n')
-  // Blocks
-  md = md.replace(/<pre><code.*?>(.*?)<\/code><\/pre>/gis, '```\n$1\n```\n\n')
-  md = md.replace(/<blockquote>(.*?)<\/blockquote>/gi, '> $1\n\n')
-  // Layout
-  md = md.replace(/<p>(.*?)<\/p>/gi, '$1\n\n')
+  md = md.replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n')
+  md = md.replace(/<pre[^>]*><code[^>]*>(.*?)<\/code><\/pre>/gis, '```\n$1\n```\n\n')
+  md = md.replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gi, '> $1\n\n')
+  md = md.replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
   md = md.replace(/<br\s*\/?>/gi, '\n')
-  md = md.replace(/<hr\s*\/?>/gi, '---\n\n')
-  // Cleanup remaining HTML tags
+  md = md.replace(/<hr[^>]*\/?>/gi, '---\n\n')
+
   md = md.replace(/<[^>]*>?/gm, '')
-  // Decode common HTML entities
+
   md = md.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+
+  md = md.replace(/\n{3,}/g, '\n\n')
+
   return md.trim()
 }
 
@@ -229,6 +240,10 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
 
   const abortControllerRef = useRef(null)
   const hasStartedRef = useRef(false)
+
+  const progressColors = ['secondary', 'success', 'error', 'warning', 'info', 'primary']
+  const progressPercentage = outline && outline.length > 0 ? (currentIndex / outline.length) * 100 : 0
+  const currentProgressColor = progressColors[currentIndex % progressColors.length] || 'primary'
 
   const editor = useEditor({
     extensions,
@@ -488,16 +503,16 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
   const performExport = (action) => {
     if (!editor) return
     const currentHtml = editor.getHTML()
-    const fileNameBase = (settings.targetKeyword || 'article').replace(/[^a-z0-9]/gi, '_').toLowerCase()
+    const fileNameBase = (settings.generatedTitle || 'article').replace(/[^a-z0-9]/gi, ' ').toLowerCase()
 
     if (action === 'copy-html') {
       handleCopyClipboard(currentHtml)
     } else if (action === 'download-html') {
-      handleDownloadFile(currentHtml, `${fileNameBase}.html`, 'text/html')
+      handleDownloadFile(currentHtml, `${fileNameBase.split(" ").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")}.html`, 'text/html')
     } else if (action === 'copy-md') {
       handleCopyClipboard(convertHtmlToMarkdown(currentHtml))
     } else if (action === 'download-md') {
-      handleDownloadFile(convertHtmlToMarkdown(currentHtml), "${fileNameBase}" + ".md", 'text/markdown')
+      handleDownloadFile(convertHtmlToMarkdown(currentHtml), `${fileNameBase.split(" ").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")}` + ".md", 'text/markdown')
     }
   }
 
@@ -557,9 +572,11 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
               </Typography>
 
             {isGenerating && (
-              <div className='flex items-center gap-2 text-primary'>
-                <CircularProgress size={20} color="inherit"/>
-                <Typography variant="body2" className="font-bold">AI is writing...</Typography>
+              <div className='flex items-center gap-3'>
+                <ProgressCircularWithLabel value={progressPercentage} color={currentProgressColor} />
+                <Typography variant="body2" className="font-bold" color={currentProgressColor}>
+                  AI is writing...
+                </Typography>
               </div>
             )}
           </div>
@@ -572,10 +589,10 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
                <EditorContent editor={editor}/>
 
                {isGenerating && currentIndex < outline.length && (
-                 <div className='flex items-center gap-2 text-textSecondary px-6 pb-6 mt-2'>
-                   <CircularProgress size={16}/>
-                   <Typography variant="caption" className="italic">
-                     AI is writing: {outline[currentIndex].text}...
+                 <div className='flex items-center gap-2 px-6 pb-6 mt-2'>
+                   <CircularProgress size={16} color={currentProgressColor}/>
+                   <Typography variant="caption" className="italic" color={currentProgressColor}>
+                     AI is currently writing: {outline[currentIndex]?.text || '...'}
                    </Typography>
                  </div>
                )}
