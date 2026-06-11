@@ -39,7 +39,7 @@ const GetStarted = () => {
           </div>
           <Button
             component={Link}
-            href='/front-pages/payment'
+            href='/register1'
             variant='contained'
             endIcon={<DirectionalIcon ltrIconClass='ri-arrow-right-line' rtlIconClass='ri-arrow-left-line' />}
             className='max-lg:self-center'

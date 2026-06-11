@@ -1,5 +1,5 @@
 // React Imports
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 // MUI Imports
 import Typography from '@mui/material/Typography'
@@ -22,13 +22,19 @@ import Lines from '@assets/svg/front-pages/landing-page/Lines'
 // Styles Imports
 import frontCommonStyles from '@views/apps/styles.module.css'
 
+import CircularProgress from '@mui/material/CircularProgress'
+
 const ContactUs = () => {
   // Refs
   const skipIntersection = useRef(true)
   const ref = useRef(null)
+  const [formData, setFormData] = useState({ name: '', email: '', message: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
 
   // Hooks
   const { updateIntersections } = useIntersection()
+
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -47,6 +53,31 @@ const ContactUs = () => {
     ref.current && observer.observe(ref.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const handleSubmit = async (e) => {
+    e.preventDefault(); // Prevents the page from refreshing
+    setIsSubmitting(true);
+    setStatusMessage('');
+
+    try {
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+
+      if (res.ok) {
+        setStatusMessage('Message sent successfully!');
+        setFormData({ name: '', email: '', message: '' }); // Clear form
+      } else {
+        setStatusMessage('Something went wrong. Please try again.');
+      }
+    } catch (error) {
+      setStatusMessage('Network error. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <section
@@ -96,14 +127,47 @@ const ContactUs = () => {
                 <Typography variant='h5' className='mbe-5'>
                   Share your ideas
                 </Typography>
-                <form className='flex flex-col items-start gap-5'>
-                  <div className='flex gap-5 is-full'>
-                    <TextField fullWidth label='Full name' id='name-input' />
-                    <TextField fullWidth label='Email address' id='email-input' type='email' />
-                  </div>
-                  <TextField fullWidth multiline rows={7} label='Tell us about your project or ask a question...' id='message-input' />
-                  <Button variant='contained'>Send Message</Button>
-                </form>
+                <form onSubmit={handleSubmit} className='flex flex-col items-start gap-5'>
+            <div className='flex gap-5 is-full'>
+              <TextField
+                fullWidth
+                label='Full name'
+                required
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              />
+              <TextField
+                fullWidth
+                label='Email address'
+                type='email'
+                required
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              />
+            </div>
+            <TextField
+              fullWidth
+              multiline
+              rows={7}
+              label='Tell us about your project or ask a question...'
+              required
+              value={formData.message}
+              onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+            />
+
+            {/* 4. Update Button and Status Message */}
+            <div className="flex items-center gap-4">
+              <Button type="submit" variant='contained' disabled={isSubmitting}>
+                {isSubmitting ? <CircularProgress size={24} color="inherit" /> : 'Send Message'}
+              </Button>
+
+              {statusMessage && (
+                <Typography color={statusMessage.includes('success') ? 'success.main' : 'error.main'}>
+                  {statusMessage}
+                </Typography>
+              )}
+            </div>
+          </form>
               </CardContent>
             </Card>
           </Grid>

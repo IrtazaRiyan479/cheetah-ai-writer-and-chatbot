@@ -79,7 +79,7 @@ const HeroSection = ({ mode }) => {
             <Button
               component={Link}
               size='large'
-              href='/front-pages/landing-page#pricing-plans'
+              href='/register1'
               variant='contained'
               color='primary'
             >

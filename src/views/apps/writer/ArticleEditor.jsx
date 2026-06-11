@@ -241,6 +241,22 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
     },
   })
 
+  const clearUploadedMedia = async (uploadedUrls) => {
+  try {
+    await fetch('/api/upload', { // Ensure this matches the path to your route.js
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      // To delete specific files (RECOMMENDED):
+      // body: JSON.stringify({ fileUrls: uploadedUrls })
+
+      body: JSON.stringify({ clearAll: true })
+    });
+    console.log("Cleanup complete: Uploaded media removed.");
+  } catch (error) {
+    console.error("Failed to clear uploads:", error);
+  }
+};
+
   useEffect(() => {
     if (!editor || hasStartedRef.current) return
 
@@ -428,6 +444,7 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
         setIsGenerating(false)
         setCurrentIndex(outline.length)
         editor.setEditable(true)
+        clearUploadedMedia(settings.uploadedMedia);
       }
     }
 
@@ -447,6 +464,7 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
     }
     setIsGenerating(false)
     if (editor) editor.setEditable(true)
+    clearUploadedMedia(settings.uploadedMedia);
   }
 
   // --- EXPORT HANDLERS ---
