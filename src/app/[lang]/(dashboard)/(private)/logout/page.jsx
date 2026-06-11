@@ -6,7 +6,7 @@ import { signOut } from 'next-auth/react'
 const LogoutPage = () => {
   useEffect(() => {
     // Instantly log the user out and redirect to the login page
-    signOut({ callbackUrl: '/login1' })
+    signOut({ callbackUrl: '/login' })
   }, [])
 
   return (

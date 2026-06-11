@@ -79,7 +79,7 @@ const HeroSection = ({ mode }) => {
             <Button
               component={Link}
               size='large'
-              href='/register1'
+              href='/register'
               variant='contained'
               color='primary'
             >

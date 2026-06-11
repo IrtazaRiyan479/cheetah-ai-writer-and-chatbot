@@ -2,17 +2,17 @@
 import dynamic from 'next/dynamic'
 
 // Component Imports
-import Settings from '@views/apps/links'
+import LinksMain from '@views/apps/links'
 
-const StoreDetailsTab = dynamic(() => import('@views/apps/links/store-details'))
+const Content = dynamic(() => import('@views/apps/links/content'))
 
 // Vars
-const tabContentList = () => ({
-  'store-details': <StoreDetailsTab />,
+const ContentMain = () => ({
+  'content': <Content />,
 })
 
-const eCommerceSettings = () => {
-  return <Settings tabContentList={tabContentList()} />
+const LinksMainPage = () => {
+  return <LinksMain tabContentList={ContentMain()} />
 }
 
-export default eCommerceSettings
+export default LinksMainPage

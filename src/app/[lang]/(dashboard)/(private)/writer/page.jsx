@@ -4,10 +4,10 @@ import { useState, useEffect } from 'react'
 import Grid from '@mui/material/Grid'
 import Container from '@mui/material/Container'
 
-import ProductAddHeader from '@views/apps/writer/ProductAddHeader'
-import ProductOrganize from '@views/apps/writer/ProductOrganize'
-import ProductPricing from '@views/apps/writer/ProductPricing'
-import ProductInformation from '@views/apps/writer/ProductInformation'
+import WriterIntro from '@views/apps/writer/WriterIntro'
+import ArticleTypeMenu from '@views/apps/writer/ArticleTypeMenu'
+import WriterHeader from '@views/apps/writer/WriterHeader'
+import WriterPage from '@views/apps/writer/WriterPage'
 import OutlineEditor from '@views/apps/writer/OutlineEditor'
 import ArticleEditor from '@views/apps/writer/ArticleEditor'
 
@@ -157,11 +157,11 @@ const CheetahWriter = () => {
     <Container maxWidth='md' className='p-0'>
       {step === 0 && (
       <Grid container spacing={6}>
-        <Grid size={{ xs: 12 }}><ProductAddHeader /></Grid>
+        <Grid size={{ xs: 12 }}><WriterIntro /></Grid>
 
         <Grid size={{ xs: 12 }}>
           {/* Pass the state and functions to Pricing to power the UI */}
-          <ProductPricing
+          <WriterHeader
             settings={settings}
             updateSetting={updateSetting}
             presets={presets}
@@ -174,14 +174,14 @@ const CheetahWriter = () => {
         </Grid>
 
         <Grid size={{ xs: 12 }}>
-          <ProductOrganize
+          <ArticleTypeMenu
             selectedType={settings.type}
             setSelectedType={(val) => updateSetting('type', val)}
           />
         </Grid>
 
         <Grid size={{ xs: 12 }}>
-          <ProductInformation
+          <WriterPage
             settings={settings}
             updateSetting={updateSetting}
             setStep={setStep}

@@ -104,10 +104,10 @@ const Footer = () => {
                 <Typography component={Link} href='/contact' color='white' className='opacity-[0.78]'>
                   Contact
                 </Typography>
-                <Typography component={Link} href='/login1' color='white' className='opacity-[0.78]'>
+                <Typography component={Link} href='/login' color='white' className='opacity-[0.78]'>
                   Login
                 </Typography>
-                <Typography component={Link} href='/register1' color='white' className='opacity-[0.78]'>
+                <Typography component={Link} href='/register' color='white' className='opacity-[0.78]'>
                   Register
                 </Typography>
               </div>

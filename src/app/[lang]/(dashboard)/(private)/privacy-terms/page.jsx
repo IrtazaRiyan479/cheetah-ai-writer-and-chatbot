@@ -90,7 +90,7 @@ const PrivacyAndTerms = () => {
             <Button
               variant='contained'
               component={Link}
-              href={getLocalizedUrl('/register1', locale)}
+              href={getLocalizedUrl('/register', locale)}
             >
               Back to Registration
             </Button>

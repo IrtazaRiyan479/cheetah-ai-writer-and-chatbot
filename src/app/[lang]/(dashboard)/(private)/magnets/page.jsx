@@ -2,17 +2,17 @@
 import dynamic from 'next/dynamic'
 
 // Component Imports
-import Settings from '@views/apps/magnets'
+import MagnetsMain from '@views/apps/magnets'
 
-const StoreDetailsTab = dynamic(() => import('@views/apps/magnets/store-details'))
+const Content = dynamic(() => import('@views/apps/magnets/content'))
 
 // Vars
-const tabContentList = () => ({
-  'store-details': <StoreDetailsTab />,
+const ContentMain = () => ({
+  'content': <Content />,
 })
 
-const eCommerceSettings = () => {
-  return <Settings tabContentList={tabContentList()} />
+const MagnetsMainPage = () => {
+  return <MagnetsMain tabContentList={ContentMain()} />
 }
 
-export default eCommerceSettings
+export default MagnetsMainPage

@@ -2,7 +2,7 @@
 import classnames from 'classnames'
 
 // Component Imports
-import KanbanBoard from '@views/apps/images/KanbanBoard'
+import ImageGeneratorBoard from '@views/apps/images/ImageGeneratorBoard'
 
 // Util Imports
 import { commonLayoutClasses } from '@layouts/utils/layoutClasses'
@@ -19,7 +19,7 @@ const KanbanPage = () => {
         'is-full overflow-auto pis-2 -mis-2'
       )}
     >
-      <KanbanBoard />
+      <ImageGeneratorBoard />
     </div>
   )
 }

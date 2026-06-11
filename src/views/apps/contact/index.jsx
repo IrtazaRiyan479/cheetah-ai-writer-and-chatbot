@@ -7,9 +7,9 @@ import { useState } from 'react'
 import Grid from '@mui/material/Grid'
 
 // Component Imports
-import FaqHeader from '@views/apps/contact/FaqHeader'
+import ContactHeader from '@views/apps/contact/ContactHeader'
 import Faqs from '@views/apps/contact/Faqs'
-import FaqFooter from '@views/apps/contact/FaqFooter'
+import ContactFooter from '@views/apps/contact/ContactFooter'
 
 const FAQ = ({ data }) => {
   // States
@@ -18,13 +18,13 @@ const FAQ = ({ data }) => {
   return (
     <Grid container spacing={6}>
       <Grid size={{ xs: 12 }}>
-        <FaqHeader searchValue={searchValue} setSearchValue={setSearchValue} />
+        <ContactHeader searchValue={searchValue} setSearchValue={setSearchValue} />
       </Grid>
       <Grid size={{ xs: 12 }}>
         <Faqs faqData={data} searchValue={searchValue} />
       </Grid>
       <Grid size={{ xs: 12 }}>
-        <FaqFooter />
+        <ContactFooter />
       </Grid>
     </Grid>
   )

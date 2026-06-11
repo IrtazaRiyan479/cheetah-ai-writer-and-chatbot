@@ -23,8 +23,8 @@ const verticalMenuData = (session) => {
   // If the user is logged out, show Login and Register
   return [
     ...coreMenu,
-    { label: 'Login', href: '/login1', icon: 'ri-git-repository-private-fill' },
-    { label: 'Register', href: '/register1', icon: 'ri-user-add-fill' }
+    { label: 'Login', href: '/login', icon: 'ri-git-repository-private-fill' },
+    { label: 'Register', href: '/register', icon: 'ri-user-add-fill' }
   ]
 }
 

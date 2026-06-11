@@ -163,7 +163,7 @@ const PricingPlan = () => {
                     <Chip variant='tonal' size='small' color='primary' label={plan.respondTime} />
                   </div>
                 </div>
-                <Button component={Link} href='/register1' variant={plan.current ? 'contained' : 'outlined'}>
+                <Button component={Link} href='/register' variant={plan.current ? 'contained' : 'outlined'}>
                   Get Started
                 </Button>
               </CardContent>

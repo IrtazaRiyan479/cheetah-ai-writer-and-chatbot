@@ -188,7 +188,7 @@ const Plans = () => {
                 <td></td>
                 {plans.map((plan, index) => (
                   <td key={index} className='text-center plb-[9px]'>
-                    <Button component={Link} href='/register1' variant={plan.variant}>
+                    <Button component={Link} href='/register' variant={plan.variant}>
                       {plan.label}
                     </Button>
                   </td>
