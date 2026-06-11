@@ -74,13 +74,13 @@ const LoginV1 = ({ mode }) => {
     } else {
       // Login successful! Redirect to the main app page (e.g., your writer tool)
       // Update '/writer' to whatever your main dashboard URL is
-      router.push(getLocalizedUrl('/writer', locale))
+      router.push(getLocalizedUrl('/account', locale))
     }
   }
 
   // Optional: Handler for Google Login
   const handleGoogleLogin = () => {
-    signIn('google', { callbackUrl: getLocalizedUrl('/writer', locale) })
+    signIn('google', { callbackUrl: getLocalizedUrl('/account', locale) })
   }
 
   return (
@@ -133,7 +133,7 @@ const LoginV1 = ({ mode }) => {
               />
               <div className='flex justify-between items-center gap-x-3 gap-y-1 flex-wrap'>
                 <FormControlLabel control={<Checkbox />} label='Remember Me' />
-                <Typography className='text-end' color='primary' component={Link} href='/'>
+                <Typography className='text-end' color='primary' component={Link} href='/pages/misc/under-maintenance'>
                   Forgot password?
                 </Typography>
               </div>
@@ -144,29 +144,22 @@ const LoginV1 = ({ mode }) => {
                 <Typography>New on our platform?</Typography>
                 <Typography
                   component={Link}
-                  href={getLocalizedUrl('/pages/auth/register-v1', locale)}
+                  href={getLocalizedUrl('/register1', locale)}
                   color='primary.main'
                 >
                   Create an account
                 </Typography>
               </div>
-              <Divider className='gap-3 text-textPrimary'>or</Divider>
-              <div className='flex justify-center items-center gap-2'>
-                {/* Social Logins */}
-                <IconButton size='small' className='text-facebook'>
-                  <i className='ri-facebook-fill' />
-                </IconButton>
-                <IconButton size='small' className='text-twitter'>
-                  <i className='ri-twitter-fill' />
-                </IconButton>
-                <IconButton size='small' className='text-textPrimary'>
-                  <i className='ri-github-fill' />
-                </IconButton>
-                {/* Google Auth Connected */}
-                <IconButton size='small' className='text-googlePlus' onClick={handleGoogleLogin}>
-                  <i className='ri-google-fill' />
-                </IconButton>
-              </div>
+              <Divider className='gap-3'>or</Divider>
+              <Button
+                color='secondary'
+                className='self-center text-textPrimary'
+                startIcon={<img src='/images/logos/google.png' alt='Google' width={22} />}
+                sx={{ '& .MuiButton-startIcon': { marginInlineEnd: 3 } }}
+                onClick={() => signIn('google')}
+              >
+                Sign in with Google
+              </Button>
             </form>
           </div>
         </CardContent>

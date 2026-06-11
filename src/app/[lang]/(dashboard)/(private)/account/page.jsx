@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react' // Needed to authenticate API requests
 
 // MUI Imports
 import Typography from '@mui/material/Typography'
@@ -12,19 +13,115 @@ import IconButton from '@mui/material/IconButton'
 import Chip from '@mui/material/Chip'
 import Paper from '@mui/material/Paper'
 import Tooltip from '@mui/material/Tooltip'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
+import TextField from '@mui/material/TextField'
+import CircularProgress from '@mui/material/CircularProgress'
+import Alert from '@mui/material/Alert'
 
 // MUI Icons
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 
 const AccountSettings = () => {
-  const [userData] = useState({
-    email: 'raoahsn84@gmail.com',
-    userId: 'bce72e27-c15a-434d-bb2c-b05aae954104',
-    supportPin: '3457',
+  const { data: session, update: updateSession } = useSession()
+  const [isLoading, setIsLoading] = useState(true)
+  const [tooltipText, setTooltipText] = useState("Copy ID")
+
+  // Dialog States
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [newEmail, setNewEmail] = useState('')
+  const [updateError, setUpdateError] = useState('')
+  const [isUpdating, setIsUpdating] = useState(false)
+
+  const [userData, setUserData] = useState({
+    name: '',
+    email: '',
+    userId: '',
+    supportPin: '',
     wordsLimit: '5,000 / 5,000 words',
     chatsLimit: '25 / 25 chats'
   })
+
+  // Fetch user data on component mount
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (session?.user?.email) {
+        try {
+          const res = await fetch('/api/user/settings')
+          const data = await res.json()
+
+          if (data.user) {
+            setUserData(prev => ({
+              ...prev,
+              name: data.user.name || 'N/A',
+              email: data.user.email,
+              userId: data.user.id,
+              supportPin: data.user.supportPin || 'N/A'
+            }))
+          }
+        } catch (error) {
+          console.error("Failed to fetch user data:", error)
+        } finally {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    if (session) fetchUserData()
+  }, [session])
+
+  // Handle Copy to Clipboard
+  const handleCopyId = () => {
+    if (userData.userId) {
+      navigator.clipboard.writeText(userData.userId)
+      setTooltipText("Copied!")
+      setTimeout(() => setTooltipText("Copy ID"), 2000)
+    }
+  }
+
+  // Handle Email Update Submission
+  const handleEmailUpdate = async () => {
+    setUpdateError('')
+    setIsUpdating(true)
+
+    try {
+      const res = await fetch('/api/user/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newEmail })
+      })
+
+      const data = await res.json()
+
+      if (res.ok) {
+        // Update local state
+        setUserData(prev => ({ ...prev, email: data.user.email }))
+
+        // Force NextAuth to update the session object with the new email
+        await updateSession({ email: data.user.email })
+
+        setIsDialogOpen(false)
+        setNewEmail('')
+      } else {
+        setUpdateError(data.error || 'Failed to update email')
+      }
+    } catch (error) {
+      setUpdateError('An unexpected error occurred')
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 10 }}>
+        <CircularProgress />
+      </Box>
+    )
+  }
 
   return (
     <Box sx={{ maxWidth: '900px', p: { xs: 2, md: 4 } }}>
@@ -41,6 +138,18 @@ const AccountSettings = () => {
           </Typography>
           <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
 
+            {/* Name Row */}
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, p: 3, gap: 2 }}>
+              <Box>
+                <Typography variant="body2" color="text.secondary" fontWeight={500} mb={0.5}>
+                  Name
+                </Typography>
+                <Typography variant="body1" fontWeight={600}>
+                  {userData.name}
+                </Typography>
+              </Box>
+            </Box>
+
             {/* Email Row */}
             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, p: 3, gap: 2 }}>
               <Box>
@@ -51,7 +160,12 @@ const AccountSettings = () => {
                   {userData.email}
                 </Typography>
               </Box>
-              <Button variant="contained" disableElevation sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}>
+              <Button
+                variant="contained"
+                disableElevation
+                onClick={() => setIsDialogOpen(true)}
+                sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
+              >
                 Update Email
               </Button>
             </Box>
@@ -68,8 +182,8 @@ const AccountSettings = () => {
                   {userData.userId}
                 </Typography>
               </Box>
-              <Tooltip title="Copy ID">
-                <IconButton color="primary" sx={{ bgcolor: 'primary.50' }}>
+              <Tooltip title={tooltipText} placement="top">
+                <IconButton color="primary" onClick={handleCopyId} sx={{ bgcolor: 'primary.50' }}>
                   <ContentCopyIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
@@ -92,7 +206,7 @@ const AccountSettings = () => {
           </Paper>
         </Box>
 
-        {/* Beta Features Section */}
+        {/* Beta Features Section (Unchanged) */}
         <Box>
           <Typography variant="h6" component="h3" sx={{ fontWeight: 600, mb: 2 }}>
             Beta Features
@@ -110,7 +224,7 @@ const AccountSettings = () => {
           </Paper>
         </Box>
 
-        {/* Subscription Section */}
+        {/* Subscription Section (Unchanged) */}
         <Box>
           <Typography variant="h6" component="h3" sx={{ fontWeight: 600, mb: 2 }}>
             Subscription
@@ -132,7 +246,7 @@ const AccountSettings = () => {
           </Paper>
         </Box>
 
-        {/* Usage Section */}
+        {/* Usage Section (Unchanged) */}
         <Box sx={{ mb: 4 }}>
           <Typography variant="h6" component="h3" sx={{ fontWeight: 600, mb: 2 }}>
             Current Usage
@@ -184,6 +298,36 @@ const AccountSettings = () => {
         </Box>
 
       </Box>
+
+      {/* Update Email Modal Dialog */}
+      <Dialog open={isDialogOpen} onClose={() => setIsDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Update Email Address</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 1 }}>
+            {updateError && <Alert severity="error" sx={{ mb: 2 }}>{updateError}</Alert>}
+            <TextField
+              autoFocus
+              margin="dense"
+              label="New Email Address"
+              type="email"
+              fullWidth
+              variant="outlined"
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 0 }}>
+          <Button onClick={() => setIsDialogOpen(false)} color="inherit">Cancel</Button>
+          <Button
+            onClick={handleEmailUpdate}
+            variant="contained"
+            disabled={!newEmail || isUpdating}
+          >
+            {isUpdating ? <CircularProgress size={24} color="inherit" /> : 'Save Changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

@@ -5,7 +5,7 @@ import { useState } from 'react'
 
 // Next Imports
 import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation' // Added useRouter
+import { useParams, useRouter } from 'next/navigation'
 
 // MUI Imports
 import Card from '@mui/material/Card'
@@ -17,10 +17,9 @@ import InputAdornment from '@mui/material/InputAdornment'
 import Checkbox from '@mui/material/Checkbox'
 import Button from '@mui/material/Button'
 import FormControlLabel from '@mui/material/FormControlLabel'
-import Divider from '@mui/material/Divider'
-import Alert from '@mui/material/Alert' // Added for error messages
-import CircularProgress from '@mui/material/CircularProgress' // Added for loading state
-import { signIn } from 'next-auth/react' // Add this import
+import Alert from '@mui/material/Alert'
+import CircularProgress from '@mui/material/CircularProgress'
+import { signIn } from 'next-auth/react'
 
 // Component Imports
 import Logo from '@components/layout/shared/Logo'
@@ -41,6 +40,7 @@ const RegisterV1 = ({ mode }) => {
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [agreedToTerms, setAgreedToTerms] = useState(false) // <-- ADDED: Track checkbox state
 
   // Vars
   const darkImg = '/images/pages/auth-v1-mask-2-dark.png'
@@ -48,7 +48,7 @@ const RegisterV1 = ({ mode }) => {
 
   // Hooks
   const { lang: locale } = useParams()
-  const router = useRouter() // Added for redirection
+  const router = useRouter()
   const authBackground = useImageVariant(mode, lightImg, darkImg)
 
   const handleClickShowPassword = () => setIsPasswordShown(show => !show)
@@ -57,6 +57,13 @@ const RegisterV1 = ({ mode }) => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+
+    // <-- ADDED: Mandatory Checkbox Validation
+    if (!agreedToTerms) {
+      setError('You must agree to the privacy policy & terms to register.')
+      return
+    }
+
     setIsLoading(true)
 
     try {
@@ -81,16 +88,14 @@ const RegisterV1 = ({ mode }) => {
           router.push(getLocalizedUrl('/login1', locale))
         } else {
           // 3. Success! Redirect to your app (e.g., /writer)
-          router.push(getLocalizedUrl('/writer', locale))
+          router.push(getLocalizedUrl('/account', locale))
         }
-      }else {
+      } else {
         // Registration failed
         setError(data.error || 'Registration failed.')
-        setIsLoading(false)
       }
     } catch (err) {
       setError('An unexpected error occurred.')
-      setIsLoading(false)
     } finally {
       setIsLoading(false)
     }
@@ -151,12 +156,21 @@ const RegisterV1 = ({ mode }) => {
                   )
                 }}
               />
-              <FormControlLabel
-                control={<Checkbox />}
+             <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={agreedToTerms}
+                    onChange={(e) => setAgreedToTerms(e.target.checked)} // <-- ADDED: Bind state to Checkbox
+                  />
+                }
                 label={
                   <>
-                    <span>I agree to </span>
-                    <Link className='text-primary' href='/' onClick={e => e.preventDefault()}>
+                    <span>I agree to the </span>
+                    <Link
+                      className='text-primary hover:underline'
+                      href={getLocalizedUrl('/privacy-terms', locale)}
+                      target="_blank"
+                    >
                       privacy policy & terms
                     </Link>
                   </>
@@ -169,7 +183,7 @@ const RegisterV1 = ({ mode }) => {
                 <Typography>Already have an account?</Typography>
                 <Typography
                   component={Link}
-                  href={getLocalizedUrl('/pages/auth/login-v1', locale)}
+                  href={getLocalizedUrl('/login1', locale)}
                   color='primary.main'
                 >
                   Sign in instead
@@ -179,7 +193,7 @@ const RegisterV1 = ({ mode }) => {
           </div>
         </CardContent>
       </Card>
-      <img src={authBackground} className='absolute bottom-[5%] z-[-1] is-full max-md:hidden' />
+      <img src={authBackground} className='absolute bottom-[5%] z-[-1] is-full max-md:hidden' alt='background design' />
     </div>
   )
 }

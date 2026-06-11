@@ -25,12 +25,16 @@ export async function POST(request) {
     // 3. Hash the password securely
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 4. Save the new user to the database
+    // 4. Generate a random 4-digit Support PIN
+    const supportPin = Math.floor(1000 + Math.random() * 9000).toString();
+
+    // 5. Save the new user to the database
     await prisma.user.create({
       data: {
-        name: username, // Mapping 'username' from your form to 'name'
+        name: username,
         email: email,
         password: hashedPassword,
+        supportPin: supportPin, // <-- Save the generated PIN
       }
     });
 

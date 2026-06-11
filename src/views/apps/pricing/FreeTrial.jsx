@@ -26,7 +26,7 @@ const FreeTrial = () => {
                   </Typography>
                   <Typography>You will get full access to with all the features for 14 days.</Typography>
                 </div>
-                <Button component={Link} href='/front-pages/payment' variant='contained'>
+                <Button component={Link} href='/register1' variant='contained'>
                   Start 14-Days Free Trial
                 </Button>
               </div>

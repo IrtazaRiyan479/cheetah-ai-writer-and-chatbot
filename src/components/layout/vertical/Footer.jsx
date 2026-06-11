@@ -98,9 +98,6 @@ const Footer = () => {
                 Account & Support
               </Typography>
               <div className='flex flex-col gap-4'>
-                <Typography component={Link} href='/privacy-policy' color='white' className='opacity-[0.78]'>
-                  Privacy Policy & Terms
-                </Typography>
                 <Typography component={Link} href='/pricing' color='white' className='opacity-[0.78]'>
                   Pricing
                 </Typography>
