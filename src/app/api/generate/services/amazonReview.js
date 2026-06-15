@@ -86,7 +86,6 @@ export async function generateAmazonReviewOutline(body, genAI) {
   const apiData = await fetchInternalAmazonData(searchStr, settings);
   const formattedProducts = formatAmazonProducts(apiData, settings);
   const product = formattedProducts[0];
-  console.log(product)
 
   if (!product) {
     throw new Error("Could not fetch product details from Amazon. Please check the URL.");

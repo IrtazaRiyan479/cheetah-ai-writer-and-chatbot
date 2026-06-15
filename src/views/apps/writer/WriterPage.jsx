@@ -85,7 +85,6 @@ const handleCreateArticle = async () => {
 
       const data = await res.json()
 
-      console.log("FULL RESPONSE FROM /api/generate:", data)
       if (data.success) {
         // Save the AI's JSON outline to your global page.jsx state
         updateSetting('generatedTitle', data.title)
