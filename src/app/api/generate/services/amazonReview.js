@@ -28,7 +28,7 @@ async function fetchInternalAmazonData(keyword, settings) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      keyword: keyword, // We will pass the exact ASIN here
+      keyword: keyword,
       domain: settings.domain || 'www.amazon.com',
       partnerTag: settings.partnerTag || 'babiescarrier-20'
     })

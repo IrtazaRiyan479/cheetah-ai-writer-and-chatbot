@@ -37,12 +37,21 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
 
 const handleCreateArticle = async () => {
 
-  if (!settings.targetKeyword || settings.targetKeyword.trim() === '') {
-      toast.error('Please enter a Target Keyword before generating the article.', {
-        position: 'top-right',
-        autoClose: 3000
-      })
-      return
+    if (!settings.targetKeyword || settings.targetKeyword.trim() === '') {
+      if (settings.type === 'amazon-review') {
+        if (!settings.amazonProductUrl) {
+          toast.error("Please provide either an Amazon Product URL or a Target Keyword.");
+          return;
+        }
+      } else if (settings.type === 'amazon-roundup') {
+        if (!settings.amazonSearchUrl) {
+          toast.error("Please provide either an Amazon Search URL or a Target Keyword.");
+          return;
+        }
+      } else {
+        toast.error("Target Keyword is required for this template.");
+        return;
+      }
     }
 
   if (settings.deepSearch) {
