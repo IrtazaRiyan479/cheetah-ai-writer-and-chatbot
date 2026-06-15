@@ -16,17 +16,38 @@ import { languages } from '@/configs/languages'
 import {useEffect} from 'react';
 
 const AmazonReviewFields = ({ settings, updateSetting }) => {
+  useEffect(() => {
+    if (settings.amazonProductUrl && !settings.targetKeyword) {
+      try {
+        const urlObj = new URL(settings.amazonProductUrl);
+        const pathParts = urlObj.pathname.split('/');
+        const dpIndex = pathParts.findIndex(part => ['dp', 'product', 'item', 'ASIN'].includes(part));
+
+        if (dpIndex > 1) {
+          const slug = pathParts[dpIndex - 1];
+          let productName = decodeURIComponent(slug).replace(/-/g, ' ');
+          productName = productName.replace(/\b\w/g, l => l.toUpperCase());
+
+          updateSetting('targetKeyword', productName);
+        }
+      } catch (error) {
+      }
+    }
+  }, [settings.amazonProductUrl]);
 
   return (
   <>
-    <Grid size={{ xs: 12 }}>
+   <Grid size={{ xs: 12 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Amazon Product URL</Typography>
       <TextField fullWidth size='small' placeholder='https://amazon.com/dp/...' value={settings.amazonProductUrl} onChange={(e) => updateSetting('amazonProductUrl', e.target.value)} />
     </Grid>
 
     <Grid size={{ xs: 12 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Target Keyword (Optional)</Typography>
-      <TextField fullWidth size='small' placeholder='e.g. best running shoes for flat feet' value={settings.targetKeyword} onChange={(e) => updateSetting('targetKeyword', e.target.value)} />
+      <TextField fullWidth size='small' placeholder='e.g. Under Armour Charged Bandit Hiking' value={settings.targetKeyword} onChange={(e) => updateSetting('targetKeyword', e.target.value)} />
+      <Typography variant='caption' color='text.secondary'>
+        If left blank, we will attempt to extract the product name directly from the URL.
+      </Typography>
     </Grid>
 
     <Grid size={{ xs: 12 }}>

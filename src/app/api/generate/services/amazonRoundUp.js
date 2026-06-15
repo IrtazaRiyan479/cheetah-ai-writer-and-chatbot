@@ -38,17 +38,13 @@ async function fetchInternalAmazonData(keyword, settings) {
  * 2. Formatter: Cleans the raw Amazon data
  */
 function formatAmazonProducts(apiData, settings) {
-  // 10. Navigates the exact data format you provided
   const rawData = apiData?.data?.searchResult?.items || [];
   const numberOfProducts = settings.numberOfProducts || 5;
   const limitedProducts = rawData.slice(0, numberOfProducts);
 
   return limitedProducts.map(item => {
-    // Graceful fallbacks in case a specific product is missing data
     const title = item?.itemInfo?.title?.displayValue || 'Amazon Product';
-    // 9. Uses the detailPageURL which already contains your affiliate tag!
     const affiliateUrl = item?.detailPageURL || `https://www.amazon.com/dp/${item.asin}?tag=${settings.partnerTag}`;
-    // 8. Digs into the deeply nested image object
     const imageUrl = item?.images?.primary?.large?.url || '';
     const price = item?.offersV2?.listings?.[0]?.price?.money?.displayAmount || 'Check Price on Amazon';
 
@@ -66,7 +62,7 @@ function formatAmazonProducts(apiData, settings) {
  */
 export async function generateAmazonRoundupOutline(body, genAI) {
   const { settings, targetKeyword } = body;
-  const { model, language, country } = settings;
+  const { model, language, country, includeFaq } = settings;
 
   // Automatically fetch data from your existing Amazon API route
   const amazonApiData = await fetchInternalAmazonData(targetKeyword, settings);
@@ -82,7 +78,9 @@ export async function generateAmazonRoundupOutline(body, genAI) {
   const countryName = countryObj ? countryObj.name : (country || 'United States');
 
   const baseSystemInstruction = getBaseSystemInstruction(langName, countryName);
-  const productTitles = formattedProducts.map((p, index) => `${index + 1}. ${p.title}`).join('\n');
+  const productListString = formattedProducts.map((p, index) =>
+    `${index + 1}. ${p.productName}\n   URL: ${p.amazonUrl}\n   Image: ${p.imageUrl}\n   Price: ${p.price}`
+  ).join('\n\n');
 
   const outlineModel = genAI.getGenerativeModel({
     model: model || 'gemini-3.1-flash-lite',
@@ -118,11 +116,11 @@ For "product" sections, you MUST include the rich product data provided to you u
 
     LAYOUT ORDER:
     1. The first item MUST be an "intro" (type: h2).
-    2. Next, you MUST create a "product" (type: h2) for EXACTLY these products in this exact order:
-    ${productTitles}
+    2. Next, you MUST create a "product" (type: h2) for EXACTLY these products using this precise data:
+    ${productListString}
     3. Include a "buying_guide" (type: h2) after the product reviews.
     4. Include a "conclusion" (type: h2).
-    5. The final item MUST be an "faq" (type: h2).
+    ${includeFaq ? '5. The final item MUST be an "faq" (type: h2).' : ''}
   `;
 
   const result = await outlineModel.generateContent(outlinePrompt);
@@ -155,9 +153,18 @@ export async function generateAmazonRoundupSection(body, genAI) {
 
   // Accommodate OutlineEditor using 'text' instead of 'heading'
   const activeHeadingText = heading || text || section.text || section.heading || 'Section';
-  const activeSectionType = section.sectionType || section.type || 'standard';
+  let activeSectionType = section.sectionType || section.type;
+  if (!activeSectionType && Array.isArray(outlineContext)) {
+    const matchedSection = outlineContext.find(s =>
+      s.text === activeHeadingText || activeHeadingText.includes(s.text)
+    );
+    if (matchedSection) {
+      activeSectionType = matchedSection.sectionType;
+    }
+  }
+  activeSectionType = activeSectionType || 'standard';
 
-  const sectionModel = genAI.getGenerativeModel({ model: model || 'gemini-1.5-pro' });
+  const sectionModel = genAI.getGenerativeModel({ model: model || 'gemini-3.1-flash-lite' });
 
   const toneInstruction = getToneInstruction(toneOfVoice);
   const povInstruction = getPovInstruction(pointOfView);
@@ -190,7 +197,8 @@ export async function generateAmazonRoundupSection(body, genAI) {
 
   if (activeSectionType === 'intro') {
     const top3 = formattedProducts.slice(0, 3);
-    const top3Markdown = top3.map(p => `| <img src="${p.imageUrl}" width="100"/> | **${p.title}** | [Check Price](${p.affiliateUrl}) |`).join('\n');
+    // FIXED: Changed p.title to p.productName and p.affiliateUrl to p.amazonUrl
+    const top3Markdown = top3.map(p => `| <img src="${p.imageUrl}" width="100"/> | **${p.productName}** | [Check Price](${p.amazonUrl}) |`).join('\n');
 
     sectionPrompt += `
       TASK: Write a strong, engaging introduction for the keyword "${targetKeyword}".
@@ -206,27 +214,30 @@ export async function generateAmazonRoundupSection(body, genAI) {
   }
 
   else if (activeSectionType === 'product') {
-    const product = formattedProducts.find(p => activeHeadingText.includes(p.title) || p.title.includes(activeHeadingText)) || formattedProducts[0];
+    // FIXED: Changed p.title to p.productName
+    const product = formattedProducts.find(p => activeHeadingText.includes(p.productName) || p.productName.includes(activeHeadingText)) || formattedProducts[0];
 
+    // FIXED: Updated all ${product.title} to ${product.productName}
+    // FIXED: Updated ${product.affiliateUrl} to ${product.amazonUrl}
     sectionPrompt += `
-      TASK: Write a comprehensive product review for "${product.title}".
+      TASK: Write a comprehensive product review for "${product.productName}".
       ${experienceInstruction}
 
       PRODUCT CONTEXT (DO NOT INVENT PRICING):
-      - Title: ${product.title}
+      - Title: ${product.productName}
       - Price: ${product.price}
 
       STRICT LAYOUT REQUIREMENT:
       Format this section EXACTLY in this order:
       1. **Review:** 2-3 engaging paragraphs reviewing the product.
       2. **HTML Image:** Insert this EXACT HTML centered:
-         <div align="center"><img src="${product.imageUrl}" alt="${product.title}" style="max-width:100%; border-radius:8px; margin: 20px 0;"/></div>
+         <div align="center"><img src="${product.imageUrl}" alt="${product.productName}" style="max-width:100%; border-radius:8px; margin: 20px 0;"/></div>
       3. **Features:** A bulleted list of 3-4 key features.
       4. **Pros & Cons Table:** A strictly formatted Markdown table with "Pros" and "Cons" columns.
       5. **Real Buyer Opinions:** A brief summary of what real buyers think.
       6. **CTA Button:** Insert this EXACT HTML for the affiliate button:
          <div align="center" style="margin: 25px 0;">
-           <a href="${product.affiliateUrl}" target="_blank" rel="sponsored noopener" style="background-color: #f90; color: #fff; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 5px; font-size: 18px;">Check Price on Amazon</a>
+           <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" style="background-color: #f90; color: #fff; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 5px; font-size: 18px;">Check Price on Amazon</a>
          </div>
     `;
   }
@@ -246,6 +257,27 @@ export async function generateAmazonRoundupSection(body, genAI) {
     `;
   }
 
-  const result = await sectionModel.generateContent(sectionPrompt);
+  let result;
+  let retries = 3;
+  let delay = 2000;
+
+  for (let i = 0; i < retries; i++) {
+    try {
+      result = await sectionModel.generateContent(sectionPrompt);
+      break;
+    } catch (error) {
+      if (i === retries - 1) {
+        throw error;
+      }
+      if (error.status === 503 || (error.message && error.message.includes('503'))) {
+        console.warn(`[Gemini API] 503 High Demand Error. Retrying in ${delay/1000} seconds... (Attempt ${i + 1} of ${retries})`);
+        await new Promise(res => setTimeout(res, delay));
+        delay *= 2;
+      } else {
+        throw error;
+      }
+    }
+  }
+
   return { success: true, text: result.response.text(), mediaHtml: null };
 }

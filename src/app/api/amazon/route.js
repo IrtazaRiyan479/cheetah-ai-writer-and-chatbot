@@ -4,9 +4,6 @@ export async function POST(request) {
   try {
     const { keyword, domain, trackingID } = await request.json();
 
-    // ---------------------------------------------------------
-    // 1. Get OAuth 2.0 Access Token from Creators API
-    // ---------------------------------------------------------
     const tokenRes = await fetch('https://api.amazon.com/auth/o2/token', {
       method: 'POST',
       headers: {
@@ -14,8 +11,8 @@ export async function POST(request) {
       },
       body: new URLSearchParams({
         grant_type: 'client_credentials',
-        client_id: 'amzn1.application-oa2-client.becc27b1cae54ec6b6950c8ea1101b8b',
-        client_secret: 'amzn1.oa2-cs.v1.6003e9bc35967b3e96fcc2a3ac969c16cfb8b7cd5fdec07de734bbc89f6ff12c',
+        client_id: process.env.AMAZON_CLIENT_ID,
+        client_secret: process.env.AMAZON_CLIENT_SECRET,
         scope: 'creatorsapi::default'
       })
     });
@@ -23,6 +20,8 @@ export async function POST(request) {
     const tokenData = await tokenRes.json();
 
     if (!tokenRes.ok) {
+
+
       return NextResponse.json({
         error: 'Authentication Failed',
         details: tokenData
@@ -43,7 +42,7 @@ export async function POST(request) {
       },
       body: JSON.stringify({
         keywords: keyword || 'running shoes',
-        partnerTag: 'babiescarrier-20',
+        partnerTag: process.env.AMAZON_PARTNER_TAG,
         partnerType: 'Associates',
         resources: [
           'browseNodeInfo.websiteSalesRank',

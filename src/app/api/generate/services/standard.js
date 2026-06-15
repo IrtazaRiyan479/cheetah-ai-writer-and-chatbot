@@ -146,6 +146,27 @@ const { model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice, poin
         ${readabilityInstruction}
       `
 
-      const result = await sectionModel.generateContent(sectionPrompt)
+      let result;
+  let retries = 3;
+  let delay = 2000;
+
+  for (let i = 0; i < retries; i++) {
+    try {
+      result = await sectionModel.generateContent(sectionPrompt);
+      break;
+    } catch (error) {
+      if (i === retries - 1) {
+        throw error;
+      }
+      if (error.status === 503 || (error.message && error.message.includes('503'))) {
+        console.warn(`[Gemini API] 503 High Demand Error. Retrying in ${delay/1000} seconds... (Attempt ${i + 1} of ${retries})`);
+        await new Promise(res => setTimeout(res, delay));
+        delay *= 2;
+      } else {
+        throw error;
+      }
+    }
+  }
+
       return { success: true, text: result.response.text(), mediaHtml: assignedMediaElement}
 }

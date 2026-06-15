@@ -403,6 +403,10 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
             cleanMd = cleanMd.replace(/^####\s+(.*)$/gm, '<h4>$1</h4>')
             cleanMd = cleanMd.replace(/^###\s+(.*)$/gm, '<h3>$1</h3>')
 
+            // F. IMAGES & LINKS
+            cleanMd = cleanMd.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />');
+            cleanMd = cleanMd.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
             // F. HORIZONTAL RULES
             cleanMd = cleanMd.replace(/^---$/gm, '<hr class="my-8 border-divider" />')
 

@@ -31,10 +31,6 @@ const AmazonRoundupFields = ({ settings, updateSetting }) => {
           updateSetting('amazonDomain', url.hostname.replace(/^www\./, ''));
         }
 
-        const tag = url.searchParams.get('crid');
-        if (tag && tag !== settings.amazonTrackingId) {
-          updateSetting('amazonTrackingId', tag);
-        }
       } catch (e) {
       }
     }
