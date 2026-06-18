@@ -16,7 +16,7 @@ import { countries } from '@/configs/countries';
  */
 async function fetchInternalAmazonData(keyword, settings) {
   // Ensure this points to your real domain in production via .env
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
 
   const response = await fetch(`${baseUrl}/api/amazon`, {
     method: 'POST',
@@ -197,20 +197,23 @@ export async function generateAmazonRoundupSection(body, genAI) {
 
   if (activeSectionType === 'intro') {
     const top3 = formattedProducts.slice(0, 3);
-    // FIXED: Changed p.title to p.productName and p.affiliateUrl to p.amazonUrl
-    const top3Markdown = top3.map(p => `| <img src="${p.imageUrl}" width="100"/> | **${p.productName}** | [Check Price](${p.amazonUrl}) |`).join('\n');
+
+    const top3HTML = top3.map(p => {
+      const safeTitle = p.productName.replace(/[\r\n]+/g, ' ').replace(/\|/g, '-');
+      const safeImageUrl = p.imageUrl ? p.imageUrl.replace(/_/g, '%5F') : '';
+      return `<tr><td><img src="${safeImageUrl}" width="100"/></td><td><strong>${safeTitle}</strong></td><td><a href="${p.amazonUrl}" target="_blank">Check Price</a></td></tr>`;
+    }).join('');
+
 
     sectionPrompt += `
-      TASK: Write a strong, engaging introduction for the keyword "${targetKeyword}".
+        TASK: Write a strong, engaging introduction for the keyword "${targetKeyword}".
 
-      STRICT LAYOUT REQUIREMENT (Top 3 Picks Table):
-      Immediately following your introductory paragraphs, you MUST include this EXACT Markdown table representing our Top 3 Picks:
+        STRICT LAYOUT REQUIREMENT (Top 3 Picks Table):
+        Immediately following your introductory paragraphs, you MUST include this EXACT HTML table representing our Top 3 Picks. Do NOT add any formatting, newlines, or spaces between the HTML tags:
 
-      ### Our Top 3 Picks
-      | Image | Product | Link |
-      |---|---|---|
-      ${top3Markdown}
-    `;
+        ### Our Top 3 Picks
+        <table><tbody><tr><th>Image</th><th>Product</th><th>Link</th></tr>${top3HTML}</tbody></table>
+        `;
   }
 
   else if (activeSectionType === 'product') {
@@ -264,6 +267,9 @@ export async function generateAmazonRoundupSection(body, genAI) {
   for (let i = 0; i < retries; i++) {
     try {
       result = await sectionModel.generateContent(sectionPrompt);
+      if (activeSectionType === 'intro') {
+        console.log("RAW GEMINI INTRO OUTPUT:\n", result.response.text());
+      }
       break;
     } catch (error) {
       if (i === retries - 1) {
@@ -278,6 +284,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
       }
     }
   }
+
 
   return { success: true, text: result.response.text(), mediaHtml: null };
 }
