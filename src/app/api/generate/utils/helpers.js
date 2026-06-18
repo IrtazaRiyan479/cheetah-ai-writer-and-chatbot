@@ -95,6 +95,38 @@ async function getSmartVideoQuery(topic, heading, genAI) {
   }
 }
 
+export async function fetchPeopleAlsoSearchFor(query) {
+  if (!process.env.SERPER_API_KEY) return [];
+  try {
+    const res = await fetch(`https://google.serper.dev/search`, {
+      method: 'POST',
+      headers: {
+        'X-API-KEY': process.env.SERPER_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ q: query })
+    });
+
+    const data = await res.json();
+    const lsiKeywords = new Set();
+
+    // Extract "People Also Ask" (Questions)
+    if (data.peopleAlsoAsk && Array.isArray(data.peopleAlsoAsk)) {
+      data.peopleAlsoAsk.forEach(item => lsiKeywords.add(item.question));
+    }
+
+    // Extract "Related Searches" (Search queries)
+    if (data.relatedSearches && Array.isArray(data.relatedSearches)) {
+      data.relatedSearches.forEach(item => lsiKeywords.add(item.query));
+    }
+
+    return Array.from(lsiKeywords).slice(0, 8);
+  } catch (e) {
+    console.error('Serper LSI Fetch Error:', e);
+    return [];
+  }
+}
+
 export async function fetchArticleData(url) {
   if (!url) return { success: false, text: '', title: '' };
 

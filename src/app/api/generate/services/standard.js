@@ -1,4 +1,4 @@
-import {fetchSerperOutlineData, getLinkInstruction, getExternalLinkInstruction, getRealTimeInstruction, getReadabilityInstruction, getMediaInstruction, getSeoInstruction, getPovInstruction, getToneInstruction, getBaseSystemInstruction} from '../utils/helpers'
+import {fetchSerperOutlineData, getLinkInstruction, getExternalLinkInstruction, getRealTimeInstruction, getReadabilityInstruction, getMediaInstruction, getSeoInstruction, getPovInstruction, getToneInstruction, getBaseSystemInstruction, fetchPeopleAlsoSearchFor} from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 
@@ -15,9 +15,8 @@ export async function generateStandardBlogOutline(body, genAI) {
 
   const outlineModel = genAI.getGenerativeModel({
     model: model || 'gemini-3.1-flash-lite',
-    generationConfig: { responseMimeType: "application/json",  },
-
-    systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline. You MUST return a JSON object with two keys: "title" (A catchy, click-worthy, viral H1 Title based on the keyword) and "outline" (A flat JSON array of objects). Schema: { "title": "Catchy Title Here", "outline": [{ "type": "h2", "text": "Introduction" }, { "type": "h3", "text": "Subheading" }] }`
+    generationConfig: { responseMimeType: "application/json" },
+   systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging, SEO-optimized article outline. You MUST return a strictly formatted JSON object with four keys: "metaTitle", "metaDescription", "title", and "outline".\n\nSchema MUST strictly follow this exact structure:\n{\n  "metaTitle": "An SEO-optimized title tag (max 60 characters)",\n  "metaDescription": "A compelling SEO meta description (max 160 characters)",\n  "title": "A catchy, click-worthy H1 Title",\n  "outline": [\n    { "type": "h2", "text": "..." },\n    { "type": "h3", "text": "..." }\n  ]\n}\n\nCRITICAL OUTLINE RULES:\n- The "title" MUST contain the exact target keyword: "${targetKeyword}".\n- The VERY FIRST "h2" object in the outline array MUST contain the exact target keyword: "${targetKeyword}" in its "text" field.\n- The VERY LAST "h2" object in the outline array MUST be a concluding heading and MUST also contain the exact target keyword: "${targetKeyword}" in its "text" field.`
   });
 
 
@@ -54,6 +53,7 @@ export async function generateStandardBlogOutline(body, genAI) {
         relatedInstruction = `\nSEO OPTIMIZATION: Naturally incorporate topics from these related Google searches into your H2 and H3 headings where relevant: ${outlineData.related.slice(0, 5).join(', ')}.`;
     }
   }
+
 
   // --- KEY TAKEAWAYS INSTRUCTION ---
   if (includeKeyTakeaways) {
@@ -123,6 +123,9 @@ const { model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice, poin
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
   let povInstruction = getPovInstruction(pointOfView);
   let readabilityInstruction = getReadabilityInstruction(improveReadability);
+  const lsiData = await fetchPeopleAlsoSearchFor(targetKeyword);
+  const lsiString = lsiData.length > 0 ? lsiData.join(', ') : 'related SEO topics';
+  console.log(lsiString)
 
   let sectionStructureRequirements = `
           CRITICAL STRUCTURE REQUIREMENTS (STANDARD MODE):
@@ -135,6 +138,15 @@ const { model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice, poin
         Full Article Outline for Context: ${JSON.stringify(outlineContext)}
 
         TASK: Write a comprehensive section focusing ONLY on the main heading: "${heading}".
+
+        CRITICAL SEO & FORMATTING REQUIREMENTS:
+        - Target Keyword: "${targetKeyword}"
+        - LSI / People Also Search For Keywords: [${lsiString}]
+
+        1. KEYWORD PLACEMENT & BOLDING: You MUST include the exact Target Keyword naturally in this section. If this section is the Introduction or Conclusion, this is absolutely MANDATORY. You MUST format the target keyword in bold (**${targetKeyword}**) every time it is used.
+        2. LSI INTEGRATION: You MUST naturally integrate 1 to 2 of the provided LSI keywords into the paragraphs or subheadings of this section.
+        3. LSI BOLDING: Every time you use an LSI keyword, you MUST format it in bold (e.g., **LSI keyword**).
+
         ${sectionStructureRequirements}
         ${realTimeInstruction}
         ${extLinkInstruction}
