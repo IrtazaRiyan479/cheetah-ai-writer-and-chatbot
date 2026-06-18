@@ -64,11 +64,50 @@ async function fetchUnsplashImage(query) {
 async function getSmartImageKeyword(topic, heading, genAI) {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
-    const prompt = `Generate a highly descriptive, aesthetic 2-3 word search query for an Unsplash image related to the topic "${topic}" and specifically the section "${heading}". Reply ONLY with the keywords, no quotes, no extra text.`;
+
+    const prompt = `Generate a 2-3 word search query for an Unsplash image.
+    CRITICAL RULE 1: The primary subject of the image MUST be exactly about the main topic: "${topic}".
+    CRITICAL RULE 2: Use the section heading "${heading}" ONLY for minor visual context.
+    CRITICAL RULE 3: Strictly avoid abstract concepts, emotions (like love, hands, sky), or generic metaphors. Keep it literal and photorealistic.
+    Reply ONLY with the exact search query, no quotes, no extra text.`;
+
+    const STOP_WORDS = new Set([
+  'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are', 'arent', 'as', 'at',
+  'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by', 'cant', 'cannot', 'could',
+  'couldnt', 'did', 'didnt', 'do', 'does', 'doesnt', 'doing', 'dont', 'down', 'during', 'each', 'few', 'for',
+  'from', 'further', 'had', 'hadnt', 'has', 'hasnt', 'have', 'havent', 'having', 'he', 'hed', 'hell', 'hes',
+  'her', 'here', 'heres', 'hers', 'herself', 'him', 'himself', 'his', 'how', 'hows', 'i', 'id', 'ill', 'im',
+  'ive', 'if', 'in', 'into', 'is', 'isnt', 'it', 'its', 'itself', 'lets', 'me', 'more', 'most', 'mustnt',
+  'my', 'myself', 'no', 'nor', 'not', 'of', 'off', 'on', 'once', 'only', 'or', 'other', 'ought', 'our', 'ours', 'ourselves',
+  'out', 'over', 'own', 'same', 'shant', 'she', 'shed', 'shell', 'shes', 'should', 'shouldnt', 'so', 'some',
+  'such', 'than', 'that', 'thats', 'the', 'their', 'theirs', 'them', 'themselves', 'then', 'there', 'theres', 'these',
+  'they', 'theyd', 'theyll', 'theyre', 'theyve', 'this', 'those', 'through', 'to', 'too', 'under', 'until', 'up',
+  'very', 'was', 'wasnt', 'we', 'wed', 'well', 'were', 'weve', 'werent', 'what', 'whats', 'when',
+  'whens', 'where', 'wheres', 'which', 'while', 'who', 'whos', 'whom', 'why', 'whys', 'with', 'wont', 'would',
+  'wouldnt', 'you', 'youd', 'youll', 'youre', 'youve', 'your', 'yours', 'yourself', 'yourselves', 'guide', 'best', 'top',
+  'vs', 'versus', 'can', 'will'
+]);
+
     const result = await model.generateContent(prompt);
-    return result.response.text().trim().replace(/['"]/g, '');
+    const keyword = result.response.text().trim().replace(/['"]/g, '');
+
+    const cleanTopic = topic.toLowerCase().replace(/[^\w\s]|_/g, "");
+    const cleanKeyword = keyword.toLowerCase().replace(/[^\w\s]|_/g, "");
+
+    const topicWords = cleanTopic.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+
+    const isRelated = topicWords.some(w => cleanKeyword.includes(w));
+
+    if (!isRelated && topicWords.length > 0) {
+       console.log(`[Image Fallback] Keyword "${keyword}" drifted. Falling back to H1 core words.`);
+       return topicWords.slice(0, 3).join(' ');
+    }
+
+    return keyword;
   } catch(e) {
-    return `${topic} ${heading}`.trim();
+    const cleanTopic = topic.toLowerCase().replace(/[^\w\s]|_/g, "");
+    const fallbackWords = cleanTopic.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+    return fallbackWords.slice(0, 3).join(' ') || topic.trim();
   }
 }
 
@@ -87,11 +126,51 @@ async function fetchYouTubeVideo(query) {
 async function getSmartVideoQuery(topic, heading, genAI) {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
-    const prompt = `Generate a highly specific, highly relevant 3-5 word YouTube search query for an educational or informative video related to the topic "${topic}" and specifically the section "${heading}". Do NOT use generic words like 'introduction', 'conclusion', or 'tutorial'. Reply ONLY with the exact search query, no quotes.`;
+
+    const prompt = `Generate a highly specific 3-5 word YouTube search query for an educational video.
+    CRITICAL RULE 1: The query MUST be primarily about the main topic: "${topic}".
+    CRITICAL RULE 2: Integrate context from the section heading "${heading}" but do not lose the main topic.
+    CRITICAL RULE 3: Do NOT use generic words like 'introduction', 'conclusion', 'tutorial', or 'video'.
+    Reply ONLY with the exact search query, no quotes.`;
+
+     const STOP_WORDS = new Set([
+  'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are', 'arent', 'as', 'at',
+  'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by', 'cant', 'cannot', 'could',
+  'couldnt', 'did', 'didnt', 'do', 'does', 'doesnt', 'doing', 'dont', 'down', 'during', 'each', 'few', 'for',
+  'from', 'further', 'had', 'hadnt', 'has', 'hasnt', 'have', 'havent', 'having', 'he', 'hed', 'hell', 'hes',
+  'her', 'here', 'heres', 'hers', 'herself', 'him', 'himself', 'his', 'how', 'hows', 'i', 'id', 'ill', 'im',
+  'ive', 'if', 'in', 'into', 'is', 'isnt', 'it', 'its', 'itself', 'lets', 'me', 'more', 'most', 'mustnt',
+  'my', 'myself', 'no', 'nor', 'not', 'of', 'off', 'on', 'once', 'only', 'or', 'other', 'ought', 'our', 'ours', 'ourselves',
+  'out', 'over', 'own', 'same', 'shant', 'she', 'shed', 'shell', 'shes', 'should', 'shouldnt', 'so', 'some',
+  'such', 'than', 'that', 'thats', 'the', 'their', 'theirs', 'them', 'themselves', 'then', 'there', 'theres', 'these',
+  'they', 'theyd', 'theyll', 'theyre', 'theyve', 'this', 'those', 'through', 'to', 'too', 'under', 'until', 'up',
+  'very', 'was', 'wasnt', 'we', 'wed', 'well', 'were', 'weve', 'werent', 'what', 'whats', 'when',
+  'whens', 'where', 'wheres', 'which', 'while', 'who', 'whos', 'whom', 'why', 'whys', 'with', 'wont', 'would',
+  'wouldnt', 'you', 'youd', 'youll', 'youre', 'youve', 'your', 'yours', 'yourself', 'yourselves', 'guide', 'best', 'top',
+  'vs', 'versus', 'can', 'will'
+]);
+
     const result = await model.generateContent(prompt);
-    return result.response.text().trim().replace(/['"]/g, '');
+    const keyword = result.response.text().trim().replace(/['"]/g, '');
+
+    const cleanTopic = topic.toLowerCase().replace(/[^\w\s]|_/g, "");
+    const cleanKeyword = keyword.toLowerCase().replace(/[^\w\s]|_/g, "");
+
+    const topicWords = cleanTopic.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+
+    const isRelated = topicWords.some(w => cleanKeyword.includes(w));
+
+    if (!isRelated && topicWords.length > 0) {
+       console.log(`[Video Fallback] Query "${keyword}" drifted. Falling back to H1 core words.`);
+       return topicWords.slice(0, 4).join(' ');
+    }
+
+    return keyword;
   } catch(e) {
-    return `${topic} ${heading}`.trim();
+    // Error fallback: derive the safest core words from the topic
+    const cleanTopic = topic.toLowerCase().replace(/[^\w\s]|_/g, "");
+    const fallbackWords = cleanTopic.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+    return fallbackWords.slice(0, 4).join(' ') || topic.trim();
   }
 }
 
