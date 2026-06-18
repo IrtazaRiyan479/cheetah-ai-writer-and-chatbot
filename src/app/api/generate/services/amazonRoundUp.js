@@ -16,7 +16,7 @@ import { countries } from '@/configs/countries';
  */
 async function fetchInternalAmazonData(keyword, settings) {
   // Ensure this points to your real domain in production via .env
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
   const response = await fetch(`${baseUrl}/api/amazon`, {
     method: 'POST',

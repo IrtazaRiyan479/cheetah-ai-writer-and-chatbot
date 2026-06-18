@@ -23,7 +23,7 @@ function extractASIN(url) {
  * Internal Fetcher: Hits your existing route.js
  */
 async function fetchInternalAmazonData(keyword, settings) {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
   const response = await fetch(`${baseUrl}/api/amazon`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
