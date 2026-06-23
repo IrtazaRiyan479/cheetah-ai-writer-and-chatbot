@@ -104,8 +104,6 @@ const ImageGeneratorBoard = () => {
   }
 };
 
-  // 3. Perfect Clear All Function
-  // 2. Clear Database
   const handleClearAll = async () => {
     const confirmed = window.confirm("Are you sure you want to permanently delete all generated images from your account?");
     if (!confirmed) return;
@@ -126,20 +124,18 @@ const ImageGeneratorBoard = () => {
     }
   }, [])
 
-  // Auto-scroll horizontally when new images generate
   useEffect(() => {
     if (feedRef.current) {
       feedRef.current.scrollLeft = feedRef.current.scrollWidth
     }
   }, [feedTasks.length])
 
-  // Handle local image upload preview
   const handleImageUpload = (e) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setUploadedImage(reader.result); // Saves as Base64 string for the backend
+        setUploadedImage(reader.result);
       };
       reader.readAsDataURL(file);
     }
@@ -147,10 +143,9 @@ const ImageGeneratorBoard = () => {
     e.target.value = null;
   }
 
-  // Submit to our new Next.js API
-  const handleGenerate = async () => {
+ const handleGenerate = async () => {
     if (!prompt && !uploadedImage) return;
-    setIsGenerating(true)
+    setIsGenerating(true);
 
     try {
       const response = await fetch('/api/generate-image', {
@@ -159,20 +154,56 @@ const ImageGeneratorBoard = () => {
         body: JSON.stringify({ prompt, model, style, size, numImages, lossless, uploadedImage })
       });
 
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        alert(`Generation Error: ${data.error || 'Unknown server error'}`);
-        return;
+      if (!response.body) {
+        throw new Error('ReadableStream not supported by browser.');
       }
 
-      setImageHistory(prev => [...data.images, ...prev]);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
 
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        const parts = buffer.split('\n\n');
+
+        buffer = parts.pop();
+
+        for (const event of parts) {
+          if (event.startsWith('data: ')) {
+            const dataString = event.substring(6);
+
+            try {
+              const data = JSON.parse(dataString);
+
+              if (data.status === 'processing') {
+                 if (data.promptUsed && data.promptUsed !== prompt) {
+                    setPrompt(data.promptUsed);
+                 }
+              }
+              else if (data.success && data.image) {
+                 setImageHistory(prev => [data.image, ...prev]);
+              }
+              else if (data.done) {
+                 setIsGenerating(false);
+              }
+              else if (data.error || data.success === false) {
+                 console.error("Image generation failed:", data.error);
+              }
+            } catch (e) {
+              console.error("Failed to parse buffered JSON stream", e);
+            }
+          }
+        }
+      }
     } catch (error) {
       console.error("Generation failed", error);
-      alert("Network error: Could not reach the server.");
-    } finally {
-      setIsGenerating(false)
+      alert("Network error: Could not reach the server or read stream.");
+      setIsGenerating(false);
     }
   }
 
