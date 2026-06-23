@@ -61,6 +61,7 @@ const LinksPage = () => {
         alert('Failed to crawl domain.')
       }
     } catch (error) {
+      alert('Failed to generate content.', error)
       console.error(error)
     } finally {
       setIsCrawling(false)

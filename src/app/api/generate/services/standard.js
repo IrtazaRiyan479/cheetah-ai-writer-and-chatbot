@@ -1,6 +1,7 @@
 import {fetchSerperOutlineData, getLinkInstruction, getExternalLinkInstruction, getRealTimeInstruction, getReadabilityInstruction, getMediaInstruction, getSeoInstruction, getPovInstruction, getToneInstruction, getBaseSystemInstruction, fetchPeopleAlsoSearchFor} from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
+import { GoogleGenAI } from '@google/genai';
 
 export async function generateStandardBlogOutline(body, genAI) {
   const { prompt, settings } = body;
@@ -83,33 +84,34 @@ export async function generateStandardBlogOutline(body, genAI) {
 }
 
 export async function generateStandardBlogSection(body, genAI) {
-    const {
-      outlineContext,
-      heading,
-      subheadings,
-      sectionIndex,
-      uploadedMedia,
-      externalLinks,
-      internalLinks,
-      settings = {} } = body;
+  const {
+    outlineContext,
+    heading,
+    subheadings,
+    sectionIndex,
+    uploadedMedia,
+    externalLinks,
+    internalLinks,
+    settings = {}
+  } = body;
 
-const { model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice, pointOfView, useRealTimeSearchData, realTimeDataSource, deepSearch, improveReadability, seoOptimization, manualKeywords, aiImagesAndVideos, country, language } = settings;
+  const { model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice, pointOfView, useRealTimeSearchData, realTimeDataSource, deepSearch, improveReadability, seoOptimization, manualKeywords, aiImagesAndVideos, country, language } = settings;
 
-        const langObj = languages ? languages[language] : null;
-    const langName = langObj ? langObj.name : (language || 'English');
-    const countryObj = countries ? countries.find(c => c.code === country) : null;
-    const countryName = countryObj ? countryObj.name : (country || 'United States');
+  const langObj = languages ? languages[language] : null;
+  const langName = langObj ? langObj.name : (language || 'English');
+  const countryObj = countries ? countries.find(c => c.code === country) : null;
+  const countryName = countryObj ? countryObj.name : (country || 'United States');
   const baseSystemInstruction = getBaseSystemInstruction(langName, countryName);
 
-        const modelConfig = {
-        model: deepSearch ? 'deep-research-preview-04-2026' : (model || 'gemini-2.5-pro'),
-        systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: You are an expert copywriter. Write highly engaging, SEO-optimized content.`
-      }
+  const modelConfig = {
+    model: model || 'gemini-3.1-flash-lite',
+    systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: You are an expert copywriter. Write highly engaging, SEO-optimized content.`
+  }
 
-        const isWebSearch = !realTimeDataSource || realTimeDataSource === 'search';
-  if (useRealTimeSearchData && isWebSearch) {
+  const isWebSearch = !realTimeDataSource || realTimeDataSource === 'search';
+  if (useRealTimeSearchData && isWebSearch && !deepSearch) {
     modelConfig.tools = [{
-      googleSearchRetrieval: { dynamicRetrievalConfig: { mode: "MODE_DYNAMIC", dynamicThreshold: 0.3 } }
+      googleSearch: {}
     }];
   }
 
@@ -125,7 +127,6 @@ const { model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice, poin
   let readabilityInstruction = getReadabilityInstruction(improveReadability);
   const lsiData = await fetchPeopleAlsoSearchFor(targetKeyword);
   const lsiString = lsiData.length > 0 ? lsiData.join(', ') : 'related SEO topics';
-  console.log(lsiString)
 
   let sectionStructureRequirements = `
           CRITICAL STRUCTURE REQUIREMENTS (STANDARD MODE):
@@ -133,7 +134,7 @@ const { model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice, poin
           ${subheadings && subheadings.length > 0 ? `2. After the intro, cover these subheadings exactly as H3s (### [Title]):\n${subheadings.join('\n')}` : ''}
         `;
 
-        const sectionPrompt = `
+  const sectionPrompt = `
         Article Title/Context: ${articleTitle || targetKeyword}
         Full Article Outline for Context: ${JSON.stringify(outlineContext)}
 
@@ -156,9 +157,26 @@ const { model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice, poin
         ${toneInstruction}
         ${povInstruction}
         ${readabilityInstruction}
-      `
+      `;
 
-      let result;
+  if (deepSearch) {
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+    const interaction = await ai.interactions.create({
+      agent: 'deep-research-preview-04-2026',
+      input: `${baseSystemInstruction}\n\nYou are an expert researcher. Conduct a deep web search based on the following instructions. \n\nCRITICAL RULE: DO NOT output your research notes, search queries, or internal reasoning. Your FINAL output MUST strictly be the final, ready-to-publish Markdown text adhering exactly to the layout requirements provided below.\n\n---\n\n${sectionPrompt}`,
+      background: true
+    });
+
+    return {
+      success: true,
+      isDeepSearch: true,
+      interactionId: interaction.id,
+      mediaHtml: assignedMediaElement
+    };
+  }
+
+  let result;
   let retries = 3;
   let delay = 2000;
 
@@ -171,7 +189,7 @@ const { model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice, poin
         throw error;
       }
       if (error.status === 503 || (error.message && error.message.includes('503'))) {
-        console.warn(`[Gemini API] 503 High Demand Error. Retrying in ${delay/1000} seconds... (Attempt ${i + 1} of ${retries})`);
+        console.warn(`[Gemini API] 503 High Demand Error. Retrying in ${delay / 1000} seconds... (Attempt ${i + 1} of ${retries})`);
         await new Promise(res => setTimeout(res, delay));
         delay *= 2;
       } else {
@@ -180,5 +198,9 @@ const { model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice, poin
     }
   }
 
-      return { success: true, text: result.response.text(), mediaHtml: assignedMediaElement}
+  return {
+    success: true,
+    text: result.response.text(),
+    mediaHtml: assignedMediaElement
+  };
 }

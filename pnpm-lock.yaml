@@ -233,6 +233,9 @@ importers:
       react-use:
         specifier: 17.6.0
         version: 17.6.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      serpapi:
+        specifier: ^2.2.1
+        version: 2.2.1
       server-only:
         specifier: 0.0.1
         version: 0.0.1
@@ -4723,6 +4726,9 @@ packages:
   serialize-to-js@3.1.2:
     resolution: {integrity: sha512-owllqNuDDEimQat7EPG0tH7JjO090xKNzUtYz6X+Sk2BXDnOCilDdNLwjWeFywG9xkJul1ULvtUQa9O4pUaY0w==}
     engines: {node: '>=4.0.0'}
+
+  serpapi@2.2.1:
+    resolution: {integrity: sha512-1HXXaIwDmYueFPauAggIkzozMi5P/a4/yRUxB8Z1kad0VQE/7ohf9a6xRQ99aXR252itDChfmJUfBdCA4phCYA==}
 
   server-only@0.0.1:
     resolution: {integrity: sha512-qepMx2JxAa5jjfzxG79yPPq+8BuFToHd1hm7kI+Z4zAq1ftQiP7HcxMhDDItrbtwVeLg/cY2JnKnrcFkmiswNA==}
@@ -10019,6 +10025,8 @@ snapshots:
   semver@7.8.0: {}
 
   serialize-to-js@3.1.2: {}
+
+  serpapi@2.2.1: {}
 
   server-only@0.0.1: {}
 

@@ -87,7 +87,17 @@ const ImageCard = ({ task, index }) => {
         {/* 3. The Prompt (Footer) */}
         <Typography variant='body2' color='text.secondary' className='mt-1 leading-relaxed bg-actionHover p-2 rounded-md'>
           <span className="font-semibold text-textPrimary">Prompt: </span>
-          {task.description || task.prompt || 'A detailed AI generated image based on the prompt provided.'}
+          <Tooltip
+            title={task.description || task.prompt || 'A detailed AI generated image...'}
+            placement="top"
+            arrow
+          >
+            <span className="cursor-help">
+              {(task.description || task.prompt || '').length > 70
+                ? `${(task.description || task.prompt).substring(0, 70)}...`
+                : (task.description || task.prompt || 'A detailed AI generated image based on the prompt provided.')}
+            </span>
+          </Tooltip>
         </Typography>
 
       </CardContent>

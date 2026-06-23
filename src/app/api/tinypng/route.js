@@ -1,32 +1,38 @@
-import { NextResponse } from 'next/server'
+import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
-    const { imageUrl } = await request.json()
+    const { imageBase64 } = await request.json();
 
-    if (!imageUrl) {
-      return NextResponse.json({ error: 'Image URL is required' }, { status: 400 })
+    if (!imageBase64) {
+      return NextResponse.json({ error: 'imageBase64 payload is required' }, { status: 400 });
     }
 
-    // TinyPNG requires Basic Auth with "api:" as the username
-    const credentials = Buffer.from(`api:${process.env.TINYPNG_API_KEY}`).toString('base64')
+    const credentials = Buffer.from(`api:${process.env.TINYPNG_API_KEY}`).toString('base64');
+
+    // Strip "data:image/png;base64," if it exists so we just have raw base64 string
+    const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
+    const buffer = Buffer.from(base64Data, 'base64');
 
     const response = await fetch('https://api.tinify.com/shrink', {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${credentials}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'image/png' // Tell TinyPNG we are sending binary image data
       },
-      body: JSON.stringify({ source: { url: imageUrl } })
-    })
+      body: buffer
+    });
 
-    const data = await response.json()
+    const data = await response.json();
 
-    // TinyPNG returns the compressed image URL in the "output.url" field
-    return NextResponse.json({ success: true, compressedUrl: data.output.url })
+    if (!response.ok) {
+       throw new Error(data.message || 'Compression failed');
+    }
+
+    return NextResponse.json({ success: true, compressedUrl: data.output.url });
 
   } catch (error) {
-    console.error('TinyPNG Error:', error)
-    return NextResponse.json({ success: false, error: 'Failed to compress image' }, { status: 500 })
+    console.error('TinyPNG Error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to compress image' }, { status: 500 });
   }
 }

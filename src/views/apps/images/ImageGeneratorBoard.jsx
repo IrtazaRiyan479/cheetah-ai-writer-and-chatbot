@@ -57,30 +57,65 @@ const ImageGeneratorBoard = () => {
   const [numImages, setNumImages] = useState(1)
   const [uploadedImage, setUploadedImage] = useState(null)
   const [isGenerating, setIsGenerating] = useState(false)
-  const [enhancePrompt, setEnhancePrompt] = useState(false)
   const [lossless, setLossless] = useState(true)
   const [imageHistory, setImageHistory] = useState([])
+  const [isEnhancing, setIsEnhancing] = useState(false)
 
   useEffect(() => {
-    const saved = localStorage.getItem('image_gen_history')
-    if (saved) {
-      setImageHistory(JSON.parse(saved))
-    } else {
-      setImageHistory(SAMPLE_IMAGES)
-    }
+    const fetchImages = async () => {
+      try {
+        // Ensure this URL matches your actual API route file path
+        const res = await fetch('/api/generate-image');
+        const data = await res.json();
+
+        if (data.success && data.images.length > 0) {
+          setImageHistory(data.images);
+        } else {
+          setImageHistory(SAMPLE_IMAGES);
+        }
+      } catch (error) {
+        console.error("Failed to fetch image history", error);
+      }
+    };
+
+    fetchImages();
   }, [])
 
-  // 2. Save to storage whenever the array changes
-  useEffect(() => {
-    if (imageHistory.length > 0) {
-      localStorage.setItem('image_gen_history', JSON.stringify(imageHistory))
+
+  const handleEnhancePrompt = async () => {
+  if (!prompt) return;
+  setIsEnhancing(true);
+  try {
+    const res = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: `Enhance the following prompt for an AI image generator to make it highly detailed, visual, and descriptive. Return ONLY the enhanced text. Original prompt: ${prompt}`
+      })
+    });
+    const data = await res.json();
+    if (data.success && data.text) {
+      setPrompt(data.text.trim());
     }
-  }, [imageHistory])
+  } catch (error) {
+    console.error("Failed to enhance prompt", error);
+  } finally {
+    setIsEnhancing(false);
+  }
+};
 
   // 3. Perfect Clear All Function
-  const handleClearAll = () => {
-    setImageHistory([])
-    localStorage.removeItem('image_gen_history') // Wipes from browser memory completely
+  // 2. Clear Database
+  const handleClearAll = async () => {
+    const confirmed = window.confirm("Are you sure you want to permanently delete all generated images from your account?");
+    if (!confirmed) return;
+
+    try {
+      await fetch('/api/generate-image', { method: 'DELETE' });
+      setImageHistory([]);
+    } catch (error) {
+      console.error("Failed to delete images", error);
+    }
   }
 
   useEffect(() => {
@@ -100,40 +135,42 @@ const ImageGeneratorBoard = () => {
 
   // Handle local image upload preview
   const handleImageUpload = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setUploadedImage(URL.createObjectURL(e.target.files[0]))
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setUploadedImage(reader.result); // Saves as Base64 string for the backend
+      };
+      reader.readAsDataURL(file);
     }
+
+    e.target.value = null;
   }
 
   // Submit to our new Next.js API
   const handleGenerate = async () => {
-    if (!prompt) return;
+    if (!prompt && !uploadedImage) return;
     setIsGenerating(true)
 
     try {
       const response = await fetch('/api/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, model, style, size, numberOfImages: numImages, enhancePrompt, lossless })
+        body: JSON.stringify({ prompt, model, style, size, numImages, lossless, uploadedImage })
       });
+
       const data = await response.json();
 
-      if (data.success && data.images) {
-        const newTasks = data.images.map((imgBase64, idx) => ({
-           id: Date.now() + idx,
-           title: model,
-           description: prompt,
-           image: imgBase64
-        }));
-
-        // Add new images to the TOP of the history
-        setImageHistory(prev => [...newTasks, ...prev]);
-        setPrompt('');
-      } else {
-        alert("Failed: " + data.error);
+      if (!response.ok || !data.success) {
+        alert(`Generation Error: ${data.error || 'Unknown server error'}`);
+        return;
       }
+
+      setImageHistory(prev => [...data.images, ...prev]);
+
     } catch (error) {
-      console.error('Failed to generate image', error);
+      console.error("Generation failed", error);
+      alert("Network error: Could not reach the server.");
     } finally {
       setIsGenerating(false)
     }
@@ -238,10 +275,16 @@ const ImageGeneratorBoard = () => {
           />
 
           <Box className="flex flex-col gap-1 mt-2 mb-2">
-            <FormControlLabel
-              control={<Switch checked={enhancePrompt} onChange={(e) => setEnhancePrompt(e.target.checked)} color="primary" />}
-              label={<Typography variant="body2" className="font-medium">Enhance Prompt</Typography>}
-            />
+            <Button
+              variant="outlined"
+              color="info"
+              onClick={handleEnhancePrompt}
+              disabled={isEnhancing || !prompt}
+              startIcon={<AutoAwesomeIcon />}
+              className="mt-2 w-full"
+            >
+              {isEnhancing ? 'Enhancing...' : 'Enhance Prompt'}
+            </Button>
             <FormControlLabel
               control={<Switch checked={lossless} onChange={(e) => setLossless(e.target.checked)} color="primary" />}
               label={<Typography variant="body2" className="font-medium">Lossless Quality</Typography>}
@@ -254,7 +297,7 @@ const ImageGeneratorBoard = () => {
             size="large"
             fullWidth
             onClick={handleGenerate}
-            disabled={!prompt || isGenerating}
+            disabled={(!prompt && !uploadedImage) || isGenerating}
             startIcon={<PhotoCameraIcon />}
             className="mt-2"
           >

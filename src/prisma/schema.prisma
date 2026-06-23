@@ -46,6 +46,7 @@ model User {
   supportPin    String?
   accounts      Account[]
   sessions      Session[]
+  generatedImages GeneratedImage[]
 }
 
 model VerificationToken {
@@ -70,3 +71,14 @@ model Preset {
   createdAt DateTime @default(now())
 }
 
+model GeneratedImage {
+  id          String   @id @default(cuid())
+  userId      String?
+  image       String   @db.LongText
+  prompt      String   @db.Text
+  title       String
+  description String   @db.Text
+  createdAt   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

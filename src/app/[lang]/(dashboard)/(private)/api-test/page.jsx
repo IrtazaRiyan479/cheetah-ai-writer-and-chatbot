@@ -66,6 +66,39 @@ export default function ApiDiagnostics() {
     setLoading({ ...loading, unsplash: false })
   }
 
+  const testSerpApi = async () => {
+    setLoading({ ...loading, serpapi: true })
+    try {
+      const res = await fetch('/api/serpapi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: 'Coffee' })
+      })
+      const data = await res.json()
+      updateLog('serpapi', data)
+    } catch (err) {
+      updateLog('serpapi', { error: err.message })
+    }
+    setLoading({ ...loading, serpapi: false })
+  }
+
+ const testdataSEO = async () => { // Remove the event argument here
+  setLoading({ ...loading, dataSEO: true });
+  try {
+    const response = await fetch('/api/bing-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'best running shoes for flat feet' }) // Hardcoded or passed string
+    });
+
+    const data = await response.json();
+    updateLog('dataSEO', data);
+  } catch (err) {
+    updateLog('dataSEO', { error: err.message });
+  }
+  setLoading({ ...loading, dataSEO: false });
+}
+
   return (
     <Container maxWidth='md' className='py-8'>
       <Typography variant='h4' className='font-bold mbe-6'>API Connection Diagnostics</Typography>
@@ -131,6 +164,61 @@ export default function ApiDiagnostics() {
                   />
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* SERPAPI TEST (Bing) */}
+        <Grid size={{ xs: 12 }}>
+          <Card className='shadow-sm'>
+            <CardContent>
+              <div className='flex items-center justify-between mbe-4'>
+                <div>
+                  <Typography variant='h6'>Bing SERP (SerpApi)</Typography>
+                  <Typography variant='caption' color='text.secondary'>Testing query: "best running shoes for flat feet"</Typography>
+                </div>
+                <Button
+                  variant='contained'
+                  color='primary'
+                  onClick={testSerpApi}
+                  disabled={loading.serpapi}
+                >
+                  {loading.serpapi ? 'Testing...' : 'Run Test'}
+                </Button>
+              </div>
+              <Divider className='mbe-4' />
+              <TextField
+                multiline fullWidth rows={6}
+                value={logs.serpapi || 'Awaiting test...'}
+                slotProps={{ input: { readOnly: true, style: { fontFamily: 'monospace', fontSize: '12px' } } }}
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+
+         <Grid size={{ xs: 12 }}>
+          <Card className='shadow-sm'>
+            <CardContent>
+              <div className='flex items-center justify-between mbe-4'>
+                <div>
+                  <Typography variant='h6'>Bing SERP (dataSEO)</Typography>
+                  <Typography variant='caption' color='text.secondary'>Testing query: "best running shoes for flat feet"</Typography>
+                </div>
+                <Button
+                  variant='contained'
+                  color='primary'
+                  onClick={testdataSEO}
+                  disabled={loading.dataSEO}
+                >
+                  {loading.dataSEO ? 'Testing...' : 'Run Test'}
+                </Button>
+              </div>
+              <Divider className='mbe-4' />
+              <TextField
+                multiline fullWidth rows={6}
+                value={logs.dataSEO || 'Awaiting test...'}
+                slotProps={{ input: { readOnly: true, style: { fontFamily: 'monospace', fontSize: '12px' } } }}
+              />
             </CardContent>
           </Card>
         </Grid>

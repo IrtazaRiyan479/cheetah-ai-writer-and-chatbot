@@ -54,13 +54,13 @@ const handleCreateArticle = async () => {
       }
     }
 
-  if (settings.deepSearch) {
-      toast.error('Premium Feature: You do not have a paid plan. Please upgrade your account to use Deep Search.', {
-        position: 'top-right',
-        autoClose: 5000
-      })
-      return // Stop the function from generating
-    }
+  // if (settings.deepSearch) {
+  //     toast.error('Premium Feature: You do not have a paid plan. Please upgrade your account to use Deep Search.', {
+  //       position: 'top-right',
+  //       autoClose: 5000
+  //     })
+  //     return // Stop the function from generating
+  //   }
 
     setIsGenerating(true)
 

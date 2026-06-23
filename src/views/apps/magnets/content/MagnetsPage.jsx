@@ -66,7 +66,7 @@ const MagnetsPage = () => {
       }
     } catch (error) {
       console.error(error)
-      alert('An error occurred while connecting to the AI.')
+      alert('An error occurred while connecting to the AI.', error)
     } finally {
       setIsGenerating(false)
     }

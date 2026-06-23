@@ -28,6 +28,8 @@ import Heading from '@tiptap/extension-heading'
 import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
+import { styled } from '@mui/material/styles'
+import LinearProgress, { linearProgressClasses } from '@mui/material/LinearProgress'
 
 
 const ProgressCircularWithLabel = ({ value, color }) => {
@@ -42,6 +44,15 @@ const ProgressCircularWithLabel = ({ value, color }) => {
     </div>
   )
 }
+
+const BorderLinearProgress = styled(LinearProgress)(({ theme }) => ({
+  blockSize: 10,
+  borderRadius: 5,
+  backgroundColor: 'var(--mui-palette-customColors-trackBg)',
+  [`& .${linearProgressClasses.bar}`]: {
+    borderRadius: 5,
+  }
+}))
 
 // --- TIPTAP TOOLBAR COMPONENT ---
 const EditorToolbar = ({ editor }) => {
@@ -241,9 +252,16 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
   const abortControllerRef = useRef(null)
   const hasStartedRef = useRef(false)
 
+  const [pollingStatus, setPollingStatus] = useState('');
+  const [deepSearchProgress, setDeepSearchProgress] = useState(0);
+
   const progressColors = ['secondary', 'success', 'error', 'warning', 'info', 'primary']
   const progressPercentage = outline && outline.length > 0 ? (currentIndex / outline.length) * 100 : 0
   const currentProgressColor = progressColors[currentIndex % progressColors.length] || 'primary'
+
+  const deepSearchColorPalette = ['info', 'secondary', 'primary', 'warning', 'success']
+  const deepSearchColorIndex = Math.floor(deepSearchProgress / 10) % deepSearchColorPalette.length
+  const deepSearchColor = deepSearchColorPalette[deepSearchColorIndex] || 'primary'
 
   const editor = useEditor({
     extensions,
@@ -258,7 +276,7 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
 
   const clearUploadedMedia = async (uploadedUrls) => {
   try {
-    await fetch('/api/upload', { // Ensure this matches the path to your route.js
+    await fetch('/api/upload', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       // To delete specific files (RECOMMENDED):
@@ -310,7 +328,7 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
         setCurrentIndex(group.originalIndex)
 
 
-        if (!group.h2.text.toLowerCase().includes('introduction')) {
+        if (i!=0) {
         editor.chain().focus('end').insertContent('<' + group.h2.type + '>' + group.h2.text + '</' + group.h2.type + '>').run()
         }
         const subheadings = group.h3s.map(h3 => h3.text)
@@ -358,8 +376,63 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
           const data = await res.json()
 
           if (data.success) {
+            let finalSectionText = data.text;
+
+            // 🟢 NEW DEEP SEARCH POLLING LOGIC 🟢
+           if (data.isDeepSearch && data.interactionId) {
+              setPollingStatus(`Initializing Deep Research Agent...`);
+              setDeepSearchProgress(5);
+
+              let isCompleted = false;
+              let pollCount = 0;
+
+              while (!isCompleted) {
+                if (isCancelled) break;
+
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                pollCount++;
+
+                if (pollCount === 1) setPollingStatus("Initializing Deep Search capabilities...");
+                if (pollCount === 3) setPollingStatus("Running live web queries...");
+                if (pollCount === 5) setPollingStatus("Scouring authoritative sources & extracting data...");
+                if (pollCount === 8) setPollingStatus("Cross-referencing facts and checking statistics...");
+                if (pollCount === 10) setPollingStatus("Analyzing semantic relevance and topic depth...");
+                if (pollCount === 13) setPollingStatus("Synthesizing research into a comprehensive draft...");
+                if (pollCount === 15) setPollingStatus("Expanding insights with secondary source validation...");
+                if (pollCount === 18) setPollingStatus("Structuring content for optimal readability...");
+                if (pollCount === 20) setPollingStatus("Applying strict SEO constraints and LSI keywords...");
+                if (pollCount === 23) setPollingStatus("Polishing grammar and finalizing Markdown formatting...");
+                if (pollCount === 25) setPollingStatus("Performing final quality checks...");
+
+                const estimatedProgress = Math.min(95, 5 + Math.floor(pollCount * 2));
+                setDeepSearchProgress(estimatedProgress);
+
+                try {
+                  const pollRes = await fetch(`/api/poll?id=${data.interactionId}`, {
+                    signal: abortControllerRef.current.signal
+                  });
+                  const pollData = await pollRes.json();
+
+                  if (pollData.status === 'completed') {
+                    finalSectionText = pollData.text;
+                    setDeepSearchProgress(100); // Snap to 100% when done
+                    isCompleted = true;
+                  } else if (pollData.status === 'failed') {
+                    finalSectionText = `## ${group.h2.text}\n<p><em>❌ Deep Research failed for this section.</em></p>`;
+                    isCompleted = true;
+                  }
+                } catch (pollError) {
+                  if (pollError.name === 'AbortError') throw pollError;
+                }
+              }
+              // Clear UI states after a short delay so the user sees 100%
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              setPollingStatus('');
+              setDeepSearchProgress(0);
+            }
+
             // 🟢 1. THE DEFINITIVE MARKDOWN PARSER
-            let cleanMd = data.text.replace(/^##\s+.*$/gm, '') // Remove redundant main heading
+            let cleanMd = finalSectionText.replace(/^##\s+.*$/gm, '') // Remove redundant main heading
 
             // A. CODE BLOCKS (Must happen first! Escape HTML so Tiptap doesn't execute it)
             cleanMd = cleanMd.replace(/```[a-zA-Z]*\n([\s\S]*?)```/g, (match, code) => {
@@ -593,13 +666,43 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
                <EditorContent editor={editor}/>
 
                {isGenerating && currentIndex < outline.length && (
-                 <div className='flex items-center gap-2 px-6 pb-6 mt-2'>
-                   <CircularProgress size={16} color={currentProgressColor}/>
-                   <Typography variant="caption" className="italic" color={currentProgressColor}>
-                     AI is currently writing: {outline[currentIndex]?.text || '...'}
-                   </Typography>
-                 </div>
-               )}
+                  settings.deepSearch ? (
+                    <div className='flex flex-col gap-3 px-6 pb-6 mt-4 w-full'>
+                      <div className="flex justify-between items-center w-full">
+                        <Typography variant="caption" className="italic font-medium" color={deepSearchColor}>
+                          {pollingStatus
+                            ? pollingStatus
+                            : `AI is currently writing: ${outline[currentIndex]?.text || '...'}`}
+                        </Typography>
+
+                        {deepSearchProgress > 0 && (
+                          <Typography variant="caption" className="font-bold" color={deepSearchColor}>
+                            ~{deepSearchProgress}%
+                          </Typography>
+                        )}
+                      </div>
+
+                      <div className="w-full">
+                        <BorderLinearProgress
+                          variant={deepSearchProgress > 0 ? "determinate" : "indeterminate"}
+                          value={deepSearchProgress > 0 ? deepSearchProgress : undefined}
+                          color={deepSearchColor}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className='flex items-center gap-2 px-6 pb-6 mt-2'>
+                      <CircularProgress
+                        variant="indeterminate"
+                        size={24}
+                        color={currentProgressColor}
+                      />
+                      <Typography variant="caption" className="italic font-medium" color={currentProgressColor}>
+                        AI is currently writing: {outline[currentIndex]?.text || '...'}
+                      </Typography>
+                    </div>
+                  )
+                )}
              </div>
           </div>
 
