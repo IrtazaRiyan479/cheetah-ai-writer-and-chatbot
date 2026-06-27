@@ -157,7 +157,7 @@ const Footer = () => {
             <span>{`© ${new Date().getFullYear()}, Made with `}</span>
             <span>{`❤️`}</span>
             <span>{` by `}</span>
-            <Link href='https://www.linkedin.com/in/irtaza-riyan/' target='_blank' className='font-medium text-white'>
+            <Link href='https://www.irtazariyan.online' target='_blank' className='font-medium text-white'>
               Irtaza Riyan
             </Link>
           </Typography>

@@ -52,7 +52,7 @@ const MagnetsPage = () => {
     setMagnetValues({})
 
     try {
-      const res = await fetch('/api/cheetah-magnets', {
+      const res = await fetch('/api/AffiGenie-magnets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'create', prompt })
@@ -78,7 +78,7 @@ const MagnetsPage = () => {
     setMagnetResult(null)
 
     try {
-      const res = await fetch('/api/cheetah-magnets', {
+      const res = await fetch('/api/AffiGenie-magnets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -125,7 +125,7 @@ const MagnetsPage = () => {
         {/* Modern Adaptive Header Section */}
         <Box className="p-6 border-b border-divider bg-actionHover/30">
           <Typography variant="h5" className="font-bold text-textPrimary tracking-tight flex items-center gap-2">
-            <AutoAwesomeIcon color="primary" fontSize="large" /> CheetahMagnets
+            <AutoAwesomeIcon color="primary" fontSize="large" /> AffiGenieMagnets
           </Typography>
           <Typography variant="body2" className="text-textSecondary mt-1.5 max-w-3xl leading-relaxed">
             Describe what you want your lead magnet to accomplish (e.g., <em>"Create quotes for a lawn maintenance service"</em>).
@@ -158,7 +158,7 @@ const MagnetsPage = () => {
               startIcon={isGenerating ? <CircularProgress size={20} color="inherit" /> : <AutoAwesomeIcon />}
               className="font-bold px-6 py-2.5"
             >
-              {isGenerating ? 'Architecting your tool...' : 'Create CheetahMagnet'}
+              {isGenerating ? 'Architecting your tool...' : 'Create AffiGenieMagnet'}
             </Button>
           </Box>
         </CardContent>
@@ -301,7 +301,7 @@ const MagnetsPage = () => {
         </DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" color="text.secondary" className="mb-4">
-            Copy and paste this HTML snippet into your website, blog, or CMS to display your custom CheetahMagnet.
+            Copy and paste this HTML snippet into your website, blog, or CMS to display your custom AffiGenieMagnet.
           </Typography>
           <Paper sx={{ p: 2, bgcolor: 'action.hover', fontFamily: 'monospace', fontSize: '0.875rem', wordBreak: 'break-all' }}>
             {`<iframe src="https://yourdomain.com/embed/magnet-id" width="100%" height="600" style="border:none;"></iframe>`}

@@ -35,12 +35,12 @@ const PrivacyAndTerms = () => {
 
             <Typography variant='h6'>1. Acceptance of Terms</Typography>
             <Typography variant='body1'>
-              By accessing and registering an account on Cheetah AI Writer, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use our services.
+              By accessing and registering an account on AffiGenie Writer, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use our services.
             </Typography>
 
             <Typography variant='h6'>2. Description of Service</Typography>
             <Typography variant='body1'>
-              Cheetah AI Writer provides a suite of AI-powered tools, including but not limited to article generation, chat interfaces, image generation, Cheetah Links for internal linking, and Cheetah Magnets. We reserve the right to modify, suspend, or discontinue any part of the service at any time.
+              AffiGenie Writer provides a suite of AI-powered tools, including but not limited to article generation, chat interfaces, image generation, AffiGenie Links for internal linking, and AffiGenie Magnets. We reserve the right to modify, suspend, or discontinue any part of the service at any time.
             </Typography>
 
             <Typography variant='h6'>3. User Accounts & Security</Typography>
@@ -50,7 +50,7 @@ const PrivacyAndTerms = () => {
 
             <Typography variant='h6'>4. AI-Generated Content & Acceptable Use</Typography>
             <Typography variant='body1'>
-              You retain the rights to the content you generate using Cheetah AI Writer. However, you agree not to use our platform to generate illegal, harmful, harassing, or highly offensive content. We reserve the right to terminate accounts that violate these usage guidelines.
+              You retain the rights to the content you generate using AffiGenie Writer. However, you agree not to use our platform to generate illegal, harmful, harassing, or highly offensive content. We reserve the right to terminate accounts that violate these usage guidelines.
             </Typography>
           </section>
 
@@ -72,7 +72,7 @@ const PrivacyAndTerms = () => {
 
             <Typography variant='h6'>3. Third-Party Services & APIs</Typography>
             <Typography variant='body1'>
-              To power our advanced generation features, Cheetah AI Writer shares necessary prompt data with third-party sub-processors. This includes the Gemini API for text and logic generation, as well as the YouTube and Serper APIs for fetching relevant media and search data to enrich your content. These services are governed by their respective privacy policies.
+              To power our advanced generation features, AffiGenie Writer shares necessary prompt data with third-party sub-processors. This includes the Gemini API for text and logic generation, as well as the YouTube and Serper APIs for fetching relevant media and search data to enrich your content. These services are governed by their respective privacy policies.
             </Typography>
 
             <Typography variant='h6'>4. Data Security</Typography>

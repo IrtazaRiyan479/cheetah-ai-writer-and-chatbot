@@ -79,7 +79,7 @@ const Footer = () => {
                   <Logo color='var(--mui-palette-common-white)' />
                 </Link>
                 <Typography color='white' className='lg:max-is-[390px] opacity-[0.78]'>
-                  Cheetah AI is your all in one platform for intelligent content generation, automated marketing, and custom chatbot development. Built for efficiency.
+                  AffiGenie is your all in one platform for intelligent content generation, automated marketing, and custom chatbot development. Built for efficiency.
                 </Typography>
                 {/* --- RESTORED UI: Subscription Block --- */}
                 <div>
@@ -132,11 +132,11 @@ const Footer = () => {
               </Typography>
               <div className='flex flex-col gap-4'>
                 <Typography component={Link} href='/chat' color='white' className='opacity-[0.78]'>
-                  Cheetah Chat
+                  AffiGenie Chat
                 </Typography>
                 <Link href='/writer' className='flex items-center gap-[10px]'>
                   <Typography color='white' className='opacity-[0.78]'>
-                    Cheetah Writer
+                    AffiGenie Writer
                   </Typography>
                   <Chip label='New' color='primary' size='small' />
                 </Link>
@@ -146,13 +146,13 @@ const Footer = () => {
                   color='white'
                   className='opacity-[0.78]'
                 >
-                  Cheetah Images
+                  AffiGenie Images
                 </Typography>
                 <Typography component={Link} href='/en/links' color='white' className='opacity-[0.78]'>
-                  Cheetah Links
+                  AffiGenie Links
                 </Typography>
                 <Typography component={Link} href='/en/magnets' color='white' className='opacity-[0.78]'>
-                  Cheetah Magnets
+                  AffiGenie Magnets
                 </Typography>
               </div>
             </Grid>
@@ -172,6 +172,9 @@ const Footer = () => {
                 </Typography>
                 <Typography component={Link} href='/register' color='white' className='opacity-[0.78]'>
                   Register
+                </Typography>
+                <Typography component={Link} href='/privacy-terms' color='white' className='opacity-[0.78]'>
+                  Privacy & Terms
                 </Typography>
               </div>
             </Grid>

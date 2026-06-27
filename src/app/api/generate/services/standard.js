@@ -124,15 +124,22 @@ export async function generateStandardBlogSection(body, genAI) {
 
   const sectionModel = genAI.getGenerativeModel(modelConfig);
 
-  let realTimeInstruction = await getRealTimeInstruction(useRealTimeSearchData, realTimeDataSource, articleTitle, targetKeyword, heading);
+  const [
+    realTimeInstruction,
+    seoInstruction,
+    { mediaInstruction, assignedMediaElement },
+    lsiData
+  ] = await Promise.all([
+    getRealTimeInstruction(useRealTimeSearchData, realTimeDataSource, articleTitle, targetKeyword, heading),
+    getSeoInstruction(seoOptimization, manualKeywords, targetKeyword),
+    getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI),
+    fetchPeopleAlsoSearchFor(targetKeyword)
+  ]);
   let extLinkInstruction = getExternalLinkInstruction(externalLinks);
   let linkInstruction = getLinkInstruction(internalLinks);
-  let seoInstruction = await getSeoInstruction(seoOptimization, manualKeywords, targetKeyword);
-  let { mediaInstruction, assignedMediaElement } = await getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI);
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
   let povInstruction = getPovInstruction(pointOfView);
   let readabilityInstruction = getReadabilityInstruction(improveReadability);
-  const lsiData = await fetchPeopleAlsoSearchFor(targetKeyword);
   const lsiString = lsiData.length > 0 ? lsiData.join(', ') : 'related SEO topics';
 
   let sectionStructureRequirements = `
@@ -184,7 +191,7 @@ export async function generateStandardBlogSection(body, genAI) {
   }
 
   let result;
-  let retries = 3;
+  let retries = 5;
   let delay = 2000;
 
   for (let i = 0; i < retries; i++) {
@@ -195,8 +202,17 @@ export async function generateStandardBlogSection(body, genAI) {
       if (i === retries - 1) {
         throw error;
       }
-      if (error.status === 503 || (error.message && error.message.includes('503'))) {
-        console.warn(`[Gemini API] 503 High Demand Error. Retrying in ${delay / 1000} seconds... (Attempt ${i + 1} of ${retries})`);
+
+      const errorMessage = error.message ? error.message.toLowerCase() : '';
+
+      const is503 = error.status === 503 || errorMessage.includes('503');
+
+      const isFetchFailed = errorMessage.includes('fetch failed') ||
+                            errorMessage.includes('econnreset') ||
+                            errorMessage.includes('etimedout');
+
+      if (is503 || isFetchFailed) {
+        console.warn(`[Gemini API] Transient Error (${is503 ? '503' : 'Fetch Failed'}). Retrying in ${delay / 1000} seconds... (Attempt ${i + 1} of ${retries})`);
         await new Promise(res => setTimeout(res, delay));
         delay *= 2;
       } else {

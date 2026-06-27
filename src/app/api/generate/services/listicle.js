@@ -1,4 +1,4 @@
-import {fetchSerperOutlineData, getLinkInstruction, getExternalLinkInstruction, getRealTimeInstruction, getReadabilityInstruction, getMediaInstruction, getSeoInstruction, getPovInstruction, getToneInstruction, getBaseSystemInstruction} from '../utils/helpers'
+import {fetchSerperOutlineData, getLinkInstruction, getExternalLinkInstruction, getRealTimeInstruction, getReadabilityInstruction, getMediaInstruction, getSeoInstruction, getPovInstruction, getToneInstruction, getBaseSystemInstruction, fetchUnsplashImage} from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 
@@ -70,11 +70,18 @@ export async function generateListicleOutline(body, genAI) {
   const result = await outlineModel.generateContent(outlinePrompt)
   const parsedData = JSON.parse(result.response.text());
 
+  let heroImageUrl = '';
+    const unsplashData = await fetchUnsplashImage(targetKeyword);
+    if (unsplashData && unsplashData.url) {
+      heroImageUrl = unsplashData.url;
+    }
+
   return {
         success: true,
         title: parsedData.title,
         outline: parsedData.outline,
-        externalLinks: fetchedExternalLinks
+        externalLinks: fetchedExternalLinks,
+        heroImage: heroImageUrl
       }
 }
 
@@ -151,7 +158,7 @@ export async function generateListicleSection(body, genAI) {
       `
 
       let result;
-  let retries = 3;
+  let retries = 5;
   let delay = 2000;
 
   for (let i = 0; i < retries; i++) {
@@ -162,8 +169,17 @@ export async function generateListicleSection(body, genAI) {
       if (i === retries - 1) {
         throw error;
       }
-      if (error.status === 503 || (error.message && error.message.includes('503'))) {
-        console.warn(`[Gemini API] 503 High Demand Error. Retrying in ${delay/1000} seconds... (Attempt ${i + 1} of ${retries})`);
+
+      const errorMessage = error.message ? error.message.toLowerCase() : '';
+
+      const is503 = error.status === 503 || errorMessage.includes('503');
+
+      const isFetchFailed = errorMessage.includes('fetch failed') ||
+                            errorMessage.includes('econnreset') ||
+                            errorMessage.includes('etimedout');
+
+      if (is503 || isFetchFailed) {
+        console.warn(`[Gemini API] Transient Error (${is503 ? '503' : 'Fetch Failed'}). Retrying in ${delay / 1000} seconds... (Attempt ${i + 1} of ${retries})`);
         await new Promise(res => setTimeout(res, delay));
         delay *= 2;
       } else {

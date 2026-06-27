@@ -1,7 +1,7 @@
 'use client'
 
 // React Imports
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 // Next Imports
 import Link from 'next/link'
@@ -21,8 +21,9 @@ import Checkbox from '@mui/material/Checkbox'
 import Button from '@mui/material/Button'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Divider from '@mui/material/Divider'
-import Alert from '@mui/material/Alert' // Added for error messages
-import CircularProgress from '@mui/material/CircularProgress' // Added for loading state
+import Alert from '@mui/material/Alert'
+import CircularProgress from '@mui/material/CircularProgress'
+import { useSession } from 'next-auth/react'
 
 // Component Imports
 import Logo from '@components/layout/shared/Logo'
@@ -34,6 +35,7 @@ import { useImageVariant } from '@core/hooks/useImageVariant'
 import { getLocalizedUrl } from '@/utils/i18n'
 
 const Login = ({ mode }) => {
+  const { status } = useSession()
   // UI States
   const [isPasswordShown, setIsPasswordShown] = useState(false)
   const [error, setError] = useState('')
@@ -51,6 +53,12 @@ const Login = ({ mode }) => {
   const { lang: locale } = useParams()
   const router = useRouter()
   const authBackground = useImageVariant(mode, lightImg, darkImg)
+
+  useEffect(() => {
+    if (status === 'authenticated') {
+      router.replace('/account')
+    }
+  }, [status, router])
 
   const handleClickShowPassword = () => setIsPasswordShown(show => !show)
 
@@ -92,7 +100,7 @@ const Login = ({ mode }) => {
           </Link>
           <div className='flex flex-col gap-5'>
             <div>
-              <Typography variant='h4'>Welcome to Cheetah AI! 👋🏻</Typography>
+              <Typography variant='h4'>Welcome to AffiGenie! 👋🏻</Typography>
               <Typography className='mbs-1'>Please sign-in to your account and start the adventure</Typography>
             </div>
 

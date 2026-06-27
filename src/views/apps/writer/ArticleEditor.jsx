@@ -42,6 +42,7 @@ import InputLabel from '@mui/material/InputLabel'
 import Alert from '@mui/material/Alert'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Checkbox from '@mui/material/Checkbox'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 
 const ProgressCircularWithLabel = ({ value, color }) => {
@@ -253,7 +254,10 @@ const convertHtmlToMarkdown = (html) => {
 }
 
 // --- MAIN ARTICLE EDITOR COMPONENT ---
-const ArticleEditor = ({ settings, setStep, outline }) => {
+const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) => {
+  const router = useRouter()
+  const searchParams = useSearchParams()       // ADD THIS
+  const draftId = searchParams.get('draftId')
   const [isGenerating, setIsGenerating] = useState(true)
   const [currentIndex, setCurrentIndex] = useState(0)
 
@@ -350,35 +354,30 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
     let finalContent = editor?.getHTML() || '';
     let finalHeroImage = heroImageUrl;
 
+   if (!finalHeroImage) {
+      const imgMatch = finalContent.match(/<img[^>]+src=["']([^"']+)["']/i);
+      if (imgMatch) {
+        finalHeroImage = imgMatch[1];
+      }
+    }
+
     const stripTitleSites = ['handfultool', 'riderequips', 'cheekypetpark', 'specialfootgear', 'webmarketics'];
     const stripImageSites = ['specialfootgear', 'webmarketics'];
 
-    // Apply rules only if it is a predefined site
     if (!isCustom && !isDbSaved) {
-      // If site is in the strip title list, remove the inline <h1> tag from the HTML body
       if (stripTitleSites.includes(activeSiteId)) {
         finalContent = finalContent.replace(/<h1[^>]*>[\s\S]*?<\/h1>/i, '');
       }
 
-      // NEW: Remove the hero image ONLY from the content text body
-      if (stripImageSites.includes(activeSiteId) && settings?.heroImage) {
-        // Escape characters in the image URL to safely create a regex pattern
-        const escapedUrl = settings.heroImage.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-        const imgRegex = new RegExp(`<img[^>]*src=["']${escapedUrl}["'][^>]*>`, 'i');
-
-        const pWrappedRegex = new RegExp(`<p>\\s*${imgRegex.source}\\s*<\\/p>`, 'i');
-
-        if (pWrappedRegex.test(finalContent)) {
-          finalContent = finalContent.replace(pWrappedRegex, '');
-        } else {
-          finalContent = finalContent.replace(imgRegex, '');
-        }
+      if (stripImageSites.includes(activeSiteId)) {
+        const firstImageRegex = /<p>\s*<img[^>]+>\s*<\/p>|<img[^>]+>/i;
+        finalContent = finalContent.replace(firstImageRegex, '');
       }
     }
 
     const payload = {
       title: publishTitle,
-      content: editor?.getHTML() || '',
+      content: finalContent,
       status: status,
       siteType: (isCustom || isDbSaved) ? 'custom' : 'predefined',
       siteId: (!isCustom && !isDbSaved) ? activeSiteId : null,
@@ -405,6 +404,46 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
     setIsPublishing(false)
   }
 }
+
+const handleSaveDraftToDB = async () => {
+  setIsPublishing(true);
+  try {
+    // 1. Client-side verification ensuring the user is logged in
+    const sessionRes = await fetch('/api/auth/session');
+    const session = await sessionRes.json();
+
+    if (!session || !Object.keys(session).length) {
+      setPublishSuccessData({ type: 'unauthenticated' });
+      setIsPublishing(false);
+      return;
+    }
+
+    // 2. Save the article to the database
+    const res = await fetch('/api/drafts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: publishTitle || settings?.generatedTitle || "Untitled Draft",
+        content: editor?.getHTML() || '',
+        outline: outline && outline.length > 0 ? JSON.stringify(outline) : null,
+        status: 'draft',
+        targetSite: siteSelectionType !== 'custom' ? siteSelectionType : null
+      })
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      setPublishSuccessData({ type: 'draft-success' });
+    } else {
+      alert("Error saving draft: " + data.error);
+    }
+  } catch (error) {
+    console.error(error);
+    alert("An unexpected error occurred while saving.");
+  } finally {
+    setIsPublishing(false);
+  }
+};
 
 useEffect(() => {
   // Fetch custom sites from DB when component loads
@@ -434,6 +473,11 @@ useEffect(() => {
 
   useEffect(() => {
     if (!editor || hasStartedRef.current) return
+
+    if (draftId) {
+      hasStartedRef.current = true
+      return
+    }
 
     hasStartedRef.current = true
     let isCancelled = false
@@ -666,7 +710,7 @@ useEffect(() => {
             editor.chain().focus('end').insertContent(formattedContent).run()
 
             // 🟢 2. INJECT MEDIA AFTER THE TEXT
-            if (data.mediaHtml && i!=0) {
+            if (data.mediaHtml && ((settings.type == "blog" || settings.type == "listicle") && i!=0)) {
               editor.chain().focus('end').insertContent(data.mediaHtml).run()
             }
           } else {
@@ -699,6 +743,56 @@ useEffect(() => {
       }
     }
   }, [editor, outline, settings.targetKeyword, settings.model, settings.generatedTitle])
+
+  useEffect(() => {
+    if (!editor || !draftId) return;
+
+    const fetchAndLoadDraft = async () => {
+      try {
+        const res = await fetch('/api/drafts');
+        const data = await res.json();
+
+        if (data.articles) {
+          const draft = data.articles.find(a => a.id === draftId);
+          if (draft) {
+            editor.commands.setContent(draft.content);
+            setPublishTitle(draft.title);
+
+            const imgMatch = draft.content.match(/<img[^>]+src=["']([^"']+)["']/i);
+            const draftImage = imgMatch ? imgMatch[1] : '';
+
+            if (typeof setSettings === 'function') {
+              setSettings(prev => ({
+                ...prev,
+                generatedTitle: draft.title,
+                heroImage: draftImage || prev.heroImage
+              }));
+            }
+
+            if (draft.outline && setOutline) {
+              try {
+                const parsedOutline = JSON.parse(draft.outline);
+                setOutline(parsedOutline);
+              } catch (e) {
+                console.error("Failed to parse outline JSON:", e);
+              }
+            }
+
+            if (draft.targetSite) {
+              setSiteSelectionType(draft.targetSite);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load draft:", error);
+        alert("Could not load your draft.");
+      } finally {
+        setIsGenerating(false);
+      }
+    };
+
+    fetchAndLoadDraft();
+  }, [editor, draftId]);
 
   const handleStopGeneration = () => {
     if (abortControllerRef.current) {
@@ -868,11 +962,42 @@ useEffect(() => {
 
       <Dialog open={publishDialogOpen} onClose={() => setPublishDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>
-          {publishSuccessData ? '🎉 Successfully Published!' : 'Publish to WordPress'}
+          {publishSuccessData?.type === 'unauthenticated' ? 'Authentication Required'
+           : publishSuccessData?.type === 'draft-success' ? '🎉 Draft Saved!'
+           : publishSuccessData ? '🎉 Successfully Published!'
+           : 'Publish to WordPress'}
         </DialogTitle>
         <DialogContent className="flex flex-col gap-4 mt-2">
 
-          {publishSuccessData ? (
+          {publishSuccessData?.type === 'unauthenticated' ? (
+            <div className="flex flex-col items-center justify-center p-6 text-center gap-4">
+              <div className="text-red-500 text-6xl">
+                <i className="ri-error-warning-line" />
+              </div>
+              <Typography variant="h6">You must be logged in to save a draft.</Typography>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => router.push('/login')}
+              >
+                Go to Login
+              </Button>
+            </div>
+          ) : publishSuccessData?.type === 'draft-success' ? (
+            <div className="flex flex-col items-center justify-center p-6 text-center gap-4">
+              <div className="text-green-500 text-6xl">
+                <i className="ri-check-line" />
+              </div>
+              <Typography variant="h6">Your article has been saved to drafts!</Typography>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => router.push('/drafts')}
+              >
+                View My Drafts
+              </Button>
+            </div>
+          ) : publishSuccessData ? (
       <div className="flex flex-col items-center justify-center p-6 text-center gap-4">
         <div className="text-green-500 text-6xl">
           <i className="ri-check-line" />
@@ -988,7 +1113,7 @@ useEffect(() => {
           <Button
             variant="outlined"
             color='error'
-            onClick={() => handlePublishToWP('draft')}
+            onClick={handleSaveDraftToDB}
             disabled={isPublishing || !publishTitle.trim()}
           >
             Save as Draft

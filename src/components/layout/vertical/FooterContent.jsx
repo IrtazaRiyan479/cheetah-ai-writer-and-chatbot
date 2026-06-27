@@ -37,7 +37,7 @@ const FooterContent = () => {
             More Themes
           </Link>
           <Link
-            href='https://demos.Irtaza Riyan.com/Cheetah-nextjs-admin-template/documentation'
+            href='https://demos.Irtaza Riyan.com/AffiGenie-nextjs-admin-template/documentation'
             target='_blank'
             className='text-primary'
           >

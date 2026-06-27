@@ -1,7 +1,7 @@
 'use client'
 
 // React Imports
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 // Next Imports
 import Link from 'next/link'
@@ -20,6 +20,7 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import { signIn } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
 
 // Component Imports
 import Logo from '@components/layout/shared/Logo'
@@ -31,6 +32,7 @@ import { useImageVariant } from '@core/hooks/useImageVariant'
 import { getLocalizedUrl } from '@/utils/i18n'
 
 const Register = ({ mode }) => {
+  const { status } = useSession()
   // UI States
   const [isPasswordShown, setIsPasswordShown] = useState(false)
   const [error, setError] = useState('')
@@ -52,6 +54,12 @@ const Register = ({ mode }) => {
   const authBackground = useImageVariant(mode, lightImg, darkImg)
 
   const handleClickShowPassword = () => setIsPasswordShown(show => !show)
+
+  useEffect(() => {
+    if (status === 'authenticated') {
+      router.replace('/account')
+    }
+  }, [status, router])
 
   // --- SUBMISSION HANDLER ---
   const handleSubmit = async (e) => {

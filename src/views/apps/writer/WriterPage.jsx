@@ -19,9 +19,14 @@ import RewriteFields from './fields/RewriteFields'
 
 import { toast } from 'react-toastify'
 
+import { useSearchParams } from 'next/navigation'
+import { useEffect } from 'react'
+
 const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
+  const searchParams = useSearchParams()
+  const draftId = searchParams.get('draftId')
 
   const ComponentMap = {
     'blog': BlogFields,
@@ -34,6 +39,12 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
   }
 
   const ActiveFields = ComponentMap[settings.type] || BlogFields
+
+  useEffect(() => {
+  if (draftId) {
+    setStep(2)
+  }
+}, [draftId, setStep])
 
 const handleCreateArticle = async () => {
 

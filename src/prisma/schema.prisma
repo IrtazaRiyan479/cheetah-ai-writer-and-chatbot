@@ -90,6 +90,7 @@ model Article {
   userId      String
   title       String
   content     String   @db.LongText
+  outline     String?  @db.LongText
   status      String
   wpPostId    Int?
   targetSite  String?

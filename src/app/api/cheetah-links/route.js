@@ -79,7 +79,7 @@ export async function POST(req) {
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
 
   } catch (error) {
-    console.error('CheetahLinks API Error:', error);
+    console.error('AffiGenieLinks API Error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

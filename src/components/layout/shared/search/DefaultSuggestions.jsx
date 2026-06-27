@@ -12,101 +12,29 @@ const defaultSuggestions = [
   {
     sectionLabel: 'Popular Searches',
     items: [
-      {
-        label: 'Analytics',
-        href: '/dashboards/analytics',
-        icon: 'ri-bar-chart-line'
-      },
-      {
-        label: 'CRM',
-        href: '/dashboards/crm',
-        icon: 'ri-pie-chart-2-line'
-      },
-      {
-        label: 'eCommerce',
-        href: '/dashboards/ecommerce',
-        icon: 'ri-shopping-bag-3-line'
-      },
-      {
-        label: 'User List',
-        href: '/apps/user/list',
-        icon: 'ri-file-user-line'
-      }
+      { label: 'Home', href: '/home', icon: 'ri-home-smile-line' },
+      { label: 'Privacy & Terms', href: '/privacy-terms', icon: 'ri-shield-check-line' },
+      { label: 'Pricing', href: '/pricing', icon: 'ri-rocket-2-line' },
+      { label: 'Contact', href: '/contact', icon: 'ri-megaphone-line' },
+      { label: 'Drafts', href: '/drafts', icon: 'ri-draft-line' }
     ]
   },
   {
     sectionLabel: 'Apps',
     items: [
-      {
-        label: 'Calendar',
-        href: '/apps/calendar',
-        icon: 'ri-calendar-line'
-      },
-      {
-        label: 'Invoice List',
-        href: '/apps/invoice/list',
-        icon: 'ri-file-list-3-line'
-      },
-      {
-        label: 'User List',
-        href: '/apps/user/list',
-        icon: 'ri-file-user-line'
-      },
-      {
-        label: 'Roles & Permissions',
-        href: '/apps/roles',
-        icon: 'ri-lock-unlock-line'
-      }
+      { label: 'Chat', href: '/chat', icon: 'ri-chat-ai-2-line' },
+      { label: 'Writer', href: '/writer', icon: 'ri-edit-box-line' },
+      { label: 'Images', href: '/images', icon: 'ri-image-ai-line' },
+      { label: 'Magnets', href: '/magnets', icon: 'ri-book-marked-line' },
+      { label: 'Links', href: '/links', icon: 'ri-links-line' }
     ]
   },
   {
     sectionLabel: 'Pages',
     items: [
-      {
-        label: 'User Profile',
-        href: '/pages/user-profile',
-        icon: 'ri-user-3-line'
-      },
-      {
-        label: 'Account Settings',
-        href: '/pages/account-settings',
-        icon: 'ri-settings-4-line'
-      },
-      {
-        label: 'Pricing',
-        href: '/pages/pricing',
-        icon: 'ri-money-dollar-circle-line'
-      },
-      {
-        label: 'FAQ',
-        href: '/pages/faq',
-        icon: 'ri-question-line'
-      }
-    ]
-  },
-  {
-    sectionLabel: 'Forms & Charts',
-    items: [
-      {
-        label: 'Form Layouts',
-        href: '/forms/form-layouts',
-        icon: 'ri-file-text-line'
-      },
-      {
-        label: 'Form Validation',
-        href: '/forms/form-validation',
-        icon: 'ri-checkbox-multiple-line'
-      },
-      {
-        label: 'Form Wizard',
-        href: '/forms/form-wizard',
-        icon: 'ri-equalizer-line'
-      },
-      {
-        label: 'Apex Charts',
-        href: '/charts/apex-charts',
-        icon: 'ri-line-chart-line'
-      }
+      { label: 'Login', href: '/login', icon: 'ri-git-repository-private-line' },
+      { label: 'Register', href: '/register', icon: 'ri-user-add-line' },
+      { label: 'Account', href: '/account', icon: 'ri-user-settings-line' }
     ]
   }
 ]

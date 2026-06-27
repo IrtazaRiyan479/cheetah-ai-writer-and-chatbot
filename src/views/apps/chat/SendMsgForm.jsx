@@ -31,7 +31,7 @@ const SendMsgForm = ({ handleSendMessage, isTyping, isBelowSmScreen, messageInpu
         fullWidth
         multiline
         maxRows={4}
-        placeholder='Message Cheetah AI...'
+        placeholder='Message AffiGenie...'
         value={msg}
         onChange={e => setMsg(e.target.value)}
         sx={{

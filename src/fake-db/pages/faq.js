@@ -44,7 +44,7 @@ export const db = [
       {
         id: 'troubleshooting',
         question: 'What should I do if the chatbot is not appearing?',
-        answer: 'Ensure that your API key is correctly integrated and that your website domain is whitelisted in your Cheetah AI dashboard settings. If the issue persists, contact our support team with your console logs.'
+        answer: 'Ensure that your API key is correctly integrated and that your website domain is whitelisted in your AffiGenie dashboard settings. If the issue persists, contact our support team with your console logs.'
       }
     ]
   },
@@ -89,7 +89,7 @@ export const db = [
       {
         id: 'data-privacy',
         question: 'Is my data used to train public models?',
-        answer: 'We do not use your proprietary data to train our public models. All data you input or upload remains private and is only used to power your specific instance of Cheetah AI.'
+        answer: 'We do not use your proprietary data to train our public models. All data you input or upload remains private and is only used to power your specific instance of AffiGenie.'
       }
     ]
   },

@@ -47,7 +47,7 @@ const LinksPage = () => {
     setSelectedPages([])
 
     try {
-      const res = await fetch('/api/cheetah-links', {
+      const res = await fetch('/api/AffiGenie-links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'crawl', domain })
@@ -79,7 +79,7 @@ const LinksPage = () => {
     const pagesToAnalyze = crawledPages.filter(p => selectedPages.includes(p.id))
 
     try {
-      const res = await fetch('/api/cheetah-links', {
+      const res = await fetch('/api/AffiGenie-links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'analyze', selectedPages: pagesToAnalyze })
@@ -131,7 +131,7 @@ const LinksPage = () => {
         title={
           <Typography variant="h4" className="font-bold flex items-center gap-2">
             <AutoAwesomeIcon color="primary" fontSize="large" />
-            CheetahLinks Engine
+            AffiGenieLinks Engine
           </Typography>
         }
         subheader={

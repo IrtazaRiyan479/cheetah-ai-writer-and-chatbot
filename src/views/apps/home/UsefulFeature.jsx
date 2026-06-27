@@ -44,7 +44,7 @@ const feature = [
   {
     icon: <Cube />,
     title: 'API-First Architecture',
-    description: 'Connect Cheetah AI directly to your existing tech stack with our flexible, easy-to-use API.'
+    description: 'Connect AffiGenie directly to your existing tech stack with our flexible, easy-to-use API.'
   },
   {
     icon: <LifeBuoy />,
@@ -96,7 +96,7 @@ const UsefulFeature = () => {
           </div>
           <div className='flex items-baseline max-sm:flex-col gap-x-2 mbe-3 sm:mbe-2'>
             <Typography variant='h4' className='font-bold'>
-              Cheetah AI
+              AffiGenie
             </Typography>
             <Typography variant='h5' > to accelerate Your Content Workflow</Typography>
           </div>

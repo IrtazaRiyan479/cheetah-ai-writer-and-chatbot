@@ -74,7 +74,7 @@ export async function POST(req) {
     return NextResponse.json({ error: 'Invalid Action' }, { status: 400 });
 
   } catch (error) {
-    console.error('CheetahMagnets API Error:', error);
+    console.error('AffiGenieMagnets API Error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

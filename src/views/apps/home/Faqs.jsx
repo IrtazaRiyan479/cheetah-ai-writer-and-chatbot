@@ -30,10 +30,10 @@ const FaqsData = [
   },
   {
     id: 'panel2',
-    question: 'Can I integrate Cheetah AI with my existing website?',
+    question: 'Can I integrate AffiGenie with my existing website?',
     active: true,
     answer:
-      'Absolutely. Our API first architecture allows you to connect Cheetah AI to your existing tech stack with minimal configuration. We provide full documentation to help your development team get integrated quickly and securely.'
+      'Absolutely. Our API first architecture allows you to connect AffiGenie to your existing tech stack with minimal configuration. We provide full documentation to help your development team get integrated quickly and securely.'
   },
   {
     id: 'panel3',

@@ -5,7 +5,7 @@ export const users = [
     id: 1,
     name: 'John Doe',
     password: 'admin',
-    email: 'admin@Cheetah.com',
+    email: 'admin@AffiGenie.com',
     image: '/images/avatars/1.png'
   }
 ]

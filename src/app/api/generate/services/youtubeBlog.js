@@ -163,7 +163,7 @@ let sectionStructureRequirements = `
       `;
 
   let result;
-  let retries = 3;
+  let retries = 5;
   let delay = 2000;
 
   for (let i = 0; i < retries; i++) {
@@ -174,8 +174,17 @@ let sectionStructureRequirements = `
       if (i === retries - 1) {
         throw error;
       }
-      if (error.status === 503 || (error.message && error.message.includes('503'))) {
-        console.warn(`[Gemini API] 503 High Demand Error. Retrying in ${delay/1000} seconds... (Attempt ${i + 1} of ${retries})`);
+
+      const errorMessage = error.message ? error.message.toLowerCase() : '';
+
+      const is503 = error.status === 503 || errorMessage.includes('503');
+
+      const isFetchFailed = errorMessage.includes('fetch failed') ||
+                            errorMessage.includes('econnreset') ||
+                            errorMessage.includes('etimedout');
+
+      if (is503 || isFetchFailed) {
+        console.warn(`[Gemini API] Transient Error (${is503 ? '503' : 'Fetch Failed'}). Retrying in ${delay / 1000} seconds... (Attempt ${i + 1} of ${retries})`);
         await new Promise(res => setTimeout(res, delay));
         delay *= 2;
       } else {

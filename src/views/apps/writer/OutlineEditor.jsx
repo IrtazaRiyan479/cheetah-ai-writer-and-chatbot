@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Grid from '@mui/material/Grid'
@@ -13,21 +13,29 @@ import MenuItem from '@mui/material/MenuItem'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemText from '@mui/material/ListItemText'
 import Divider from '@mui/material/Divider'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 
 const OutlineEditor = ({ settings, setStep, outline, setOutline }) => {
-  // Menu State
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
   const [anchorEl, setAnchorEl] = useState(null)
   const [activeItemIndex, setActiveItemIndex] = useState(null)
   const menuOpen = Boolean(anchorEl)
 
-  // Drag and Drop State
   const [draggedIndex, setDraggedIndex] = useState(null)
 
-  // --- MENU HANDLERS ---
   const handleMenuOpen = (event, index) => {
     setAnchorEl(event.currentTarget)
     setActiveItemIndex(index)
   }
+
+  useEffect(() => {
+    if (searchParams && searchParams.has('draftId')) {
+      router.replace(pathname, { scroll: false })
+    }
+  }, [searchParams, pathname, router])
 
   const handleMenuClose = () => {
     setAnchorEl(null)

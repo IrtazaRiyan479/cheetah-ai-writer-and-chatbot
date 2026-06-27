@@ -68,7 +68,7 @@ const defaultSettings = {
   amazonDomain: 'amazon.com'
 }
 
-const CheetahWriter = () => {
+const AffiGenieWriter = () => {
   const [settings, setSettings] = useState(defaultSettings)
   const [presets, setPresets] = useState([])
   const [selectedPresetId, setSelectedPresetId] = useState('default')
@@ -196,10 +196,10 @@ const CheetahWriter = () => {
       )}
 
       {step === 2 && (
-        <ArticleEditor settings={settings} setStep={setStep} outline={outline} />
+        <ArticleEditor settings={settings} setSettings={setSettings} setStep={setStep} outline={outline} setOutline={setOutline}/>
       )}
     </Container>
   )
 }
 
-export default CheetahWriter
+export default AffiGenieWriter

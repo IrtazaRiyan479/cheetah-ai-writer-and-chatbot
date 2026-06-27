@@ -26,7 +26,7 @@ const ChatContent = props => {
       if (data.length > 0) {
         setMessages(data)
       } else {
-        setMessages([{ senderId: 'ai-assistant', message: 'Hello! I am Cheetah AI. What would you like to create today?', time: new Date().toISOString() }])
+        setMessages([{ senderId: 'ai-assistant', message: 'Hello! I am AffiGenie. What would you like to create today?', time: new Date().toISOString() }])
       }
     }
     fetchChat()
@@ -84,7 +84,7 @@ const ChatContent = props => {
             <i className='ri-robot-2-line text-xl' />
           </CustomAvatar>
           <div>
-            <Typography variant='h6'>Cheetah AI</Typography>
+            <Typography variant='h6'>AffiGenie</Typography>
             <Typography variant='body2'>Online</Typography>
           </div>
         </div>

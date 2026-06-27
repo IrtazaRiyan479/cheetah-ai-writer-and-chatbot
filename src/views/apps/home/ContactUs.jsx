@@ -101,7 +101,7 @@ const ContactUs = () => {
           </Typography>
           <Typography variant='h5'>together</Typography>
         </div>
-        <Typography className='font-medium text-center'>Have questions about Cheetah AI? Reach out to our team and we will get back to you promptly.</Typography>
+        <Typography className='font-medium text-center'>Have questions about AffiGenie? Reach out to our team and we will get back to you promptly.</Typography>
       </div>
       <div>
         <Grid container spacing={6}>

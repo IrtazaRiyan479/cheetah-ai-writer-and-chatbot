@@ -27,7 +27,7 @@ import frontCommonStyles from '@views/apps/styles.module.css'
 // Data
 const data = [
   {
-    desc: "Cheetah AI has completely transformed my daily workflow. I am generating high quality blog drafts in minutes instead of hours. It feels like having an expert copywriter on my team.",
+    desc: "AffiGenie has completely transformed my daily workflow. I am generating high quality blog drafts in minutes instead of hours. It feels like having an expert copywriter on my team.",
     svg: <Eckerd color='#2882C3' />,
     rating: 5,
     name: 'Sarah Jenkins',
@@ -41,21 +41,21 @@ const data = [
     position: 'Tech Lead'
   },
   {
-    desc: "I have tested several AI platforms, but none match the speed and accuracy of Cheetah AI. It has become the most important tool in our marketing stack.",
+    desc: "I have tested several AI platforms, but none match the speed and accuracy of AffiGenie. It has become the most important tool in our marketing stack.",
     svg: <Airbnb color='#FF5A60' />,
     rating: 4,
     name: 'Elena Rodriguez',
     position: 'Digital Strategist'
   },
   {
-    desc: "The SEO optimization is what makes this tool stand out. My organic traffic has doubled since integrating Cheetah AI into our content pipeline. It is a true game changer for our growth.",
+    desc: "The SEO optimization is what makes this tool stand out. My organic traffic has doubled since integrating AffiGenie into our content pipeline. It is a true game changer for our growth.",
     svg: <Continental color='#F39409' />,
     rating: 5,
     name: 'David Chen',
     position: 'SEO Specialist'
   },
   {
-    desc: "Finally, an AI tool that actually understands our brand voice. Cheetah AI creates content that sounds like us, not like a machine. It saves our team countless hours every week.",
+    desc: "Finally, an AI tool that actually understands our brand voice. AffiGenie creates content that sounds like us, not like a machine. It saves our team countless hours every week.",
     svg: <Dribbble color='#ea4c89' />,
     rating: 5,
     name: 'Jessica Thompson',
@@ -155,7 +155,7 @@ const CustomerReviews = () => {
           <Typography variant='h5'>Marketing Teams</Typography>
         </div>
         <Typography className='font-medium text-center'>
-          Real feedback from professionals using Cheetah AI to scale their output.
+          Real feedback from professionals using AffiGenie to scale their output.
         </Typography>
       </div>
       <AppKeenSlider>

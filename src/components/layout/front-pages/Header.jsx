@@ -68,7 +68,7 @@ const Header = ({ mode }) => {
               <CustomIconButton
                 component={Link}
                 variant='contained'
-                href='https://1.envato.market/Cheetah_admin'
+                href='https://1.envato.market/AffiGenie_admin'
                 color='primary'
                 target='_blank'
               >
@@ -78,7 +78,7 @@ const Header = ({ mode }) => {
               <Button
                 component={Link}
                 variant='contained'
-                href='https://1.envato.market/Cheetah_admin'
+                href='https://1.envato.market/AffiGenie_admin'
                 startIcon={<i className='ri-shopping-cart-line text-xl' />}
                 className='whitespace-nowrap'
                 target='_blank'
