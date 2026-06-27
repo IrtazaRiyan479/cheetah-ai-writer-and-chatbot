@@ -1,4 +1,4 @@
-import {fetchSerperOutlineData, getLinkInstruction, getExternalLinkInstruction, getRealTimeInstruction, getReadabilityInstruction, getMediaInstruction, getSeoInstruction, getPovInstruction, getToneInstruction, getBaseSystemInstruction, fetchPeopleAlsoSearchFor} from '../utils/helpers'
+import {fetchSerperOutlineData, getLinkInstruction, getExternalLinkInstruction, getRealTimeInstruction, getReadabilityInstruction, getMediaInstruction, getSeoInstruction, getPovInstruction, getToneInstruction, getBaseSystemInstruction, fetchPeopleAlsoSearchFor, fetchUnsplashImage} from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 import { GoogleGenAI } from '@google/genai';
@@ -75,11 +75,18 @@ export async function generateStandardBlogOutline(body, genAI) {
   const result = await outlineModel.generateContent(outlinePrompt)
   const parsedData = JSON.parse(result.response.text());
 
+  let heroImageUrl = '';
+  const unsplashData = await fetchUnsplashImage(targetKeyword);
+  if (unsplashData && unsplashData.url) {
+    heroImageUrl = unsplashData.url;
+  }
+
   return {
         success: true,
         title: parsedData.title,
         outline: parsedData.outline,
-        externalLinks: fetchedExternalLinks
+        externalLinks: fetchedExternalLinks,
+        heroImage: heroImageUrl
       }
 }
 

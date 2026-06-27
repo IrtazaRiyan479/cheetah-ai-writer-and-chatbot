@@ -89,6 +89,9 @@ const handleCreateArticle = async () => {
         // Save the AI's JSON outline to your global page.jsx state
         updateSetting('generatedTitle', data.title)
         if (data.externalLinks) updateSetting('fetchedExternalLinks', data.externalLinks)
+        if (data.heroImage) {
+          updateSetting('heroImage', data.heroImage)
+        }
         setOutline(data.outline)
 
         // NOW route the user to the correct screen

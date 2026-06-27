@@ -31,6 +31,18 @@ import TaskItem from '@tiptap/extension-task-item'
 import { styled } from '@mui/material/styles'
 import LinearProgress, { linearProgressClasses } from '@mui/material/LinearProgress'
 
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
+import TextField from '@mui/material/TextField'
+import Select from '@mui/material/Select'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import Alert from '@mui/material/Alert'
+import FormControlLabel from '@mui/material/FormControlLabel'
+import Checkbox from '@mui/material/Checkbox'
+
 
 const ProgressCircularWithLabel = ({ value, color }) => {
   return (
@@ -263,6 +275,16 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
   const deepSearchColorIndex = Math.floor(deepSearchProgress / 10) % deepSearchColorPalette.length
   const deepSearchColor = deepSearchColorPalette[deepSearchColorIndex] || 'primary'
 
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false)
+  const [siteSelectionType, setSiteSelectionType] = useState('webmarketics')
+  const [customWPData, setCustomWPData] = useState({ name: '', url: '', username: '', password: '' })
+  const [saveSiteToDb, setSaveSiteToDb] = useState(false)
+  const [userSavedSites, setUserSavedSites] = useState([])
+  const [isPublishing, setIsPublishing] = useState(false)
+  const [publishTitle, setPublishTitle] = useState('')
+  const [heroImageUrl, setHeroImageUrl] = useState(settings?.heroImage || '')
+  const [publishSuccessData, setPublishSuccessData] = useState(null)
+
   const editor = useEditor({
     extensions,
     content: '',
@@ -279,7 +301,7 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
     await fetch('/api/upload', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      // To delete specific files (RECOMMENDED):
+      // To delete specific files
       // body: JSON.stringify({ fileUrls: uploadedUrls })
 
       body: JSON.stringify({ clearAll: true })
@@ -289,6 +311,126 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
     console.error("Failed to clear uploads:", error);
   }
 };
+
+  const handlePublishToWP = async (status = 'draft') => {
+  setIsPublishing(true)
+  setPublishSuccessData(null)
+  try {
+    const isCustom = siteSelectionType === 'custom'
+    const isDbSaved = siteSelectionType.startsWith('db_')
+
+    let activeSiteId = siteSelectionType
+    let activeCustomData = customWPData
+
+    if (isCustom && saveSiteToDb) {
+      const saveRes = await fetch('/api/custom-wp-sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(customWPData)
+      })
+      const saveData = await saveRes.json()
+      if (saveData.success) {
+         setUserSavedSites(prev => [...prev, saveData.site])
+      }
+    }
+
+    // 2. If they selected a previously saved custom site from the DB
+    if (isDbSaved) {
+      const dbId = siteSelectionType.replace('db_', '')
+      const targetDbSite = userSavedSites.find(s => s.id === dbId)
+      if (targetDbSite) {
+        activeCustomData = {
+          url: targetDbSite.url,
+          username: targetDbSite.username,
+          password: targetDbSite.password
+        }
+      }
+    }
+
+    let finalContent = editor?.getHTML() || '';
+    let finalHeroImage = heroImageUrl;
+
+    const stripTitleSites = ['handfultool', 'riderequips', 'cheekypetpark', 'specialfootgear', 'webmarketics'];
+    const stripImageSites = ['specialfootgear', 'webmarketics'];
+
+    // Apply rules only if it is a predefined site
+    if (!isCustom && !isDbSaved) {
+      // If site is in the strip title list, remove the inline <h1> tag from the HTML body
+      if (stripTitleSites.includes(activeSiteId)) {
+        finalContent = finalContent.replace(/<h1[^>]*>[\s\S]*?<\/h1>/i, '');
+      }
+
+      // NEW: Remove the hero image ONLY from the content text body
+      if (stripImageSites.includes(activeSiteId) && settings?.heroImage) {
+        // Escape characters in the image URL to safely create a regex pattern
+        const escapedUrl = settings.heroImage.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const imgRegex = new RegExp(`<img[^>]*src=["']${escapedUrl}["'][^>]*>`, 'i');
+
+        const pWrappedRegex = new RegExp(`<p>\\s*${imgRegex.source}\\s*<\\/p>`, 'i');
+
+        if (pWrappedRegex.test(finalContent)) {
+          finalContent = finalContent.replace(pWrappedRegex, '');
+        } else {
+          finalContent = finalContent.replace(imgRegex, '');
+        }
+      }
+    }
+
+    const payload = {
+      title: publishTitle,
+      content: editor?.getHTML() || '',
+      status: status,
+      siteType: (isCustom || isDbSaved) ? 'custom' : 'predefined',
+      siteId: (!isCustom && !isDbSaved) ? activeSiteId : null,
+      customSite: (isCustom || isDbSaved) ? activeCustomData : null,
+      featuredImageUrl: finalHeroImage
+    }
+
+    const res = await fetch('/api/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+
+    const result = await res.json()
+    if (result.success) {
+      setPublishSuccessData({ link: result.link, id: result.wpPostId })
+    } else {
+      alert(`Error: ${result.error}`)
+    }
+  } catch (error) {
+    console.error(error)
+    alert("An error occurred while publishing.")
+  } finally {
+    setIsPublishing(false)
+  }
+}
+
+useEffect(() => {
+  // Fetch custom sites from DB when component loads
+  const fetchCustomSites = async () => {
+    try {
+      const res = await fetch('/api/custom-wp-sites')
+      if (res.ok) {
+        const data = await res.json()
+        setUserSavedSites(data.sites || [])
+      }
+    } catch (error) {
+      console.error("Failed to load custom sites", error)
+    }
+  }
+  fetchCustomSites()
+}, [])
+
+useEffect(() => {
+  if (publishDialogOpen) {
+    setPublishSuccessData(null)
+    setPublishTitle(settings?.generatedTitle || settings?.targetKeyword || 'My AI Generated Article')
+    if (settings?.heroImage && !heroImageUrl) {
+      setHeroImageUrl(settings.heroImage)
+    }
+  }
+}, [publishDialogOpen, settings])
 
   useEffect(() => {
     if (!editor || hasStartedRef.current) return
@@ -303,7 +445,15 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
       editor.commands.setContent('')
 
       const topTitle = settings.generatedTitle || settings.targetKeyword;
-      editor.commands.setContent(`<h1>${topTitle}</h1><p></p>`);
+      let initialContent = `<h1>${topTitle}</h1>`;
+
+      if (settings.heroImage) {
+        initialContent += `<p><img src="${settings.heroImage}" alt="${topTitle}" /></p>`;
+      } else {
+        initialContent += `<p></p>`;
+      }
+
+      editor.commands.setContent(initialContent);
 
       const groupedSections = []
       let currentH2Group = null
@@ -516,7 +666,7 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
             editor.chain().focus('end').insertContent(formattedContent).run()
 
             // 🟢 2. INJECT MEDIA AFTER THE TEXT
-            if (data.mediaHtml) {
+            if (data.mediaHtml && i!=0) {
               editor.chain().focus('end').insertContent(data.mediaHtml).run()
             }
           } else {
@@ -635,6 +785,13 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
                   <ListItemText>Download Markdown</ListItemText>
                 </MenuItem>
               </Menu>
+              <Button
+                variant="contained"
+                color="success"
+                onClick={() => setPublishDialogOpen(true)}
+              >
+                Publish to WP
+              </Button>
             </>
           )}
         </div>
@@ -708,6 +865,145 @@ const ArticleEditor = ({ settings, setStep, outline }) => {
 
         </CardContent>
       </Card>
+
+      <Dialog open={publishDialogOpen} onClose={() => setPublishDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {publishSuccessData ? '🎉 Successfully Published!' : 'Publish to WordPress'}
+        </DialogTitle>
+        <DialogContent className="flex flex-col gap-4 mt-2">
+
+          {publishSuccessData ? (
+      <div className="flex flex-col items-center justify-center p-6 text-center gap-4">
+        <div className="text-green-500 text-6xl">
+          <i className="ri-check-line" />
+        </div>
+        <Typography variant="h6">Your article is live (or saved as draft)!</Typography>
+        <Button
+          variant="contained"
+          color="primary"
+          href={publishSuccessData.link}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          View Article on Website
+        </Button>
+      </div>
+    ) : (
+
+      /* NORMAL PUBLISHING FORM */
+      <>
+        <TextField
+          label="Article Title"
+          fullWidth
+          value={publishTitle}
+          onChange={(e) => setPublishTitle(e.target.value)}
+          helperText="This is exactly how the title will appear on your WordPress site."
+        />
+
+        <TextField
+          label="Hero / Featured Image URL (Optional)"
+          fullWidth
+          placeholder="https://example.com/my-image.jpg"
+          value={heroImageUrl}
+          onChange={(e) => setHeroImageUrl(e.target.value)}
+          helperText="Provide a direct link to an image. We will upload it to your WP Media Library."
+        />
+
+        <Divider className="my-2" />
+
+          <FormControl fullWidth size="small" className="mt-2">
+            <InputLabel>Select Target Site</InputLabel>
+           <Select
+            value={siteSelectionType}
+            label="Select Target Site"
+            onChange={(e) => setSiteSelectionType(e.target.value)}
+          >
+            <MenuItem value="cheekypetpark">Cheeky Pet Park</MenuItem>
+            <MenuItem value="webmarketics">Web Marketics</MenuItem>
+            <MenuItem value="specialfootgear">Special Foot Gear</MenuItem>
+            <MenuItem value="riderequips">Rider Equips</MenuItem>
+            <MenuItem value="handfultool">Handful Tool</MenuItem>
+
+            {/* Render sites fetched from the database */}
+            {userSavedSites.length > 0 && <Divider />}
+            {userSavedSites.map(site => (
+              <MenuItem key={site.id} value={`db_${site.id}`}>
+                {site.name} (Saved)
+              </MenuItem>
+            ))}
+
+            <Divider />
+            <MenuItem value="custom">➕ Add Custom WordPress Site</MenuItem>
+          </Select>
+          </FormControl>
+
+          {siteSelectionType === 'custom' && (
+            <div className="flex flex-col gap-3 p-4 border rounded-md bg-gray-50">
+              <Typography variant="subtitle2" className="font-bold">Custom Site Credentials</Typography>
+
+              <Alert severity="info" className="text-xs py-0">
+                <strong>How to get an App Password:</strong> Go to your WordPress Admin Dashboard ➔ <strong>Users</strong> ➔ <strong>Profile</strong>. Scroll down to <strong>Application Passwords</strong>, create a new one, and paste it below.
+              </Alert>
+
+              {/* You need a Name field so you can identify it in the DB */}
+              <TextField
+                label="Site Name (e.g., My Personal Blog)"
+                size="small"
+                value={customWPData.name || ''}
+                onChange={(e) => setCustomWPData({...customWPData, name: e.target.value})}
+              />
+              <TextField
+                label="WordPress Site URL"
+                placeholder="https://yourdomain.com"
+                size="small"
+                value={customWPData.url}
+                onChange={(e) => setCustomWPData({...customWPData, url: e.target.value})}
+              />
+              <TextField
+                label="WP Username"
+                size="small"
+                value={customWPData.username}
+                onChange={(e) => setCustomWPData({...customWPData, username: e.target.value})}
+              />
+              <TextField
+                label="Application Password"
+                type="password"
+                size="small"
+                value={customWPData.password}
+                onChange={(e) => setCustomWPData({...customWPData, password: e.target.value})}
+              />
+
+              <FormControlLabel
+                control={<Checkbox checked={saveSiteToDb} onChange={(e) => setSaveSiteToDb(e.target.checked)} />}
+                label="Save this site to my profile for future use"
+              />
+            </div>
+          )}
+          </>
+    )}
+        </DialogContent>
+        {!publishSuccessData && (
+        <DialogActions className="p-4">
+          <Button onClick={() => setPublishDialogOpen(false)} disabled={isPublishing}>Cancel</Button>
+          <Button
+            variant="outlined"
+            color='error'
+            onClick={() => handlePublishToWP('draft')}
+            disabled={isPublishing || !publishTitle.trim()}
+          >
+            Save as Draft
+          </Button>
+          <Button
+            variant="contained"
+            color="success"
+            onClick={() => handlePublishToWP('publish')}
+            disabled={isPublishing || !publishTitle.trim()}
+          >
+            {isPublishing ? <CircularProgress size={24} /> : 'Publish Live'}
+          </Button>
+        </DialogActions>
+        )}
+      </Dialog>
     </div>
   )
 }

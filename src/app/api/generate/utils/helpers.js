@@ -1,6 +1,6 @@
 import { YoutubeTranscript } from 'youtube-transcript';
 
-async function fetchSerperData(query, type = 'search') {
+export async function fetchSerperData(query, type = 'search') {
   if (!process.env.SERPER_API_KEY) return [];
   try {
     const res = await fetch(`https://google.serper.dev/${type}`, {
@@ -16,7 +16,7 @@ async function fetchSerperData(query, type = 'search') {
   } catch (e) { console.error('Serper API Error:', e); return []; }
 }
 
-async function fetchLiveKeywords(keyword) {
+export async function fetchLiveKeywords(keyword) {
   const keywords = new Set()
   if (!keyword) return []
   try {
@@ -49,7 +49,7 @@ async function fetchLiveKeywords(keyword) {
   return Array.from(keywords).slice(0, 15)
 }
 
-async function fetchUnsplashImage(query) {
+export async function fetchUnsplashImage(query) {
   if (!process.env.UNSPLASH_API_KEY) return null;
   try {
     const res = await fetch(`https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=1&client_id=${process.env.UNSPLASH_API_KEY}`);
@@ -111,7 +111,7 @@ async function getSmartImageKeyword(topic, heading, genAI) {
   }
 }
 
-async function fetchYouTubeVideo(query) {
+export async function fetchYouTubeVideo(query) {
   if (!process.env.YOUTUBE_API_KEY) return null;
   try {
     const res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=1&key=${process.env.YOUTUBE_API_KEY}`);
