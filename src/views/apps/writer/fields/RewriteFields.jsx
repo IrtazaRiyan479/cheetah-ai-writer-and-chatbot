@@ -173,18 +173,18 @@ const RewriteFields = ({ settings, updateSetting }) => {
       )}
     </Grid>
      <Grid size={{ xs: 12, sm: 6 }}>
-          <Typography variant='subtitle2' className='font-medium mbe-1'>AI Images & YouTube Videos</Typography>
+          <Typography variant='subtitle2' className='font-medium mbe-1'>Royalty Free Images & Youtube Videos</Typography>
           <FormControl fullWidth size='small' className={settings.aiImagesAndVideos.startsWith('upload') ? 'mbe-3' : ''}>
             <Select
               value={settings.aiImagesAndVideos}
               onChange={(e) => updateSetting('aiImagesAndVideos', e.target.value)}
             >
               <MenuItem value='none'>None</MenuItem>
-              <MenuItem value='auto'>Auto (Unsplash Images & AI YouTube Videos)</MenuItem>
+              <MenuItem value='auto'>Royalty Free Images</MenuItem>
               <MenuItem disabled>──────────</MenuItem>
               <MenuItem value='upload-images'>Upload Custom Images</MenuItem>
-              <MenuItem value='upload-videos'>Upload Custom Videos</MenuItem>
-              <MenuItem value='upload-both'>Upload Both Images & Videos</MenuItem>
+              {/* <MenuItem value='upload-videos'>Upload Custom Videos</MenuItem>
+              <MenuItem value='upload-both'>Upload Both Images & Videos</MenuItem> */}
             </Select>
           </FormControl>
         </Grid>
