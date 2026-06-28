@@ -29,6 +29,9 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import LinkIcon from '@mui/icons-material/Link'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 
+
+import InternalLinker from './InternalLinker'
+
 const LinksPage = () => {
   // Workflow States
   const [domain, setDomain] = useState('')
@@ -47,7 +50,7 @@ const LinksPage = () => {
     setSelectedPages([])
 
     try {
-      const res = await fetch('/api/AffiGenie-links', {
+      const res = await fetch('/api/links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'crawl', domain })
@@ -69,6 +72,7 @@ const LinksPage = () => {
   }
 
   // Action 2: Analyze Selected Pages
+  // Action 2: Analyze Selected Pages (Streaming Enabled)
   const handleAnalyze = async () => {
     if (selectedPages.length < 2) {
       alert("Please select at least 2 pages to find internal links.")
@@ -76,23 +80,66 @@ const LinksPage = () => {
     }
 
     setIsAnalyzing(true)
+    setSuggestions([]) // Clear previous suggestions before starting the stream
     const pagesToAnalyze = crawledPages.filter(p => selectedPages.includes(p.id))
 
     try {
-      const res = await fetch('/api/AffiGenie-links', {
+      const res = await fetch('/api/links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'analyze', selectedPages: pagesToAnalyze })
       })
-      const data = await res.json()
-      if (data.success) {
-        setSuggestions(data.suggestions)
-      } else {
-        alert(data.error || 'Failed to analyze pages.')
+
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`)
+      }
+
+      // 1. Attach a reader to the stream
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      // 2. Read the stream continuously until done
+      while (true) {
+        const { done, value } = await reader.read()
+
+        if (done) break
+
+        // Decode the incoming byte chunk and add to our buffer
+        buffer += decoder.decode(value, { stream: true })
+
+        // Split by newlines to get individual JSON objects
+        const lines = buffer.split('\n')
+
+        // Keep the last (potentially incomplete) line in the buffer
+        buffer = lines.pop() || ''
+
+        // 3. Process each complete line
+        for (const line of lines) {
+          if (line.trim() === '') continue
+
+          try {
+            const parsed = JSON.parse(line)
+
+            if (parsed.type === 'chunk') {
+              // Append new links to the existing suggestions array progressively
+              setSuggestions(prev => [...prev, ...parsed.data])
+            } else if (parsed.type === 'error') {
+              console.error("Backend stream error:", parsed.message)
+              alert(`Stream Error: ${parsed.message}`)
+            } else if (parsed.type === 'done') {
+              console.log("Analysis Stream Complete")
+            }
+          } catch (parseError) {
+            console.error('Failed to parse NDJSON line:', line, parseError)
+          }
+        }
       }
     } catch (error) {
       console.error(error)
+      alert('Failed to analyze pages or stream was interrupted.')
     } finally {
+      // Turn off the loading state only when the entire stream finishes
       setIsAnalyzing(false)
     }
   }
@@ -249,17 +296,28 @@ const LinksPage = () => {
 
           {/* STEP 3: ANALYSIS RESULTS */}
           {suggestions.length > 0 && (
-            <Grid size={{ xs: 12 }}>
-              <Box className="flex items-center gap-2 mb-6">
-                <CheckCircleIcon color="success" fontSize="large" />
-                <Typography variant="h5" className="font-bold">
-                  Analysis Complete: {suggestions.length} Links Found
-                </Typography>
-              </Box>
+  <Grid size={{ xs: 12 }}>
+    <Box className="flex items-center gap-2 mb-6">
+      {isAnalyzing ? (
+        <>
+          <CircularProgress size={28} color="primary" />
+          <Typography variant="h5" className="font-bold text-primary">
+            Analyzing... {suggestions.length} Links Found So Far
+          </Typography>
+        </>
+      ) : (
+        <>
+          <CheckCircleIcon color="success" fontSize="large" />
+          <Typography variant="h5" className="font-bold">
+            Analysis Complete: {suggestions.length} Links Found
+          </Typography>
+        </>
+      )}
+    </Box>
 
               <Grid container spacing={4}>
                 {suggestions.map((sugg, index) => (
-                  <Grid item xs={12} key={index}>
+                  <Grid size={{ xs: 12 }} key={index}>
                     <Paper variant="outlined" className="p-5 hover:shadow-md transition-shadow">
                       <Box className="flex flex-col md:flex-row items-start md:items-center gap-4 mb-3">
                         <Box className="flex-1 overflow-hidden">
@@ -302,6 +360,15 @@ const LinksPage = () => {
                         <Typography variant="body2" color="text.secondary" className="italic">
                           "{sugg.reasoning}"
                         </Typography>
+                      </Box>
+
+                      <Box className="mt-4 flex justify-end">
+                        <InternalLinker
+                          siteUrl={domain}
+                          sourceUrl={sugg.sourceUrl}
+                          targetUrl={sugg.targetUrl}
+                          anchorText={sugg.anchorText}
+                        />
                       </Box>
                     </Paper>
                   </Grid>

@@ -128,7 +128,7 @@ export default function DraftsPage() {
           <Typography variant="body1" className="text-gray-500 mb-6 max-w-md">
             Looks like you haven't saved any drafts yet. Start writing your next great article!
           </Typography>
-          <Button variant="contained" color="primary" onClick={() => router.push('/editor')}>
+          <Button variant="contained" color="primary" onClick={() => router.push('/writer')}>
             Create Your First Draft
           </Button>
         </Box>

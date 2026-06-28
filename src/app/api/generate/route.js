@@ -80,7 +80,7 @@ export async function POST(request) {
     }
 
     const defaultModel = genAI.getGenerativeModel({
-      model: 'gemini-3.1-pro-preview',
+      model: 'gemini-3.5-flash',
       systemInstruction: getBaseSystemInstruction()
     });
 

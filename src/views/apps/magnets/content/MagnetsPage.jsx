@@ -78,7 +78,7 @@ const MagnetsPage = () => {
     setMagnetResult(null)
 
     try {
-      const res = await fetch('/api/AffiGenie-magnets', {
+      const res = await fetch('/api/magnets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
