@@ -4,6 +4,13 @@ import * as cheerio from 'cheerio';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+const browserHeaders = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.5',
+  'Connection': 'keep-alive',
+};
+
 export async function POST(req) {
   try {
     const body = await req.json();
@@ -24,7 +31,7 @@ export async function POST(req) {
 
       for (const path of sitemapPaths) {
         try {
-          const response = await fetch(`https://${cleanDomain}${path}`, { signal: AbortSignal.timeout(6000) });
+          const response = await fetch(`https://${cleanDomain}${path}`, { headers: browserHeaders, signal: AbortSignal.timeout(6000) });
           if (response.ok) {
             sitemapFound = true;
             const xmlText = await response.text();
@@ -37,7 +44,7 @@ export async function POST(req) {
               extractedUrls = [];
 
               for (const subMap of subSitemaps) {
-                const subResponse = await fetch(subMap, { signal: AbortSignal.timeout(6000) });
+                const subResponse = await fetch(subMap, { headers: browserHeaders, signal: AbortSignal.timeout(6000) });
                 if (subResponse.ok) {
                   const subXmlText = await subResponse.text();
                   const subMatches = [...subXmlText.matchAll(/<loc>(.*?)<\/loc>/g)];
@@ -84,10 +91,22 @@ export async function POST(req) {
         return NextResponse.json({ error: 'No pages provided.' }, { status: 400 });
       }
 
-      const pagesWithContent = await Promise.all(selectedPages.map(async (page) => {
+      const pagesWithContent = [];
+
+      for (const page of selectedPages) {
         try {
-          const res = await fetch(page.url, { signal: AbortSignal.timeout(8000) });
-          if (!res.ok) return { url: page.url, content: "" };
+          await new Promise(resolve => setTimeout(resolve, 250));
+
+          const res = await fetch(page.url, {
+            headers: browserHeaders,
+            signal: AbortSignal.timeout(8000)
+          });
+
+          if (!res.ok) {
+            pagesWithContent.push({ url: page.url, content: "" });
+            continue;
+          }
+
           const html = await res.text();
           const $ = cheerio.load(html);
           let textContent = '';
@@ -95,11 +114,12 @@ export async function POST(req) {
             const text = $(el).text().trim();
             if (text.length > 20) textContent += text + '\n';
           });
-          return { url: page.url, content: textContent.substring(0, 6000).trim() };
+
+          pagesWithContent.push({ url: page.url, content: textContent.substring(0, 6000).trim() });
         } catch (e) {
-          return { url: page.url, content: "" };
+          pagesWithContent.push({ url: page.url, content: "" });
         }
-      }));
+      }
 
       const validPages = pagesWithContent.filter(p => p.content.length > 50);
       if (validPages.length === 0) {

@@ -46,8 +46,9 @@ const LinksPage = () => {
   const handleCrawl = async () => {
     if (!domain) return
     setIsCrawling(true)
-    setSuggestions([]) // Reset previous results
+    setSuggestions([])
     setSelectedPages([])
+    setCrawledPages([])
 
     try {
       const res = await fetch('/api/links', {
