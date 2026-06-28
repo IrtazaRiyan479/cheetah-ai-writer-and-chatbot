@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 // MUI Imports
 import Grid from '@mui/material/Grid'
@@ -28,7 +28,7 @@ import LanguageIcon from '@mui/icons-material/Language'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import LinkIcon from '@mui/icons-material/Link'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-
+import StopCircleIcon from '@mui/icons-material/StopCircle'
 
 import InternalLinker from './InternalLinker'
 
@@ -42,7 +42,112 @@ const LinksPage = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [suggestions, setSuggestions] = useState([])
 
-  // Action 1: Crawl the Domain
+  const [loadingTextIndex, setLoadingTextIndex] = useState(0)
+
+  const loadingMessages = [
+  'Analyzing Semantics...',
+  'Initializing connection...',
+  'Reading page content...',
+  'Cleaning HTML structure...',
+  'Stripping irrelevant DOM elements...',
+  'Extracting text nodes...',
+  'Tokenizing source content...',
+  'Mapping global target URLs...',
+  'Setting strict rule parameters...',
+  'Running semantic mapping...',
+  'Identifying anchor candidates...',
+  'Verifying text substring matches...',
+  'Checking anchor uniqueness...',
+  'Validating target URL integrity...',
+  'Filtering out generic phrases...',
+  'Processing batch data...',
+  'Analyzing link context...',
+  'Enforcing strict matching rules...',
+  'Removing self-references...',
+  'Scanning for contextual relevance...',
+  'Calculating semantic distance...',
+  'Evaluating linking opportunities...',
+  'Parsing deeper page structures...',
+  'Checking constraint compliance...',
+  'Refining anchor text quality...',
+  'Eliminating hallucination risks...',
+  'Still analyzing, please wait...',
+  'Scanning secondary page content...',
+  'Running logical consistency check...',
+  'Processing intermediate results...',
+  'Aligning sources with targets...',
+  'Optimizing semantic connections...',
+  'Filtering for high-quality links...',
+  'Building link logic tree...',
+  'Parsing remaining source pages...',
+  'Maintaining strict extraction laws...',
+  'Ensuring zero hallucinations...',
+  'Cross-referencing domain list...',
+  'Evaluating link density...',
+  'Still grinding through data...',
+  'Extracting hidden opportunities...',
+  'Optimizing suggestion relevance...',
+  'Checking against strict rules...',
+  'Processing batch queues...',
+  'Running final semantic pass...',
+  'Parsing remaining content...',
+  'Formatting internal data...',
+  'Validating JSON structure...',
+  'Cleaning up output streams...',
+  'Finalizing link suggestions...',
+  'Just a few more moments...',
+  'Re-verifying link logic...',
+  'Constructing final report...',
+  'Almost ready...',
+  'Compiling results...',
+  'Verifying output integrity...',
+  'Making final adjustments...',
+  'Finalizing semantic maps...',
+  'Organizing findings...',
+  'Preparing data packets...',
+  'Almost there...',
+  'System finalizing analysis...',
+  'Performing final data check...',
+  'Synchronizing results...',
+  'Wrapping up final batch...',
+  'Almost done...',
+  'Optimizing display...',
+  'Final sync...',
+  'Ready to display results...',
+  'Please wait...',
+  'Still working...',
+  'Almost finished...',
+  'Final check...',
+  'Just a second more...',
+  'Here we go...'
+];
+
+  const abortControllerRef = useRef(null)
+
+  useEffect(() => {
+    let interval;
+    if (isAnalyzing) {
+      interval = setInterval(() => {
+        setLoadingTextIndex((prevIndex) => {
+          return prevIndex === loadingMessages.length - 1 ? 1 : prevIndex + 1;
+        });
+      }, 8000);
+    } else {
+      setLoadingTextIndex(0);
+    }
+
+    return () => clearInterval(interval);
+  }, [isAnalyzing]);
+
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    setIsCrawling(false)
+    setIsAnalyzing(false)
+  }
+
   const handleCrawl = async () => {
     if (!domain) return
     setIsCrawling(true)
@@ -50,72 +155,33 @@ const LinksPage = () => {
     setSelectedPages([])
     setCrawledPages([])
 
-    try {
-      const res = await fetch('/api/links', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'crawl', domain })
-      })
-      const data = await res.json()
-      if (data.success) {
-        setCrawledPages(data.pages)
-        // Auto-select all by default to save user time
-        setSelectedPages(data.pages.map(p => p.id))
-      } else {
-        alert('Failed to crawl domain.')
-      }
-    } catch (error) {
-      alert('Failed to generate content.', error)
-      console.error(error)
-    } finally {
-      setIsCrawling(false)
-    }
-  }
-
-  // Action 2: Analyze Selected Pages
-  // Action 2: Analyze Selected Pages (Streaming Enabled)
-  const handleAnalyze = async () => {
-    if (selectedPages.length < 2) {
-      alert("Please select at least 2 pages to find internal links.")
-      return
-    }
-
-    setIsAnalyzing(true)
-    setSuggestions([]) // Clear previous suggestions before starting the stream
-    const pagesToAnalyze = crawledPages.filter(p => selectedPages.includes(p.id))
+    abortControllerRef.current = new AbortController()
 
     try {
       const res = await fetch('/api/links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'analyze', selectedPages: pagesToAnalyze })
+        body: JSON.stringify({ action: 'crawl', domain }),
+        signal: abortControllerRef.current.signal
       })
 
       if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`)
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${res.status}`)
       }
 
-      // 1. Attach a reader to the stream
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
 
-      // 2. Read the stream continuously until done
       while (true) {
         const { done, value } = await reader.read()
-
         if (done) break
 
-        // Decode the incoming byte chunk and add to our buffer
         buffer += decoder.decode(value, { stream: true })
-
-        // Split by newlines to get individual JSON objects
         const lines = buffer.split('\n')
-
-        // Keep the last (potentially incomplete) line in the buffer
         buffer = lines.pop() || ''
 
-        // 3. Process each complete line
         for (const line of lines) {
           if (line.trim() === '') continue
 
@@ -123,7 +189,75 @@ const LinksPage = () => {
             const parsed = JSON.parse(line)
 
             if (parsed.type === 'chunk') {
-              // Append new links to the existing suggestions array progressively
+              setCrawledPages(prev => [...prev, ...parsed.data])
+              setSelectedPages(prev => [...prev, ...parsed.data.map(p => p.id)])
+            } else if (parsed.type === 'error') {
+              console.error("Crawl Stream error:", parsed.message)
+              alert(`Stream Error: ${parsed.message}`)
+            } else if (parsed.type === 'done') {
+              console.log("Crawl Stream Complete")
+            }
+          } catch (parseError) {
+            console.error('Failed to parse NDJSON line:', line, parseError)
+          }
+        }
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log('Crawl aborted by user.')
+      } else {
+        alert(`Failed to crawl domain. ${error.message}`)
+        console.error(error)
+      }
+    } finally {
+      setIsCrawling(false)
+      abortControllerRef.current = null
+    }
+  }
+
+    const handleAnalyze = async () => {
+    if (selectedPages.length < 2) {
+      alert("Please select at least 2 pages to find internal links.")
+      return
+    }
+
+    setIsAnalyzing(true)
+    setSuggestions([])
+    const pagesToAnalyze = crawledPages.filter(p => selectedPages.includes(p.id))
+
+    abortControllerRef.current = new AbortController()
+
+    try {
+      const res = await fetch('/api/links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'analyze', selectedPages: pagesToAnalyze }),
+        signal: abortControllerRef.current.signal
+      })
+
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`)
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.trim() === '') continue
+
+          try {
+            const parsed = JSON.parse(line)
+
+            if (parsed.type === 'chunk') {
               setSuggestions(prev => [...prev, ...parsed.data])
             } else if (parsed.type === 'error') {
               console.error("Backend stream error:", parsed.message)
@@ -137,15 +271,18 @@ const LinksPage = () => {
         }
       }
     } catch (error) {
-      console.error(error)
-      alert('Failed to analyze pages or stream was interrupted.')
+      if (error.name === 'AbortError') {
+        console.log('Analysis aborted by user.')
+      } else {
+        console.error(error)
+        alert('Failed to analyze pages or stream was interrupted.')
+      }
     } finally {
-      // Turn off the loading state only when the entire stream finishes
       setIsAnalyzing(false)
+      abortControllerRef.current = null
     }
   }
 
-  // Handle Checkbox Toggles
   const handleSelectAllClick = (event) => {
     if (event.target.checked) {
       setSelectedPages(crawledPages.map((n) => n.id))
@@ -186,6 +323,19 @@ const LinksPage = () => {
           <Typography variant="body1" color="text.secondary" className="mt-2 max-w-3xl">
             Build Internal Links 100x Faster. Enter your domain below to crawl your sitemap and discover high-quality internal linking opportunities powered by semantic AI.
           </Typography>
+        }
+        action={
+          (isCrawling || isAnalyzing) && (
+            <Button
+              variant="contained"
+              color="error"
+              startIcon={<StopCircleIcon />}
+              onClick={handleStop}
+              sx={{ mt: 1, mr: 1 }}
+            >
+              Stop Processing
+            </Button>
+          )
         }
         className="pb-6"
       />
@@ -286,10 +436,10 @@ const LinksPage = () => {
                   variant="contained"
                   color="secondary"
                   onClick={handleAnalyze}
-                  disabled={isAnalyzing || selectedPages.length < 2}
+                  disabled={isAnalyzing || isCrawling || selectedPages.length < 2}
                   startIcon={isAnalyzing ? <CircularProgress size={20} color="inherit" /> : <AutoAwesomeIcon />}
                 >
-                  {isAnalyzing ? 'Analyzing Semantics...' : 'Generate Internal Links'}
+                  {isAnalyzing ? loadingMessages[loadingTextIndex] : 'Generate Internal Links'}
                 </Button>
               </Box>
             </Grid>
@@ -297,24 +447,24 @@ const LinksPage = () => {
 
           {/* STEP 3: ANALYSIS RESULTS */}
           {suggestions.length > 0 && (
-  <Grid size={{ xs: 12 }}>
-    <Box className="flex items-center gap-2 mb-6">
-      {isAnalyzing ? (
-        <>
-          <CircularProgress size={28} color="primary" />
-          <Typography variant="h5" className="font-bold text-primary">
-            Analyzing... {suggestions.length} Links Found So Far
-          </Typography>
-        </>
-      ) : (
-        <>
-          <CheckCircleIcon color="success" fontSize="large" />
-          <Typography variant="h5" className="font-bold">
-            Analysis Complete: {suggestions.length} Links Found
-          </Typography>
-        </>
-      )}
-    </Box>
+            <Grid size={{ xs: 12 }}>
+              <Box className="flex items-center gap-2 mb-6">
+                {isAnalyzing ? (
+                  <>
+                    <CircularProgress size={28} color="primary" />
+                    <Typography variant="h5" className="font-bold text-primary">
+                      Analyzing... {suggestions.length} Links Found So Far
+                    </Typography>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircleIcon color="success" fontSize="large" />
+                    <Typography variant="h5" className="font-bold">
+                      Analysis Complete: {suggestions.length} Links Found
+                    </Typography>
+                  </>
+                )}
+              </Box>
 
               <Grid container spacing={4}>
                 {suggestions.map((sugg, index) => (

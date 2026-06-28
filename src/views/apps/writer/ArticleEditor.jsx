@@ -193,6 +193,7 @@ Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }).extend({
   Placeholder.configure({ placeholder: 'Document ready.' }),
   Image.configure({
     inline: true,
+    allowBase64: true,
     HTMLAttributes: {
       class: 'rounded-xl max-w-full sm:max-w-2xl mx-auto block shadow-md my-8 aspect-video object-cover'
     }
@@ -502,6 +503,11 @@ useEffect(() => {
       const groupedSections = []
       let currentH2Group = null
 
+      let trackedImages = [];
+      if (settings.heroImage) {
+        trackedImages.push(settings.heroImage);
+      }
+
       outline.forEach((item, index) => {
         if (item.type === 'h2') {
           currentH2Group = { h2: item, h3s: [], originalIndex: index }
@@ -563,7 +569,8 @@ useEffect(() => {
               deepSearch: settings.deepSearch,
               articleTitle: settings.generatedTitle,
               improveReadability: settings.improveReadability,
-              uploadedMedia: settings.uploadedMedia
+              uploadedMedia: settings.uploadedMedia,
+              usedImageUrls: trackedImages
             })
           })
 
@@ -571,6 +578,10 @@ useEffect(() => {
 
           if (data.success) {
             let finalSectionText = data.text;
+
+            if (data.mediaUrl) {
+              trackedImages.push(data.mediaUrl);
+            }
 
             // 🟢 NEW DEEP SEARCH POLLING LOGIC 🟢
            if (data.isDeepSearch && data.interactionId) {
@@ -721,7 +732,7 @@ useEffect(() => {
             editor.chain().focus('end').insertContent("<p><em>🛑 Generation Stopped.</em></p>").run()
             break
           } else {
-            editor.chain().focus('end').insertContent("<p><em>❌ Failed to fetch content.</em></p>").run()
+            editor.chain().focus('end').insertContent(`<p><em>❌ Failed to fetch content. ${error}</em></p>`).run()
           }
         }
       }

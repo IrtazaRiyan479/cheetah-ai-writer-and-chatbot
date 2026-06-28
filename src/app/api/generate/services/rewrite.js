@@ -6,7 +6,8 @@ import {
   getPovInstruction,
   getToneInstruction,
   getBaseSystemInstruction,
-  fetchArticleData
+  fetchArticleData,
+  fetchUnsplashImage, fetchPexelsImage, fetchPixabayImage, calculateRelevanceScore
 } from '../utils/helpers' // Adjust relative path if needed
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
@@ -62,9 +63,30 @@ export async function generateRewriteOutline(body, genAI) {
   const result = await outlineModel.generateContent(outlinePrompt);
   const responseText = result.response.text();
 
+  const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
+  fetchUnsplashImage(targetKeyword),
+  fetchPexelsImage(targetKeyword),
+  fetchPixabayImage(targetKeyword)
+]);
+
+let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
+let heroImageUrl = '';
+
+if (candidates.length > 0) {
+  const scoredCandidates = candidates.map(c => ({
+    ...c,
+    score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
+  }));
+
+  scoredCandidates.sort((a, b) => b.score - a.score);
+
+  heroImageUrl = scoredCandidates[0].url;
+  console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`);
+}
+
   try {
     const jsonResult = JSON.parse(responseText);
-    return { success: true, outline: jsonResult.outline, title: jsonResult.title };
+    return { success: true, outline: jsonResult.outline, title: jsonResult.title, heroImage: heroImageUrl };
   } catch (error) {
     console.error("Failed to parse Rewrite outline JSON", error);
     return { success: false, error: "Invalid JSON from AI" };

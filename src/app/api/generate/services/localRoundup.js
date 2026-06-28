@@ -1,4 +1,4 @@
-import {fetchSerperOutlineData, fetchSerperPlacesData, getLinkInstruction, getExternalLinkInstruction, getRealTimeInstruction, getReadabilityInstruction, getMediaInstruction, getSeoInstruction, getPovInstruction, getToneInstruction, getBaseSystemInstruction} from '../utils/helpers'
+import {fetchSerperOutlineData, fetchSerperPlacesData, getLinkInstruction, getExternalLinkInstruction, getRealTimeInstruction, getReadabilityInstruction, getMediaInstruction, getSeoInstruction, getPovInstruction, getToneInstruction, getBaseSystemInstruction, fetchUnsplashImage, fetchPexelsImage, fetchPixabayImage, calculateRelevanceScore} from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 
@@ -79,11 +79,33 @@ export async function generateLocalRoundupOutline(body, genAI) {
           const result = await outlineModel.generateContent(outlinePrompt)
           const parsedData = JSON.parse(result.response.text());
 
+          const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
+  fetchUnsplashImage(targetKeyword),
+  fetchPexelsImage(targetKeyword),
+  fetchPixabayImage(targetKeyword)
+]);
+
+let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
+let heroImageUrl = '';
+
+if (candidates.length > 0) {
+  const scoredCandidates = candidates.map(c => ({
+    ...c,
+    score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
+  }));
+
+  scoredCandidates.sort((a, b) => b.score - a.score);
+
+  heroImageUrl = scoredCandidates[0].url;
+  console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`);
+}
+
           return {
                 success: true,
                 title: parsedData.title,
                 outline: parsedData.outline,
-                externalLinks: fetchedExternalLinks
+                externalLinks: fetchedExternalLinks,
+                heroImage: heroImageUrl
               }
 
   return { success: true, text: result.response.text(), mediaHtml: assignedMediaElement };
@@ -91,7 +113,7 @@ export async function generateLocalRoundupOutline(body, genAI) {
 
 export async function generateLocalRoundupSection(body, genAI) {
   const { heading, subheadings, settings, externalLinks,
-    internalLinks, sectionIndex, outlineContext } = body;
+    internalLinks, sectionIndex, outlineContext, usedImageUrls = [] } = body;
 
       const { model, targetKeyword, articleTitle, language, country, toneOfVoice, customToneOfVoice,
           pointOfView, useRealTimeSearchData, realTimeDataSource, deepSearch, improveReadability, seoOptimization, manualKeywords, aiImagesAndVideos, generateUniqueMapImages, enableFirstHandExperience, uploadedMedia
@@ -121,7 +143,7 @@ export async function generateLocalRoundupSection(body, genAI) {
     let extLinkInstruction = getExternalLinkInstruction(externalLinks);
     let linkInstruction = getLinkInstruction(internalLinks);
     let seoInstruction = await getSeoInstruction(seoOptimization, manualKeywords, targetKeyword);
-    let { mediaInstruction, assignedMediaElement } = await getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI);
+    let { mediaInstruction, assignedMediaElement, mediaUrl } = await getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI, usedImageUrls);
     let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
     let povInstruction = getPovInstruction(pointOfView);
     let readabilityInstruction = getReadabilityInstruction(improveReadability);
@@ -224,5 +246,5 @@ export async function generateLocalRoundupSection(body, genAI) {
     }
   }
 
-      return { success: true, text: result.response.text(), mediaHtml: assignedMediaElement}
+      return { success: true, text: result.response.text(), mediaHtml: assignedMediaElement, mediaUrl: mediaUrl}
 }

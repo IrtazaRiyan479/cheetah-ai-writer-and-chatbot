@@ -1,4 +1,4 @@
-import {fetchSerperOutlineData, getLinkInstruction, getExternalLinkInstruction, getRealTimeInstruction, getReadabilityInstruction, getMediaInstruction, getSeoInstruction, getPovInstruction, getToneInstruction, getBaseSystemInstruction, fetchPeopleAlsoSearchFor, fetchUnsplashImage} from '../utils/helpers'
+import {fetchSerperOutlineData, getLinkInstruction, getExternalLinkInstruction, getRealTimeInstruction, getReadabilityInstruction, getMediaInstruction, getSeoInstruction, getPovInstruction, getToneInstruction, getBaseSystemInstruction, fetchPeopleAlsoSearchFor, fetchUnsplashImage, fetchPexelsImage, fetchPixabayImage, calculateRelevanceScore} from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 import { GoogleGenAI } from '@google/genai';
@@ -56,7 +56,6 @@ export async function generateStandardBlogOutline(body, genAI) {
   }
 
 
-  // --- KEY TAKEAWAYS INSTRUCTION ---
   if (includeKeyTakeaways) {
       takeawaysInstruction = `\nCRITICAL REQUIREMENT - KEY TAKEAWAYS: The second H2 heading (immediately after the Introduction) MUST be titled exactly "Key Takeaways". Do NOT nest any H3 subheadings under it.`;
   }
@@ -75,11 +74,27 @@ export async function generateStandardBlogOutline(body, genAI) {
   const result = await outlineModel.generateContent(outlinePrompt)
   const parsedData = JSON.parse(result.response.text());
 
-  let heroImageUrl = '';
-  const unsplashData = await fetchUnsplashImage(targetKeyword);
-  if (unsplashData && unsplashData.url) {
-    heroImageUrl = unsplashData.url;
-  }
+  const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
+  fetchUnsplashImage(targetKeyword),
+  fetchPexelsImage(targetKeyword),
+  fetchPixabayImage(targetKeyword)
+]);
+
+let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
+let heroImageUrl = '';
+
+if (candidates.length > 0) {
+  const scoredCandidates = candidates.map(c => ({
+    ...c,
+    score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
+  }));
+
+  scoredCandidates.sort((a, b) => b.score - a.score);
+
+  heroImageUrl = scoredCandidates[0].url;
+
+  console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`);
+}
 
   return {
         success: true,
@@ -99,6 +114,7 @@ export async function generateStandardBlogSection(body, genAI) {
     uploadedMedia,
     externalLinks,
     internalLinks,
+    usedImageUrls = [],
     settings = {}
   } = body;
 
@@ -127,12 +143,12 @@ export async function generateStandardBlogSection(body, genAI) {
   const [
     realTimeInstruction,
     seoInstruction,
-    { mediaInstruction, assignedMediaElement },
+    { mediaInstruction, assignedMediaElement, mediaUrl },
     lsiData
   ] = await Promise.all([
     getRealTimeInstruction(useRealTimeSearchData, realTimeDataSource, articleTitle, targetKeyword, heading),
     getSeoInstruction(seoOptimization, manualKeywords, targetKeyword),
-    getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI),
+    getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI, usedImageUrls),
     fetchPeopleAlsoSearchFor(targetKeyword)
   ]);
   let extLinkInstruction = getExternalLinkInstruction(externalLinks);
@@ -186,7 +202,8 @@ export async function generateStandardBlogSection(body, genAI) {
       success: true,
       isDeepSearch: true,
       interactionId: interaction.id,
-      mediaHtml: assignedMediaElement
+      mediaHtml: assignedMediaElement,
+      mediaUrl: mediaUrl
     };
   }
 
@@ -224,6 +241,7 @@ export async function generateStandardBlogSection(body, genAI) {
   return {
     success: true,
     text: result.response.text(),
-    mediaHtml: assignedMediaElement
+    mediaHtml: assignedMediaElement,
+    mediaUrl: mediaUrl
   };
 }

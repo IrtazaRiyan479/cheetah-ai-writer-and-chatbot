@@ -99,6 +99,38 @@ export default function ApiDiagnostics() {
   setLoading({ ...loading, dataSEO: false });
 }
 
+const testPexels = async () => {
+    setLoading({ ...loading, pexels: true })
+    try {
+      const res = await fetch('/api/pexels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: 'running shoes' })
+      })
+      const data = await res.json()
+      updateLog('pexels', data)
+    } catch (err) {
+      updateLog('pexels', { error: err.message })
+    }
+    setLoading({ ...loading, pexels: false })
+  }
+
+  const testPixabay = async () => {
+    setLoading({ ...loading, pixabay: true })
+    try {
+      const res = await fetch('/api/pixabay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: 'running shoes' })
+      })
+      const data = await res.json()
+      updateLog('pixabay', data)
+    } catch (err) {
+      updateLog('pixabay', { error: err.message })
+    }
+    setLoading({ ...loading, pixabay: false })
+  }
+
   return (
     <Container maxWidth='md' className='py-8'>
       <Typography variant='h4' className='font-bold mbe-6'>API Connection Diagnostics</Typography>
@@ -249,6 +281,55 @@ export default function ApiDiagnostics() {
             </CardContent>
           </Card>
         </Grid>
+
+        {/* PEXELS TEST */}
+        <Grid size={{ xs: 12 }}>
+          <Card className='shadow-sm'>
+            <CardContent>
+              <div className='flex items-center justify-between mbe-4'>
+                <div>
+                  <Typography variant='h6'>Pexels Images</Typography>
+                  <Typography variant='caption' color='text.secondary'>Testing keyword: "running shoes"</Typography>
+                </div>
+                <Button variant='contained' onClick={testPexels} disabled={loading.pexels}>
+                  {loading.pexels ? 'Testing...' : 'Run Test'}
+                </Button>
+              </div>
+              <Divider className='mbe-4' />
+              <TextField multiline fullWidth rows={6} value={logs.pexels || 'Awaiting test...'} slotProps={{ input: { readOnly: true, style: { fontFamily: 'monospace', fontSize: '12px' } } }} />
+              {logs.pexels && JSON.parse(logs.pexels).imageUrl && (
+                <div className='mt-4'>
+                  <img src={JSON.parse(logs.pexels).imageUrl} alt="Pexels Result" className='max-h-48 rounded-md' />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* PIXABAY TEST */}
+        <Grid size={{ xs: 12 }}>
+          <Card className='shadow-sm'>
+            <CardContent>
+              <div className='flex items-center justify-between mbe-4'>
+                <div>
+                  <Typography variant='h6'>Pixabay Images</Typography>
+                  <Typography variant='caption' color='text.secondary'>Testing keyword: "running shoes"</Typography>
+                </div>
+                <Button variant='contained' onClick={testPixabay} disabled={loading.pixabay}>
+                  {loading.pixabay ? 'Testing...' : 'Run Test'}
+                </Button>
+              </div>
+              <Divider className='mbe-4' />
+              <TextField multiline fullWidth rows={6} value={logs.pixabay || 'Awaiting test...'} slotProps={{ input: { readOnly: true, style: { fontFamily: 'monospace', fontSize: '12px' } } }} />
+              {logs.pixabay && JSON.parse(logs.pixabay).imageUrl && (
+                <div className='mt-4'>
+                  <img src={JSON.parse(logs.pixabay).imageUrl} alt="Pixabay Result" className='max-h-48 rounded-md' />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
       </Grid>
     </Container>
   )

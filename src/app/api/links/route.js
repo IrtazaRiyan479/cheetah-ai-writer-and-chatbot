@@ -20,7 +20,6 @@ export async function POST(req) {
       if (!domain) return NextResponse.json({ error: 'Domain is required' }, { status: 400 });
 
       let cleanDomain = String(domain || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
-
       if (!cleanDomain.startsWith('www.')) {
         cleanDomain = `www.${cleanDomain}`;
       }
@@ -29,6 +28,7 @@ export async function POST(req) {
       let extractedUrls = [];
       let sitemapFound = false;
 
+      // Extract URLs from sitemap
       for (const path of sitemapPaths) {
         try {
           const response = await fetch(`https://${cleanDomain}${path}`, { headers: browserHeaders, signal: AbortSignal.timeout(6000) });
@@ -63,27 +63,88 @@ export async function POST(req) {
          return NextResponse.json({ success: false, error: 'No standard XML sitemap found.' }, { status: 404 });
       }
 
+      // Filter invalid URLs
       extractedUrls = extractedUrls.filter(url => {
         if (!url) return false;
         const path = new URL(url).pathname;
         return path.length > 1 && !url.endsWith('.xml') && !url.includes('/wp-content/uploads/');
       });
-
       extractedUrls = [...new Set(extractedUrls)];
 
-      const checkLiveness = async (url) => {
-        try {
-          const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(4000) });
-          return res.ok ? url : null;
-        } catch (e) {
-          return null;
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          try {
+            const checkLiveness = async (url) => {
+              try {
+                // Included browserHeaders to prevent 403s on HEAD requests
+                const res = await fetch(url, { method: 'HEAD', headers: browserHeaders, signal: AbortSignal.timeout(4000) });
+                return res.ok ? url : null;
+              } catch (e) {
+                return null;
+              }
+            };
+
+            const BATCH_SIZE = 15;
+            let globalPageIndex = 0;
+
+            for (let i = 0; i < extractedUrls.length; i += BATCH_SIZE) {
+              if (req.signal.aborted) {
+                console.log('Crawl aborted by client.');
+                break;
+              }
+
+              const batchUrls = extractedUrls.slice(i, i + BATCH_SIZE);
+
+              if (i > 0) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+
+              const liveUrls = (await Promise.all(batchUrls.map(checkLiveness))).filter(Boolean);
+
+              if (req.signal.aborted) {
+                break;
+              }
+
+              if (liveUrls.length > 0) {
+                const batchPages = liveUrls.map(url => ({ id: globalPageIndex++, url }));
+                const chunkData = JSON.stringify({ type: 'chunk', data: batchPages }) + '\n';
+
+                try {
+                  controller.enqueue(encoder.encode(chunkData));
+                } catch (enqueueError) {
+                  console.warn('Stream closed mid-enqueue. Stopping loop.');
+                  break;
+                }
+              }
+            }
+
+            if (!req.signal.aborted) {
+              try {
+                controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'));
+                controller.close();
+              } catch (e) {
+              }
+            }
+          } catch (error) {
+            console.error('Crawl stream processing error:', error);
+            if (!req.signal.aborted) {
+              try {
+                controller.enqueue(encoder.encode(JSON.stringify({ type: 'error', message: error.message }) + '\n'));
+                controller.close();
+              } catch (e) {}
+            }
+          }
         }
-      };
+      });
 
-      const liveUrls = (await Promise.all(extractedUrls.map(checkLiveness))).filter(Boolean);
-      const pages = liveUrls.map((url, i) => ({ id: i, url }));
-
-      return NextResponse.json({ success: true, pages });
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'application/x-ndjson',
+          'Cache-Control': 'no-cache, no-transform',
+          'Connection': 'keep-alive',
+        },
+      });
     }
 
     if (action === 'analyze') {
@@ -126,9 +187,6 @@ export async function POST(req) {
         return NextResponse.json({ error: 'Could not extract text.' }, { status: 400 });
       }
 
-      const allTargetUrlsString = selectedPages.map(p => p.url).join('\n');
-      const BATCH_SIZE = 5;
-
       const model = genAI.getGenerativeModel({
         model: 'gemini-3.1-flash-lite',
         generationConfig: { responseMimeType: "application/json", maxOutputTokens: 8192 }
@@ -138,60 +196,80 @@ export async function POST(req) {
       const stream = new ReadableStream({
         async start(controller) {
           try {
-            for (let i = 0; i < validPages.length; i += BATCH_SIZE) {
-              const batch = validPages.slice(i, i + BATCH_SIZE);
-              const expectedMinLinks = batch.length * 2;
-              const expectedMaxLinks = batch.length * 4;
+            const BATCH_SIZE = 5;
 
-        const prompt = `
-        You are a strict data-extraction script operating on right-or-wrong logic.
-        Your task is to analyze the provided batch of ${batch.length} source pages and find exact substrings within their "PAGE CONTENT" that can link to any URL in the global "ALLOWED TARGET URLS" list.
+            const allUrlsList = selectedPages.map(p => `- ${p.url}`).join('\n');
 
-        CRITICAL RULES:
-        1. EXACT TEXT MATCHING: The "anchorText" you select MUST physically exist exactly as written in the provided "PAGE CONTENT" for that specific Source URL. Do not change casing or alter words.
-        2. ZERO HALLUCINATION: You MUST ONLY link to URLs explicitly listed in the global "ALLOWED TARGET URLS" list.
-        3. NO SELF-LINKING: Do not link a Source URL to itself.
-        4. MANDATORY VOLUME QUOTA: For this batch of ${batch.length} source pages, you MUST find and return between ${expectedMinLinks} and ${expectedMaxLinks} highly contextual internal linking suggestions. Thoroughly extract multiple link opportunities per page.
+            for (let i = 0; i < selectedPages.length; i += BATCH_SIZE) {
+              if (req.signal.aborted) {
+                console.log('Analyze aborted by client.');
+                break;
+              }
 
-        ALLOWED TARGET URLS (GLOBAL LIST):
-        ${allTargetUrlsString}
+              const batch = selectedPages.slice(i, i + BATCH_SIZE);
+              const sourceUrlsList = batch.map(p => `- ${p.url}`).join('\n');
 
-        BATCH PAGES TO ANALYZE (${batch.length} Pages):
-        ${batch.map(p => `--- SOURCE URL: ${p.url} ---\nPAGE CONTENT:\n${p.content}\n`).join('\n\n')}
+              const prompt = `
+              You are an SEO expert specializing in internal linking.
 
-        Return a JSON array of objects with EXACTLY this structure:
-        [
-          {
-            "sourceUrl": "The exact URL from the batch where the text was found",
-            "targetUrl": "The exact URL from the allowed list the text should point to",
-            "anchorText": "The EXACT case-sensitive 2-4 word phrase extracted physically from the page content",
-            "reasoning": "A brief 1-sentence explanation of why this link makes sense."
-          }
-        ]
-        `;
+              Here is the FULL pool of available target URLs on my website:
+              ${allUrlsList}
 
-        const result = await model.generateContent(prompt);
+              Your task is to generate internal links ONLY FOR these specific SOURCE URLs:
+              ${sourceUrlsList}
+
+              For EACH of the Source URLs, find 1-2 relevant Target URLs from the full pool.
+              Do not link a page to itself.
+              Create contextually relevant anchor text.
+
+              Output strictly as a valid JSON array of objects with the following keys:
+              [
+                {
+                  "sourceUrl": "The URL from the Source list",
+                  "targetUrl": "The URL from the Full pool",
+                  "anchorText": "2-4 word phrase",
+                  "reasoning": "A brief 1-sentence explanation of why this link makes sense."
+                }
+              ]
+              `;
+
+              const result = await model.generateContent(prompt);
+
+              if (req.signal.aborted) break;
+
               let rawText = String(result.response?.text() || '[]');
               rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
 
-              const batchSuggestions = JSON.parse(rawText);
+              try {
+                const batchSuggestions = JSON.parse(rawText);
 
-              if (Array.isArray(batchSuggestions) && batchSuggestions.length > 0) {
-                const chunkData = JSON.stringify({ type: 'chunk', data: batchSuggestions }) + '\n';
-                controller.enqueue(encoder.encode(chunkData));
+                if (Array.isArray(batchSuggestions) && batchSuggestions.length > 0) {
+                  const chunkData = JSON.stringify({ type: 'chunk', data: batchSuggestions }) + '\n';
+                  controller.enqueue(encoder.encode(chunkData));
+                }
+              } catch (parseError) {
+                console.warn('Skipping batch due to JSON parse error from LLM');
               }
             }
-            controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'));
-            controller.close();
+
+            if (!req.signal.aborted) {
+              try {
+                controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'));
+                controller.close();
+              } catch (e) {}
+            }
           } catch (error) {
-            console.error('Stream processing error:', error);
-            controller.enqueue(encoder.encode(JSON.stringify({ type: 'error', message: error.message }) + '\n'));
-            controller.close();
+            console.error('Analyze stream processing error:', error);
+            if (!req.signal.aborted) {
+              try {
+                controller.enqueue(encoder.encode(JSON.stringify({ type: 'error', message: error.message }) + '\n'));
+                controller.close();
+              } catch (e) {}
+            }
           }
         }
       });
 
-      // 3. Return the stream response
       return new Response(stream, {
         headers: {
           'Content-Type': 'application/x-ndjson',
