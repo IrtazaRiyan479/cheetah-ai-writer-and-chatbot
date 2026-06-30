@@ -8,15 +8,15 @@ import {
   getBaseSystemInstruction,
   fetchArticleData,
   fetchUnsplashImage, fetchPexelsImage, fetchPixabayImage, calculateRelevanceScore
- ,fetchPeopleAlsoSearchFor, generateFallbackImage } from '../utils/helpers'
+ ,fetchPeopleAlsoSearchFor, generateFallbackImage, getMediaInstruction, getRealTimeInstruction } from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 
 export async function generateRewriteOutline(body, genAI) {
   const { prompt, settings } = body;
-  const {
-    model, targetKeyword, language, country, articleUrlToRewrite, includeFaq, includeKeyTakeaways
-  } = settings;
+  const {model, targetKeyword, language, country,
+         automaticExternalLinks, includeFaq, improveReadability, includeKeyTakeaways
+    } = settings;
 
   const articleData = await fetchArticleData(articleUrlToRewrite);
   if (!articleData.success) {
@@ -38,6 +38,36 @@ export async function generateRewriteOutline(body, genAI) {
    systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline based on the provided SOURCE ARTICLE. You MUST return a JSON object with four keys: "metaTitle" (SEO title, max 60 chars), "metaDescription" (SEO desc, max 160 chars), "title" (A catchy, rewritten H1 Title) and "outline" (A flat JSON array of objects). Schema: { "metaTitle": "...", "metaDescription": "...", "title": "Catchy Title", "outline": [{ "type": "h2", "text": "Heading text" }] }\n\nCRITICAL OUTLINE RULES:\n- The "title" MUST contain the exact target keyword: "${targetKeyword || 'main topic'}".\n- The VERY FIRST "h2" object in the outline array MUST contain the exact target keyword: "${targetKeyword || 'main topic'}" in its "text" field.\n- The VERY LAST "h2" object in the outline array MUST be a concluding heading and MUST also contain the exact target keyword: "${targetKeyword || 'main topic'}" in its "text" field.`
   });
 
+   let fetchedExternalLinks = [];
+            let faqInstruction = '';
+            let relatedInstruction = '';
+            let takeawaysInstruction = '';
+
+            if (automaticExternalLinks || includeFaq) {
+              const outlineData = await fetchSerperOutlineData(targetKeyword);
+
+              if (automaticExternalLinks) {
+        fetchedExternalLinks = outlineData.authorityLinks;
+      }
+
+              if (includeFaq) {
+                  if (outlineData.faqs.length > 0) {
+                    faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled exactly "Frequently Asked Questions". Under this H2, you MUST nest exactly these questions directly from Google as H3 subheadings:\n${outlineData.faqs.slice(0, 5).map(q => `- ${q}`).join('\n')}`;
+                  } else {
+                    faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled "Frequently Asked Questions" and nest 3-5 highly relevant questions as H3 subheadings.`;
+                  }
+              }
+
+              if (outlineData.related.length > 0) {
+                  relatedInstruction = `\nSEO OPTIMIZATION: Naturally incorporate topics from these related Google searches into your H2 and H3 headings where relevant: ${outlineData.related.slice(0, 5).join(', ')}.`;
+              }
+            }
+
+            // --- KEY TAKEAWAYS INSTRUCTION ---
+            if (includeKeyTakeaways) {
+                takeawaysInstruction = `\nCRITICAL REQUIREMENT - KEY TAKEAWAYS: The second H2 heading (immediately after the Introduction) MUST be titled exactly "Key Takeaways". Do NOT nest any H3 subheadings under it.`;
+            }
+
   const keywordInstruction = targetKeyword
     ? `Ensure the outline is optimized for the target keyword: "${targetKeyword}".`
     : `Extract the main topic/keyword from the source article and optimize the outline around it.`;
@@ -54,8 +84,9 @@ export async function generateRewriteOutline(body, genAI) {
     TASK:
     1. Extract the core concepts, topics, and structure of the source article.
     2. Create a comprehensive, REWRITTEN outline (H2s and H3s) that covers the same information but in a fresh, engaging structure.
-    3. If 'Include Key Takeaways' is Yes, add an H2 for it at the beginning.
-    4. If 'Include FAQ' is Yes, add an H2 for it at the end with relevant H3 questions.
+    3. ${faqInstruction}
+    4. ${takeawaysInstruction}
+    5. ${relatedInstruction}
     Return ONLY valid JSON.
   `;
 
@@ -71,9 +102,10 @@ export async function generateRewriteOutline(body, genAI) {
   let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
   let heroImageUrl = '';
   let fallbackToAiImageTag = false;
+  let scoredCandidates;
 
   if (candidates.length > 0) {
-    const scoredCandidates = candidates.map(c => ({
+    scoredCandidates = candidates.map(c => ({
       ...c,
       score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
     }));
@@ -108,7 +140,7 @@ export async function generateRewriteOutline(body, genAI) {
   try {
     const jsonResult = JSON.parse(responseText);
     return { success: true, outline: jsonResult.outline, title: jsonResult.title, heroImage: heroImageUrl, metaTitle: jsonResult.metaTitle,
-    metaDescription: jsonResult.metaDescription, };
+    metaDescription: jsonResult.metaDescription, externalLinks: fetchedExternalLinks, };
   } catch (error) {
     console.error("Failed to parse Rewrite outline JSON", error);
     return { success: false, error: "Invalid JSON from AI" };
@@ -117,13 +149,27 @@ export async function generateRewriteOutline(body, genAI) {
 
 
 export async function generateRewriteSection(body, genAI) {
-  const { prompt, settings, externalLinks,
-    internalLinks, } = body;
   const {
-    model, targetKeyword, language, country, articleUrlToRewrite,
-    heading, subheadings, sectionIndex, outlineContext, articleTitle,
-    toneOfVoice, customToneOfVoice, pointOfView, improveReadability
-  } = settings;
+      outlineContext,
+      heading,
+      subheadings,
+      sectionIndex,
+      uploadedMedia,
+      settings = {},
+      externalLinks,
+    internalLinks,
+    usedImageUrls = [],
+    usedExternalLinks = []
+    } = body;
+
+        const {model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice,
+          pointOfView, useRealTimeSearchData, realTimeDataSource, deepSearch, improveReadability, seoOptimization, manualKeywords, aiImagesAndVideos, listItemPrompt, language, country} = settings;
+
+   const langObj = languages ? languages[language] : null;
+    const langName = langObj ? langObj.name : (language || 'English');
+    const countryObj = countries ? countries.find(c => c.code === country) : null;
+    const countryName = countryObj ? countryObj.name : (country || 'United States');
+  const baseSystemInstruction = getBaseSystemInstruction(langName, countryName);
 
   const articleData = await fetchArticleData(articleUrlToRewrite);
   const sourceText = articleData.text || '';
@@ -132,13 +178,14 @@ export async function generateRewriteSection(body, genAI) {
     model: model || 'gemini-3.1-pro-preview',
   });
 
-  // Load Instructions
-  let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
-  let povInstruction = getPovInstruction(pointOfView);
-  let readabilityInstruction = getReadabilityInstruction(improveReadability);
-  let extLinkInstruction = getExternalLinkInstruction(externalLinks);
-  let linkInstruction = getLinkInstruction(internalLinks);
-  let seoInstruction = await getSeoInstruction(targetKeyword);
+  let realTimeInstruction = await getRealTimeInstruction(useRealTimeSearchData, realTimeDataSource, articleTitle, targetKeyword, heading);
+    let extLinkInstruction = getExternalLinkInstruction(externalLinks);
+    let linkInstruction = getLinkInstruction(internalLinks);
+    let seoInstruction = await getSeoInstruction(seoOptimization, manualKeywords, targetKeyword);
+    let { mediaInstruction, assignedMediaElement, mediaUrl } = await getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI, usedImageUrls);
+    let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
+    let povInstruction = getPovInstruction(pointOfView);
+    let readabilityInstruction = getReadabilityInstruction(improveReadability);
 
   let sectionStructureRequirements = `
     CRITICAL STRUCTURE REQUIREMENTS (REWRITE MODE):
@@ -147,7 +194,7 @@ export async function generateRewriteSection(body, genAI) {
     3. DO NOT copy the source text verbatim. You must rewrite the concepts in your own words, ensuring 100% uniqueness while maintaining the factual accuracy of the original content.
   `;
 
-  const activeSEOKeyword = targetKeyword || articleTitle || heading; // Fallback safely
+  const activeSEOKeyword = targetKeyword || articleTitle || heading;
   const lsiData = await fetchPeopleAlsoSearchFor(activeSEOKeyword);
   const lsiString = `Google Keywords: [${lsiData.google.join(', ')}]. Bing Keywords: [${lsiData.bing.join(', ')}].`;
 
@@ -155,6 +202,7 @@ export async function generateRewriteSection(body, genAI) {
     CRITICAL SEO & FORMATTING REQUIREMENTS:
     - Target Keyword: "${activeSEOKeyword}"
     - LSI / Related Keywords: [${lsiString}]
+    - ${baseSystemInstruction}
 
     1. KEYWORD PLACEMENT & BOLDING: You MUST use the exact Target Keyword multiple times naturally throughout this section to ensure strong topic relevance. If this section is the Introduction or Conclusion, this is absolutely MANDATORY. Format the target keyword in bold (**${activeSEOKeyword}**) every time it is used.
     2. LSI INTEGRATION: You MUST naturally integrate 1 to 2 of the provided LSI keywords into the paragraphs or subheadings of this section. CRITICAL: Use each LSI keyword a MAXIMUM of 1 or 2 times to avoid keyword stuffing. Ensure the main Target Keyword is used more frequently than any single LSI keyword.
@@ -179,9 +227,11 @@ export async function generateRewriteSection(body, genAI) {
     ${linkInstruction}
     ${seoInstruction}
     ${toneInstruction}
+    ${mediaInstruction}
     ${povInstruction}
     ${readabilityInstruction}
     ${keywordSEOInstructions}
+    ${realTimeInstruction}
   `;
 
   let result;
@@ -215,5 +265,5 @@ export async function generateRewriteSection(body, genAI) {
     }
   }
 
-  return { success: true, text: result.response.text(), mediaHtml: null };
+  return { success: true, text: result.response.text(), mediaHtml: assignedMediaElement, mediaUrl: mediaUrl };
 }

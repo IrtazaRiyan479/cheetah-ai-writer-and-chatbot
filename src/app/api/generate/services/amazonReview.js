@@ -203,7 +203,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
   });
 
   let realTimeInstruction = await getRealTimeInstruction(settings.realTimeDataSource, articleTitle, heading, targetKeyword);
-  let extLinkInstruction = getExternalLinkInstruction(externalLinks);
+  // let extLinkInstruction = getExternalLinkInstruction(externalLinks);
   let linkInstruction = getLinkInstruction(internalLinks);
   let seoInstruction = await getSeoInstruction(targetKeyword);
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
@@ -230,14 +230,12 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     ? "PERSPECTIVE: Write as if you personally own, use, and have extensively tested this exact product. Share hands-on observations."
     : "PERSPECTIVE: Write objectively as an expert product reviewer relying on factual data.";
 
-  // Force First-Person POV if First-Hand Experience is enabled
   let povInstruction = enableFirstHandExperience
     ? `POINT OF VIEW: You MUST write in the First-Person ("I", "me", "my"). Speak directly to the reader as someone who currently owns, uses, and has rigorously tested this product.`
     : getPovInstruction(pointOfView);
 
   let readabilityInstruction = getReadabilityInstruction(improveReadability);
 
-  // Parse Amazon Data if provided to ground the AI in factual specs
   let amazonContext = '';
   if (amazonProductData) {
     amazonContext = `

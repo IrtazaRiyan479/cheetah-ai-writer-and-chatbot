@@ -43,7 +43,7 @@ export async function generateListicleOutline(body, genAI) {
     }
   }
 
-  const itemCount = enableAutoLength ? 10 : (parseInt(totalListItems) || 10);
+        const itemCount = enableAutoLength ? 10 : (parseInt(totalListItems) || 10);
         const format = listNumberingFormat || '1.';
 
         let numberingArray = [];
@@ -80,9 +80,10 @@ export async function generateListicleOutline(body, genAI) {
   let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
   let heroImageUrl = '';
   let fallbackToAiImageTag = false;
+  let scoredCandidates;
 
   if (candidates.length > 0) {
-    const scoredCandidates = candidates.map(c => ({
+    scoredCandidates = candidates.map(c => ({
       ...c,
       score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
     }));
@@ -136,7 +137,8 @@ export async function generateListicleSection(body, genAI) {
       settings = {},
       externalLinks,
     internalLinks,
-    usedImageUrls = []
+    usedImageUrls = [],
+    usedExternalLinks = []
     } = body;
 
         const {model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice,
@@ -146,7 +148,7 @@ export async function generateListicleSection(body, genAI) {
           ? `\nSPECIAL LIST ITEM REQUIREMENT: ${listItemPrompt}`
           : '';
 
-                      const langObj = languages ? languages[language] : null;
+    const langObj = languages ? languages[language] : null;
     const langName = langObj ? langObj.name : (language || 'English');
     const countryObj = countries ? countries.find(c => c.code === country) : null;
     const countryName = countryObj ? countryObj.name : (country || 'United States');

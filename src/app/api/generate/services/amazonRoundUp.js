@@ -113,9 +113,10 @@ export async function generateAmazonRoundupOutline(body, genAI) {
   let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
   let heroImageUrl = '';
   let fallbackToAiImageTag = false;
+  let scoredCandidates;
 
   if (candidates.length > 0) {
-    const scoredCandidates = candidates.map(c => ({
+    scoredCandidates = candidates.map(c => ({
       ...c,
       score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
     }));
@@ -193,11 +194,11 @@ export async function generateAmazonRoundupSection(body, genAI) {
   const seoInstruction = await getSeoInstruction(targetKeyword);
 
   let linkInstruction = '';
-  let extLinkInstruction = '';
-  if (activeSectionType === 'intro' || activeSectionType === 'buying_guide') {
-    linkInstruction = getLinkInstruction(internalLinks);
-    extLinkInstruction = getExternalLinkInstruction(externalLinks);
-  }
+  // let extLinkInstruction = '';
+  // if (activeSectionType === 'intro' || activeSectionType === 'buying_guide') {
+  //   linkInstruction = getLinkInstruction(internalLinks);
+  //   extLinkInstruction = getExternalLinkInstruction(externalLinks);
+  // }
 
   const experienceInstruction = enableFirstHandExperience
     ? "CRITICAL: Write this review using strong first-hand experience. Use phrases like 'When I tested this...', 'In my hands-on experience...', and 'What I noticed right away...'. Speak as an expert who has physically unboxed and used the item."
@@ -230,7 +231,6 @@ export async function generateAmazonRoundupSection(body, genAI) {
     ${povInstruction}
     ${readabilityInstruction}
     ${linkInstruction}
-    ${extLinkInstruction}
     ${keywordSEOInstructions}
   `;
 

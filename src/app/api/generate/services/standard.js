@@ -83,9 +83,10 @@ export async function generateStandardBlogOutline(body, genAI) {
   let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
   let heroImageUrl = '';
   let fallbackToAiImageTag = false;
+  let scoredCandidates;
 
   if (candidates.length > 0) {
-    const scoredCandidates = candidates.map(c => ({
+    scoredCandidates = candidates.map(c => ({
       ...c,
       score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
     }));
@@ -105,11 +106,11 @@ export async function generateStandardBlogOutline(body, genAI) {
 
   if (fallbackToAiImageTag) {
     const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : '';
-    const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
+    try { const fallbackImage =  await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
     if (fallbackImage && fallbackImage.url) {
       heroImageUrl = fallbackImage.url;
       console.log(`[Hero Image] AI Fallback successful: ${heroImageUrl}`);
-    } else {
+    } } catch(error) {
       heroImageUrl = safetyBackup;
       console.log(`[Hero Image] AI Fallback failed to generate a URL.`);
     }
@@ -138,6 +139,7 @@ export async function generateStandardBlogSection(body, genAI) {
     externalLinks,
     internalLinks,
     usedImageUrls = [],
+    usedExternalLinks = [],
     settings = {}
   } = body;
 

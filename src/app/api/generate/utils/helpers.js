@@ -340,28 +340,6 @@ export async function fetchPeopleAlsoSearchFor(query) {
   }
 }
 
-export async function fetchInformativeLinks(query) {
-  if (!process.env.SERPER_API_KEY) return [];
-
-  try {
-    const res = await fetch(`https://google.serper.dev/search`, {
-      method: 'POST',
-      headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        q: `${query} (site:.gov OR site:.org OR site:.edu)`,
-        num: 15
-      })
-    });
-
-    const data = await res.json();
-    if (data.organic && data.organic.length > 0) {
-      return data.organic.slice(0, 3).map(item => item.link);
-    }
-  } catch (e) {
-    console.error('Serper Info Link Fetch Error:', e);
-  }
-  return [];
-}
 
 export async function fetchArticleData(url) {
   if (!url) return { success: false, text: '', title: '' };
@@ -627,14 +605,20 @@ export async function getRealTimeInstruction(useRealTimeSearchData, realTimeData
               return realTimeInstruction;
 }
 
-export function getExternalLinkInstruction(externalLinks) {
+export function getExternalLinkInstruction(externalLinks, usedExternalLinks = []) {
         let extLinkInstruction = '';
-      if (externalLinks && externalLinks.length > 0) {
-        extLinkInstruction = `\nCRITICAL EXTERNAL LINKING: Naturally weave exactly 2 to 3 high-authority external URLs into the text. \nRULES:\n1. You MUST ONLY link to informative sources, Government sites (.gov), NGOs (.org), or research papers (e.g., Google Scholar).\n2. Do NOT link to advertising, entertainment, or competitor sites.\n3. URLs you can use: ${externalLinks.join(', ')}. Do not force them if they don't fit perfectly.`;
-      } else {
-        extLinkInstruction = `\nCRITICAL EXTERNAL LINKING: Naturally weave exactly 2 to 3 high-authority external URLs into the text using Markdown formatting. \nRULES:\n1. You MUST ONLY link to informative sources, Government sites (.gov), NGOs (.org), or research papers (e.g., Google Scholar).\n2. Do NOT link to advertising, entertainment, or competitor sites.`;
-      }
-      return extLinkInstruction;
+
+        let availableLinks = (externalLinks || []).filter(link => !usedExternalLinks.includes(link));
+
+        if (availableLinks.length === 0 && externalLinks && externalLinks.length > 0) {
+          availableLinks = externalLinks;
+        }
+      if (availableLinks && availableLinks.length > 0) {
+          extLinkInstruction = `\nCRITICAL EXTERNAL LINKING: Naturally weave exactly 2 to 3 high-authority external URLs into the text. \nRULES:\n1. You MUST ONLY link to informative sources, Government sites (.gov), NGOs (.org), or research papers (e.g., Google Scholar).\n2. Do NOT link to advertising, entertainment, or competitor sites.\n3. URLs you can use: ${availableLinks.join(', ')}. Do not force them if they don't fit perfectly.`;
+        } else {
+          extLinkInstruction = `\nCRITICAL EXTERNAL LINKING: Naturally weave exactly 2 to 3 high-authority external URLs into the text using Markdown formatting. \nRULES:\n1. You MUST ONLY link to informative sources, Government sites (.gov), NGOs (.org), or research papers (e.g., Google Scholar).\n2. Do NOT link to advertising, entertainment, or competitor sites.`;
+        }
+        return extLinkInstruction;
     }
 
 export function getLinkInstruction(internalLinks) {

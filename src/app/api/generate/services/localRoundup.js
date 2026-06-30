@@ -4,7 +4,7 @@ import { countries } from '@/configs/countries'
 
 export async function generateLocalRoundupOutline(body, genAI) {
   const { prompt, settings} = body;
-      const { model, targetKeyword, language, country, automaticExternalLinks, includeFaq, includeKeyTakeaways, enableSupplementalInformation, numberOfPlaces, enableAutoLength
+      const { model, targetKeyword, language, country, automaticExternalLinks, includeFaq, includeKeyTakeaways, useDescendingOrder, enableSupplementalInformation, numberOfPlaces, enableAutoLength, listNumberingFormat
     } = settings;
 
           const langObj = languages ? languages[language] : null;
@@ -23,11 +23,20 @@ export async function generateLocalRoundupOutline(body, genAI) {
         const placesData = await fetchSerperPlacesData(targetKeyword || prompt, itemCount, country, language);
         let placesInstruction = '';
 
+        const format = listNumberingFormat || '1.';
+
+        let numberingArray = [];
+        for (let i = 1; i <= itemCount; i++) {
+          numberingArray.push(format === 'none' ? '' : format.replace('1', i));
+        }
+        if (useDescendingOrder) numberingArray.reverse();
+        const explicitNumberingStr = format === 'none' ? 'Do not use numbering.' : `Use EXACTLY these prefixes in this order for your list items: ${numberingArray.join(', ')}`;
+
         if (placesData.length > 0) {
           const placeNames = placesData.map((p, i) => `${i + 1}. ${p.title}`).join('\n');
           placesInstruction = `You MUST use EXACTLY these locations for the core H2 headings in order:\n${placeNames}`;
         } else {
-          placesInstruction = `Generate exactly ${itemCount} H2 headings representing specific real-world locations related to the topic. Number them.`;
+          placesInstruction = `Generate exactly ${itemCount} H2 headings representing specific real-world locations related to the topic. Number them.${explicitNumberingStr}`;
         }
          let fetchedExternalLinks = [];
           let faqInstruction = '';
@@ -87,9 +96,10 @@ export async function generateLocalRoundupOutline(body, genAI) {
   let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
   let heroImageUrl = '';
   let fallbackToAiImageTag = false;
+  let scoredCandidates;
 
   if (candidates.length > 0) {
-    const scoredCandidates = candidates.map(c => ({
+    scoredCandidates = candidates.map(c => ({
       ...c,
       score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
     }));
@@ -130,13 +140,11 @@ export async function generateLocalRoundupOutline(body, genAI) {
                 metaTitle: parsedData.metaTitle,
                 metaDescription: parsedData.metaDescription,
               }
-
-  return { success: true, text: result.response.text(), mediaHtml: assignedMediaElement };
 }
 
 export async function generateLocalRoundupSection(body, genAI) {
   const { heading, subheadings, settings, externalLinks,
-    internalLinks, sectionIndex, outlineContext, usedImageUrls = [] } = body;
+    internalLinks, sectionIndex, outlineContext, usedImageUrls = [], usedExternalLinks = [] } = body;
 
       const { model, targetKeyword, articleTitle, language, country, toneOfVoice, customToneOfVoice,
           pointOfView, useRealTimeSearchData, realTimeDataSource, deepSearch, improveReadability, seoOptimization, manualKeywords, aiImagesAndVideos, generateUniqueMapImages, enableFirstHandExperience, uploadedMedia
@@ -175,15 +183,12 @@ export async function generateLocalRoundupSection(body, genAI) {
    let narrativeRequirement = '';
    let placeDataStr = '';
   if (isCoreLocation) {
-      // 1. Fetch exact data for this specific location
       const placeInfo = await fetchSerperPlacesData(`${heading} ${targetKeyword || ''}`, 1, country, language);
       const p = placeInfo.length > 0 ? placeInfo[0] : null;
       if (p) {
-        // Build Map Link & Unique Map Image
         const mapLink = p.cid ? `https://maps.google.com/?cid=${p.cid}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.title + ' ' + (p.address || ''))}`;
 
         if (generateUniqueMapImages) {
-          // Using Yandex Static Map API if coordinates exist, otherwise Placehold fallback
           const mapImgUrl = (p.latitude && p.longitude)
             ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${p.longitude},${p.latitude}&z=16&l=map&size=600,300&pt=${p.longitude},${p.latitude},pm2rdm`
             : `https://placehold.co/800x400/ececec/555555?text=Map+Location:+${encodeURIComponent(p.title)}`;

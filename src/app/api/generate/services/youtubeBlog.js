@@ -75,9 +75,10 @@ export async function generateYoutubeBlogOutline(body, genAI) {
     let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
     let heroImageUrl = '';
     let fallbackToAiImageTag = false;
+    let scoredCandidates;
 
     if (candidates.length > 0) {
-      const scoredCandidates = candidates.map(c => ({
+      scoredCandidates = candidates.map(c => ({
         ...c,
         score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
       }));
