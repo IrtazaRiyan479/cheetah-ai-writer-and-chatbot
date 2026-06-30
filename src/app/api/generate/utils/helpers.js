@@ -309,38 +309,58 @@ async function getSmartVideoQuery(topic, heading, genAI) {
 }
 
 export async function fetchPeopleAlsoSearchFor(query) {
-  const lsiKeywords = new Set();
+  const bingKeywords = new Set();
+  const googleKeywords = new Set();
 
   const bingTitles = await fetchBingTitles(query);
-  bingTitles.forEach(title => lsiKeywords.add(title));
+  bingTitles.forEach(title => bingKeywords.add(title));
 
-  if (!process.env.SERPER_API_KEY) return Array.from(lsiKeywords).slice(0, 15);
+  if (!process.env.SERPER_API_KEY) {
+     return { bing: Array.from(bingKeywords).slice(0, 10), google: [] };
+  }
 
   try {
     const res = await fetch(`https://google.serper.dev/search`, {
       method: 'POST',
-      headers: {
-        'X-API-KEY': process.env.SERPER_API_KEY,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ q: query })
     });
 
     const data = await res.json();
+    if (data.peopleAlsoAsk) data.peopleAlsoAsk.forEach(item => googleKeywords.add(item.question));
+    if (data.relatedSearches) data.relatedSearches.forEach(item => googleKeywords.add(item.query));
 
-    if (data.peopleAlsoAsk && Array.isArray(data.peopleAlsoAsk)) {
-      data.peopleAlsoAsk.forEach(item => lsiKeywords.add(item.question));
-    }
-
-    if (data.relatedSearches && Array.isArray(data.relatedSearches)) {
-      data.relatedSearches.forEach(item => lsiKeywords.add(item.query));
-    }
-
-    return Array.from(lsiKeywords).slice(0, 15);
+    return {
+      bing: Array.from(bingKeywords).slice(0, 8),
+      google: Array.from(googleKeywords).slice(0, 8)
+    };
   } catch (e) {
     console.error('Serper LSI Fetch Error:', e);
-    return Array.from(lsiKeywords).slice(0, 15);
+    return { bing: Array.from(bingKeywords).slice(0, 10), google: [] };
   }
+}
+
+export async function fetchInformativeLinks(query) {
+  if (!process.env.SERPER_API_KEY) return [];
+
+  try {
+    const res = await fetch(`https://google.serper.dev/search`, {
+      method: 'POST',
+      headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        q: `${query} (site:.gov OR site:.org OR site:.edu)`,
+        num: 15
+      })
+    });
+
+    const data = await res.json();
+    if (data.organic && data.organic.length > 0) {
+      return data.organic.slice(0, 3).map(item => item.link);
+    }
+  } catch (e) {
+    console.error('Serper Info Link Fetch Error:', e);
+  }
+  return [];
 }
 
 export async function fetchArticleData(url) {
@@ -373,20 +393,38 @@ export async function fetchArticleData(url) {
 }
 
 export async function fetchSerperOutlineData(query) {
-  if (!process.env.SERPER_API_KEY) return { organic: [], faqs: [], related: [] };
+  if (!process.env.SERPER_API_KEY) return { organic: [], faqs: [], related: [], authorityLinks: [] };
+
   try {
-    const res = await fetch(`https://google.serper.dev/search`, {
-      method: 'POST',
-      headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q: query })
-    });
-    const data = await res.json();
+    const [standardRes, infoRes] = await Promise.all([
+      fetch(`https://google.serper.dev/search`, {
+        method: 'POST',
+        headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q: query })
+      }),
+      fetch(`https://google.serper.dev/search`, {
+        method: 'POST',
+        headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          q: `${query} (site:.gov OR site:.org OR site:.edu)`,
+          num: 15
+        })
+      })
+    ]);
+
+    const data = await standardRes.json();
+    const infoData = await infoRes.json();
+
     return {
       organic: data.organic ? data.organic.slice(0, 4) : [],
       faqs: data.peopleAlsoAsk ? data.peopleAlsoAsk.map(item => item.question) : [],
-      related: data.relatedSearches ? data.relatedSearches.map(item => item.query) : []
+      related: data.relatedSearches ? data.relatedSearches.map(item => item.query) : [],
+      authorityLinks: infoData.organic ? infoData.organic.map(item => item.link) : []
     };
-  } catch (e) { console.error('Serper Outline Error:', e); return { organic: [], faqs: [], related: [] }; }
+  } catch (e) {
+    console.error('Serper Outline Error:', e);
+    return { organic: [], faqs: [], related: [], authorityLinks: [] };
+  }
 }
 
 export async function fetchSerperPlacesData(query, count = 10, countryCode = 'us', languageCode = 'en') {

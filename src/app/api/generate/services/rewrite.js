@@ -91,10 +91,18 @@ export async function generateRewriteOutline(body, genAI) {
     fallbackToAiImageTag = true;
   }
 
-  let introductionPrompt = `TASK: Generate a high-relevance opening introduction for the topic...`;
-
   if (fallbackToAiImageTag) {
-    introductionPrompt += `\n${await generateFallbackImage(targetKeyword)}`;
+    const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : '';
+    const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
+    if (fallbackImage && fallbackImage.url) {
+      heroImageUrl = fallbackImage.url;
+      console.log(`[Hero Image] AI Fallback successful: ${heroImageUrl}`);
+    } else {
+      heroImageUrl = safetyBackup;
+      console.log(`[Hero Image] AI Fallback failed to generate a URL.`);
+    }
+
+    console.log(`[Hero Image] AI Generation Result: ${heroImageUrl ? 'Success' : 'Failed - Using Safety Backup'}`);
   }
 
   try {
@@ -141,7 +149,7 @@ export async function generateRewriteSection(body, genAI) {
 
   const activeSEOKeyword = targetKeyword || articleTitle || heading; // Fallback safely
   const lsiData = await fetchPeopleAlsoSearchFor(activeSEOKeyword);
-  const lsiString = lsiData.length > 0 ? lsiData.join(', ') : 'related SEO topics';
+  const lsiString = `Google Keywords: [${lsiData.google.join(', ')}]. Bing Keywords: [${lsiData.bing.join(', ')}].`;
 
   const keywordSEOInstructions = `
     CRITICAL SEO & FORMATTING REQUIREMENTS:

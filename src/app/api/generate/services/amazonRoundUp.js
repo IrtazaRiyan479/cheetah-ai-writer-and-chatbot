@@ -40,7 +40,7 @@ function formatAmazonProducts(apiData, settings) {
 
   return limitedProducts.map(item => {
     const title = item?.itemInfo?.title?.displayValue || 'Amazon Product';
-    let affiliateUrl = new URL(item?.detailPageURL || `https://www.amazon.com/dp/${item.asin}?tag=${process.env.AMAZON_PARTNER_TAG}`);
+    let affiliateUrl = new URL(item?.detailPageURL || `https://${settings.domain || 'www.amazon.com'}/dp/${item.asin}?tag=${process.env.AMAZON_PARTNER_TAG}`);
     affiliateUrl.searchParams.set('tag', settings.amazonTrackingId);
     let imageUrl = item?.images?.primary?.large?.url || '';
     imageUrl = imageUrl.replace(/\._[A-Za-z0-9_]+_\./, '.');
@@ -133,11 +133,20 @@ export async function generateAmazonRoundupOutline(body, genAI) {
     fallbackToAiImageTag = true;
   }
 
-  let introductionPrompt = `TASK: Generate a high-relevance opening introduction for the topic...`;
-
   if (fallbackToAiImageTag) {
-     heroImageUrl = `\n${await generateFallbackImage(`${introductionPrompt}${targetKeyword}`)?.url}`;
+    const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : '';
+    const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
+    if (fallbackImage && fallbackImage.url) {
+      heroImageUrl = fallbackImage.url;
+      console.log(`[Hero Image] AI Fallback successful: ${heroImageUrl}`);
+    } else {
+      heroImageUrl = safetyBackup;
+      console.log(`[Hero Image] AI Fallback failed to generate a URL.`);
+    }
+
+    console.log(`[Hero Image] AI Generation Result: ${heroImageUrl ? 'Success' : 'Failed - Using Safety Backup'}`);
   }
+
 
   return {
   success: true,
@@ -150,9 +159,6 @@ export async function generateAmazonRoundupOutline(body, genAI) {
 };
 }
 
-/**
- * GENERATOR 2: Section Content Generator
- */
 export async function generateAmazonRoundupSection(body, genAI) {
   const { heading, text, section = {}, articleTitle, outlineContext, settings = {}, targetKeyword, internalLinks, externalLinks } = body;
 
@@ -199,7 +205,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
 
   const activeSEOKeyword = targetKeyword || articleTitle || heading;
   const lsiData = await fetchPeopleAlsoSearchFor(activeSEOKeyword);
-  const lsiString = lsiData.length > 0 ? lsiData.join(', ') : 'related SEO topics';
+  const lsiString = `Google Keywords: [${lsiData.google.join(', ')}]. Bing Keywords: [${lsiData.bing.join(', ')}].`;
 
   const keywordSEOInstructions = `
     CRITICAL SEO & FORMATTING REQUIREMENTS:
@@ -234,7 +240,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
     const top3HTML = top3.map(p => {
       const safeTitle = p.productName.replace(/[\r\n]+/g, ' ').replace(/\|/g, '-');
       const safeImageUrl = p.imageUrl ? p.imageUrl.replace(/_/g, '%5F') : '';
-      return `<tr><td><img src="${safeImageUrl}" width="100"/></td><td><strong>${safeTitle}</strong></td><td><a href="${p.amazonUrl}" target="_blank" rel="sponsored noopener" style="text-decoration: none!important;" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded inline-block">Check Price</a></td></tr>`;
+      return `<tr><td><img src="${safeImageUrl}" width="100"/></td><td><strong>${safeTitle}</strong></td><td><a href="${p.amazonUrl}" target="_blank" rel="sponsored noopener" class="not-prose bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-block no-underline">Check Price</a></td></tr>`;
     }).join('');
 
 
@@ -272,7 +278,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
       5. **Real Buyer Opinions:** A brief summary of what real buyers think.
       6. **CTA Button:** Insert this EXACT HTML for the affiliate button:
          <div align="center" style="margin: 20px 0;">
-            <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" class="no-underline bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded inline-block">Check Price</a>
+            <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" class="no-underline bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-block">Check Price</a>
           </div>
     `;
   }

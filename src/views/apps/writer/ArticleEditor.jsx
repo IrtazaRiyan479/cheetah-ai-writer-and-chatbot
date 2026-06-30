@@ -151,6 +151,7 @@ const VideoExtension = Node.create({
   },
 })
 
+
 const extensions = [
   TextStyle,
   Color.configure({ types: ['textStyle'] }),
@@ -693,6 +694,14 @@ useEffect(() => {
             // H. LINKS
             cleanMd = cleanMd.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" class="text-primary underline font-medium">$1</a>')
 
+            // H. RAW HTML BUTTON FIX
+            cleanMd = cleanMd.replace(/<a([^>]+)>(.*?(?:Check Price|Amazon).*?)<\/a>/gi, (match, attributes, text) => {
+            const hrefMatch = attributes.match(/href=["']([^"']+)["']/i);
+            const href = hrefMatch ? hrefMatch[1] : '#';
+            console.log("found")
+            return `<a href="${href || '#'}" target="_blank" rel="sponsored noopener" class="no-underline bg-blue-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-block">Check Price on Amazon</a>`;
+          });
+
             // I. INLINE FORMATTING (Bold, Italics, Code, Strike)
             cleanMd = cleanMd.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             cleanMd = cleanMd.replace(/(?<!\w)\*(.*?)\*(?!\w)/g, '<em>$1</em>') // Safely catch italics
@@ -774,6 +783,8 @@ useEffect(() => {
             if (typeof setSettings === 'function') {
               setSettings(prev => ({
                 ...prev,
+                metaTitle: data.generatedMetaTitle,
+                metaDescription: data.generatedMetaDescription,
                 generatedTitle: draft.title,
                 heroImage: draftImage || prev.heroImage
               }));

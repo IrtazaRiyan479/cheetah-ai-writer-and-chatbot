@@ -38,8 +38,8 @@ export async function generateLocalRoundupOutline(body, genAI) {
             const outlineData = await fetchSerperOutlineData(targetKeyword);
 
             if (automaticExternalLinks) {
-              fetchedExternalLinks = outlineData.organic.map(res => res.link).filter(link => link);
-            }
+      fetchedExternalLinks = outlineData.authorityLinks;
+    }
 
             if (includeFaq) {
                 if (outlineData.faqs.length > 0) {
@@ -79,39 +79,47 @@ export async function generateLocalRoundupOutline(body, genAI) {
           const parsedData = JSON.parse(result.response.text());
 
           const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
-              fetchUnsplashImage(targetKeyword),
-              fetchPexelsImage(targetKeyword),
-              fetchPixabayImage(targetKeyword)
-            ]);
+    fetchUnsplashImage(targetKeyword),
+    fetchPexelsImage(targetKeyword),
+    fetchPixabayImage(targetKeyword)
+  ]);
 
-            let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
-            let heroImageUrl = '';
-            let fallbackToAiImageTag = false;
+  let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
+  let heroImageUrl = '';
+  let fallbackToAiImageTag = false;
 
-            if (candidates.length > 0) {
-              const scoredCandidates = candidates.map(c => ({
-                ...c,
-                score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
-              }));
+  if (candidates.length > 0) {
+    const scoredCandidates = candidates.map(c => ({
+      ...c,
+      score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
+    }));
 
-              scoredCandidates.sort((a, b) => b.score - a.score);
+    scoredCandidates.sort((a, b) => b.score - a.score);
 
-              if (scoredCandidates[0].score >= 2.0) {
-                heroImageUrl = scoredCandidates[0].url;
-                console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`);
-              } else {
-                console.log(`[Hero Image] Top image score (${scoredCandidates[0].score}) below 2.0. Invoking AI generation logic.`);
-                fallbackToAiImageTag = true;
-              }
-            } else {
-              fallbackToAiImageTag = true;
-            }
+    if (scoredCandidates[0].score >= 2.0) {
+      heroImageUrl = scoredCandidates[0].url;
+      console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`);
+    } else {
+      console.log(`[Hero Image] Top image score (${scoredCandidates[0].score}) below 2.0. Invoking AI generation logic.`);
+      fallbackToAiImageTag = true;
+    }
+  } else {
+    fallbackToAiImageTag = true;
+  }
 
-            let introductionPrompt = `TASK: Generate a high-relevance opening introduction for the topic...`;
+  if (fallbackToAiImageTag) {
+    const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : '';
+    const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
+    if (fallbackImage && fallbackImage.url) {
+      heroImageUrl = fallbackImage.url;
+      console.log(`[Hero Image] AI Fallback successful: ${heroImageUrl}`);
+    } else {
+      heroImageUrl = safetyBackup;
+      console.log(`[Hero Image] AI Fallback failed to generate a URL.`);
+    }
 
-            if (fallbackToAiImageTag) {
-              introductionPrompt += `\n${await generateFallbackImage(targetKeyword)}`;
-            }
+    console.log(`[Hero Image] AI Generation Result: ${heroImageUrl ? 'Success' : 'Failed - Using Safety Backup'}`);
+  }
 
           return {
                 success: true,
@@ -216,7 +224,7 @@ export async function generateLocalRoundupSection(body, genAI) {
 
             const activeSEOKeyword = targetKeyword || articleTitle || heading;
   const lsiData = await fetchPeopleAlsoSearchFor(activeSEOKeyword);
-  const lsiString = lsiData.length > 0 ? lsiData.join(', ') : 'related SEO topics';
+  const lsiString = `Google Keywords: [${lsiData.google.join(', ')}]. Bing Keywords: [${lsiData.bing.join(', ')}].`;
 
   const keywordSEOInstructions = `
     CRITICAL SEO & FORMATTING REQUIREMENTS:

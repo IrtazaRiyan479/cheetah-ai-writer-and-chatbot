@@ -66,6 +66,7 @@ export async function POST(request) {
       featuredMediaId = await uploadImageToWP(featuredImageUrl, cleanSiteUrl, credentials)
     }
 
+    console.log(`META TITLE: ${metaTitle}\n\nMETA DESCRIPTION: ${metaDescription}`)
 
     const postPayload = {
       title: title || 'Untitled AI Article',

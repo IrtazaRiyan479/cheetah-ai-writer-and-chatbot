@@ -39,7 +39,7 @@ export async function generateStandardBlogOutline(body, genAI) {
     const outlineData = await fetchSerperOutlineData(targetKeyword);
 
     if (automaticExternalLinks) {
-      fetchedExternalLinks = outlineData.organic.map(res => res.link).filter(link => link);
+      fetchedExternalLinks = outlineData.authorityLinks;
     }
 
     if (includeFaq) {
@@ -103,10 +103,18 @@ export async function generateStandardBlogOutline(body, genAI) {
     fallbackToAiImageTag = true;
   }
 
-  let introductionPrompt = `TASK: Generate a high-relevance opening introduction for the topic...`;
-
   if (fallbackToAiImageTag) {
-    introductionPrompt += `\n${await generateFallbackImage(targetKeyword)}`;
+    const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : '';
+    const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
+    if (fallbackImage && fallbackImage.url) {
+      heroImageUrl = fallbackImage.url;
+      console.log(`[Hero Image] AI Fallback successful: ${heroImageUrl}`);
+    } else {
+      heroImageUrl = safetyBackup;
+      console.log(`[Hero Image] AI Fallback failed to generate a URL.`);
+    }
+
+    console.log(`[Hero Image] AI Generation Result: ${heroImageUrl ? 'Success' : 'Failed - Using Safety Backup'}`);
   }
 
   return {
@@ -171,7 +179,7 @@ export async function generateStandardBlogSection(body, genAI) {
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
   let povInstruction = getPovInstruction(pointOfView);
   let readabilityInstruction = getReadabilityInstruction(improveReadability);
-  const lsiString = lsiData.length > 0 ? lsiData.join(', ') : 'related SEO topics';
+  const lsiString = `Google Keywords: [${lsiData.google.join(', ')}]. Bing Keywords: [${lsiData.bing.join(', ')}].`;
 
   let sectionStructureRequirements = `
           CRITICAL STRUCTURE REQUIREMENTS (STANDARD MODE):

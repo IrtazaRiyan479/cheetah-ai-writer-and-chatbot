@@ -47,10 +47,11 @@ function formatAmazonProducts(apiData, settings) {
 
   return rawData.map(item => {
     const ASIN = item.asin || '';
-    const affiliateUrl = item.detailPageURL || `https://${settings.domain || 'www.amazon.com'}/dp/${ASIN}?tag=${settings.partnerTag || 'babiescarrier-20'}&linkCode=osi&th=1&psc=1`;
+    let affiliateUrl =  new URL(item.detailPageURL || `https://${settings.domain || 'www.amazon.com'}/dp/${ASIN}?tag='babiescarrier-20'}&linkCode=osi&th=1&psc=1`);
+    affiliateUrl.searchParams.set('tag', settings.amazonTrackingId);
     return {
       productName: item.itemInfo?.title?.displayValue || 'Amazon Product',
-      amazonUrl: affiliateUrl,
+      amazonUrl: affiliateUrl.toString(),
       imageUrl: item.images?.primary?.large?.url || '',
       price: item.offersV2?.listings?.[0]?.price?.displayAmount || 'Check Amazon'
     };
@@ -81,7 +82,7 @@ export async function generateAmazonReviewOutline(body, genAI) {
   const baseSystemInstruction = getBaseSystemInstruction(langName, countryName);
 
   const asin = extractASIN(amazonProductUrl);
-  const searchStr = asin || targetKeyword || 'amazon product'; // Fallback safely
+  const searchStr = asin || targetKeyword || 'amazon product';
 
   const apiData = await fetchInternalAmazonData(searchStr, settings);
   const formattedProducts = formatAmazonProducts(apiData, settings);
@@ -138,6 +139,12 @@ export async function generateAmazonReviewOutline(body, genAI) {
 
     Rules for "sectionType": MUST be one of: "intro", "features", "pros_cons", "conclusion"${includeFaq ? ', or "faq"' : ''}.
 
+    CRITICAL WORD COUNT & DEPTH RULES:
+  - Total Target Word Count: 3500+ words.
+  - You MUST generate at least 20 H2/H3 sections.
+  - Each section MUST be dense with information, analysis, and data.
+  - Include specific sections for: "In-depth Technical Specifications", "Real-world Performance Testing", "Comparative Analysis vs Competitors", and "Long-term Durability Report".
+
     LAYOUT ORDER:
     1. The first item MUST be an "intro" (type: h2).
     2. Next, create 2 or 3 feature-focused headings (type: h2).
@@ -152,12 +159,14 @@ export async function generateAmazonReviewOutline(body, genAI) {
     parsedData.outline[0].productData = product;
   }
 
+  console.log(parsedData.metaTitle, parsedData.metaDescription)
   return {
     success: true,
     title: parsedData.title,
     outline: parsedData.outline,
     metaTitle: parsedData.metaTitle,
-    metaDescription: parsedData.metaDescription
+    metaDescription: parsedData.metaDescription,
+    heroImage: product?.imageUrl || ''
   };
 }
 
@@ -242,15 +251,18 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
   let sectionStructureRequirements = `
     CRITICAL STRUCTURE REQUIREMENTS (AMAZON SINGLE PRODUCT REVIEW):
     1. You are writing content strictly for the heading: "${heading}".
-    2. Write an engaging paragraph directly under the main heading before diving into any subheadings. Do not leave the space under the H2 blank.
+    2. DEPTH: Write minimum 500-800 words for this section. Expand on every point. Use extensive, detailed explanations. Do not provide brief answers.
+    3. Use descriptive H3 subheadings (###) to break up the dense content.
+    4. Write an engaging paragraph directly under the main heading before diving into any subheadings. Do not leave the space under the H2 blank.
+    5. Ensure the total article length (across all sections) will reach 3500+ words.
     ${condensedMode ? '3. Keep paragraphs extremely short (2-3 sentences max). Get straight to the point. No fluff.' : ''}
     ${subheadings && subheadings.length > 0 ? `4. You MUST cover the following subheadings exactly as H3s (### [Title]):\n${subheadings.join('\n')}` : ''}
     ${enableFirstHandExperience ? '5. Write as if you are sharing your personal, hands-on experience. Detail specific things you noticed while "testing" or "using" it.' : '5. Write as an objective, highly knowledgeable product reviewer.'}
   `;
 
-  const activeSEOKeyword = targetKeyword || articleTitle || heading; // Fallback safely
+  const activeSEOKeyword = targetKeyword || articleTitle || heading;
   const lsiData = await fetchPeopleAlsoSearchFor(activeSEOKeyword);
-  const lsiString = lsiData.length > 0 ? lsiData.join(', ') : 'related SEO topics';
+  const lsiString = `Google Keywords: [${lsiData.google.join(', ')}]. Bing Keywords: [${lsiData.bing.join(', ')}].`;
 
   const keywordSEOInstructions = `
     CRITICAL SEO & FORMATTING REQUIREMENTS:
@@ -258,7 +270,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     - LSI / Related Keywords: [${lsiString}]
 
     1. KEYWORD PLACEMENT & BOLDING: You MUST use the exact Target Keyword multiple times naturally throughout this section to ensure strong topic relevance. If this section is the Introduction or Conclusion, this is absolutely MANDATORY. Format the target keyword in bold (**${activeSEOKeyword}**) every time it is used.
-    2. LSI INTEGRATION: You MUST naturally integrate 1 to 2 of the provided LSI keywords into the paragraphs or subheadings of this section. CRITICAL: Use each LSI keyword a MAXIMUM of 1 or 2 times to avoid keyword stuffing. Ensure the main Target Keyword is used more frequently than any single LSI keyword.
+    2. LSI INTEGRATION: You MUST naturally integrate 1 Google Keyword and 1 Bing Keyword from the provided lists into the paragraphs or subheadings of this section. CRITICAL: Use each LSI keyword a MAXIMUM of 1 or 2 times to avoid keyword stuffing. Ensure the main Target Keyword is used more frequently than any single LSI keyword.
     3. LSI BOLDING: Every time you use an LSI keyword, you MUST format it in bold (e.g., **LSI keyword**).
     4. LIST FORMATTING: If you use bullet points or ordered list items anywhere in this section, each individual list item MUST be 2 to 3 sentences long to provide detailed value. Do NOT write single-sentence or one-liner list items.
   `;
@@ -276,7 +288,6 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     ${amazonContext}
     ${sectionStructureRequirements}
     ${realTimeInstruction}
-    ${extLinkInstruction}
     ${linkInstruction}
     ${seoInstruction}
     ${toneInstruction}
@@ -298,13 +309,9 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
       TASK: Write a highly engaging introduction.
 
       STRICT LAYOUT REQUIREMENT (Image & CTA):
-      Immediately following your introductory text, you MUST insert this EXACT HTML block to display the product image and link:
-
-      <div align="center">
-        <img src="${product?.imageUrl || ''}" alt="${product?.productName || ''}" style="max-width:100%; border-radius:8px; margin: 20px 0;"/>
-      </div>
+      Immediately following your introductory text, you MUST insert this EXACT HTML block to display link:
       <div align="center" style="margin: 25px 0;">
-       <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="display: inline-block; background-color: #f90; color: #fff; padding: 12px 24px; border: none; font-weight: bold; border-radius: 5px; font-size: 18px; cursor: pointer; text-decoration: none;">Check Price on Amazon</a>
+       <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" class="no-underline bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-block">Check Price on Amazon</a>
       </div>
     `;
   }
@@ -321,7 +328,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
       At the very end of your conclusion, insert this EXACT HTML block:
 
       <div align="center" style="margin: 25px 0;">
-       <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="display: inline-block; background-color: #f90; color: #fff; padding: 12px 24px; border: none; font-weight: bold; border-radius: 5px; font-size: 18px; cursor: pointer; text-decoration: none;">Check Price on Amazon</a>
+       <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" class="no-underline bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-block">Check Price on Amazon</a>
       </div>
     `;
   }

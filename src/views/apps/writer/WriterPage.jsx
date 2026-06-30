@@ -97,12 +97,13 @@ const handleCreateArticle = async () => {
       const data = await res.json()
 
       if (data.success) {
-        // Save the AI's JSON outline to your global page.jsx state
         updateSetting('generatedTitle', data.title)
         if (data.externalLinks) updateSetting('fetchedExternalLinks', data.externalLinks)
         if (data.heroImage) {
           updateSetting('heroImage', data.heroImage)
         }
+        if (data.metaTitle) updateSetting('metaTitle', data.metaTitle)
+        if (data.metaDescription) updateSetting('metaDescription', data.metaDescription)
         setOutline(data.outline)
 
         if (settings.useOutlineEditor) {
