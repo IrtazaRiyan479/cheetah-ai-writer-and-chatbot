@@ -410,7 +410,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 const handleSaveDraftToDB = async () => {
   setIsPublishing(true);
   try {
-    // 1. Client-side verification ensuring the user is logged in
     const sessionRes = await fetch('/api/auth/session');
     const session = await sessionRes.json();
 
@@ -447,7 +446,6 @@ const handleSaveDraftToDB = async () => {
 };
 
 useEffect(() => {
-  // Fetch custom sites from DB when component loads
   const fetchCustomSites = async () => {
     try {
       const res = await fetch('/api/custom-wp-sites')
@@ -507,6 +505,7 @@ useEffect(() => {
       if (settings.heroImage) {
         trackedImages.push(settings.heroImage);
       }
+      let trackedExternalLinks = [];
 
       outline.forEach((item, index) => {
         if (item.type === 'h2') {
@@ -566,6 +565,7 @@ useEffect(() => {
               useRealTimeSearchData: settings.useRealTimeSearchData,
               realTimeDataSource: settings.realTimeDataSource,
               externalLinks: settings.fetchedExternalLinks,
+              usedExternalLinks: trackedExternalLinks,
               deepSearch: settings.deepSearch,
               articleTitle: settings.generatedTitle,
               improveReadability: settings.improveReadability,
@@ -634,6 +634,16 @@ useEffect(() => {
               await new Promise(resolve => setTimeout(resolve, 1000));
               setPollingStatus('');
               setDeepSearchProgress(0);
+            }
+
+            if (settings.fetchedExternalLinks && settings.fetchedExternalLinks.length > 0) {
+              const newlyUsedLinks = settings.fetchedExternalLinks.filter(link =>
+                finalSectionText.includes(link) && !trackedExternalLinks.includes(link)
+              );
+
+              if (newlyUsedLinks.length > 0) {
+                trackedExternalLinks.push(...newlyUsedLinks);
+              }
             }
 
             // 🟢 1. THE DEFINITIVE MARKDOWN PARSER

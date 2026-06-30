@@ -98,14 +98,14 @@ export async function generateYoutubeBlogOutline(body, genAI) {
 
     if (fallbackToAiImageTag) {
       const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : '';
-      const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
-      if (fallbackImage && fallbackImage.url) {
-        heroImageUrl = fallbackImage.url;
-        console.log(`[Hero Image] AI Fallback successful: ${heroImageUrl}`);
-      } else {
-        heroImageUrl = safetyBackup;
-        console.log(`[Hero Image] AI Fallback failed to generate a URL.`);
-      }
+      try { const fallbackImage =  await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
+    if (fallbackImage && fallbackImage.url) {
+      heroImageUrl = fallbackImage.url;
+      console.log(`[Hero Image] AI Fallback successful: ${heroImageUrl}`);
+    } } catch(error) {
+      heroImageUrl = safetyBackup;
+      console.log(`[Hero Image] AI Fallback failed to generate a URL.`);
+    }
 
       console.log(`[Hero Image] AI Generation Result: ${heroImageUrl ? 'Success' : 'Failed - Using Safety Backup'}`);
     }

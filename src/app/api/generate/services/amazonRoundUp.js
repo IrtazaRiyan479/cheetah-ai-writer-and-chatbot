@@ -136,14 +136,14 @@ export async function generateAmazonRoundupOutline(body, genAI) {
 
   if (fallbackToAiImageTag) {
     const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : '';
-    const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
-    if (fallbackImage && fallbackImage.url) {
-      heroImageUrl = fallbackImage.url;
-      console.log(`[Hero Image] AI Fallback successful: ${heroImageUrl}`);
-    } else {
-      heroImageUrl = safetyBackup;
-      console.log(`[Hero Image] AI Fallback failed to generate a URL.`);
-    }
+    try { const fallbackImage =  await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
+        if (fallbackImage && fallbackImage.url) {
+          heroImageUrl = fallbackImage.url;
+          console.log(`[Hero Image] AI Fallback successful: ${heroImageUrl}`);
+        } } catch(error) {
+          heroImageUrl = safetyBackup;
+          console.log(`[Hero Image] AI Fallback failed to generate a URL.`);
+        }
 
     console.log(`[Hero Image] AI Generation Result: ${heroImageUrl ? 'Success' : 'Failed - Using Safety Backup'}`);
   }
@@ -169,6 +169,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
     improveReadability,
     pointOfView,
     toneOfVoice,
+    usedExternalLinks = [],
   } = settings;
 
   const amazonApiData = await fetchInternalAmazonData(targetKeyword || articleTitle, settings);
@@ -195,10 +196,10 @@ export async function generateAmazonRoundupSection(body, genAI) {
 
   let linkInstruction = '';
   // let extLinkInstruction = '';
-  // if (activeSectionType === 'intro' || activeSectionType === 'buying_guide') {
-  //   linkInstruction = getLinkInstruction(internalLinks);
-  //   extLinkInstruction = getExternalLinkInstruction(externalLinks);
-  // }
+  if (activeSectionType === 'intro' || activeSectionType === 'buying_guide') {
+    linkInstruction = getLinkInstruction(internalLinks);
+    // let extLinkInstruction = getExternalLinkInstruction(externalLinks, usedExternalLinks);
+  }
 
   const experienceInstruction = enableFirstHandExperience
     ? "CRITICAL: Write this review using strong first-hand experience. Use phrases like 'When I tested this...', 'In my hands-on experience...', and 'What I noticed right away...'. Speak as an expert who has physically unboxed and used the item."

@@ -125,11 +125,11 @@ export async function generateRewriteOutline(body, genAI) {
 
   if (fallbackToAiImageTag) {
     const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : '';
-    const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
+    try { const fallbackImage =  await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
     if (fallbackImage && fallbackImage.url) {
       heroImageUrl = fallbackImage.url;
       console.log(`[Hero Image] AI Fallback successful: ${heroImageUrl}`);
-    } else {
+    } } catch(error) {
       heroImageUrl = safetyBackup;
       console.log(`[Hero Image] AI Fallback failed to generate a URL.`);
     }
@@ -179,7 +179,7 @@ export async function generateRewriteSection(body, genAI) {
   });
 
   let realTimeInstruction = await getRealTimeInstruction(useRealTimeSearchData, realTimeDataSource, articleTitle, targetKeyword, heading);
-    let extLinkInstruction = getExternalLinkInstruction(externalLinks);
+    let extLinkInstruction = getExternalLinkInstruction(externalLinks, usedExternalLinks);
     let linkInstruction = getLinkInstruction(internalLinks);
     let seoInstruction = await getSeoInstruction(seoOptimization, manualKeywords, targetKeyword);
     let { mediaInstruction, assignedMediaElement, mediaUrl } = await getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI, usedImageUrls);

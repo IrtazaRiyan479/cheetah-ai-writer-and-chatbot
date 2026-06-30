@@ -119,11 +119,11 @@ export async function generateLocalRoundupOutline(body, genAI) {
 
   if (fallbackToAiImageTag) {
     const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : '';
-    const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
+    try { const fallbackImage =  await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
     if (fallbackImage && fallbackImage.url) {
       heroImageUrl = fallbackImage.url;
       console.log(`[Hero Image] AI Fallback successful: ${heroImageUrl}`);
-    } else {
+    } } catch(error) {
       heroImageUrl = safetyBackup;
       console.log(`[Hero Image] AI Fallback failed to generate a URL.`);
     }
@@ -157,7 +157,7 @@ export async function generateLocalRoundupSection(body, genAI) {
   const baseSystemInstruction = getBaseSystemInstruction(langName, countryName);
 
           const modelConfig = {
-          model: deepSearch ? 'deep-research-preview-04-2026' : (model || 'gemini-2.5-pro'),
+          model: deepSearch ? 'deep-research-preview-04-2026' : (model || 'gemini-3.5-flash'),
           systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: You are an expert copywriter. Write highly engaging, SEO-optimized content.`
         }
 
@@ -171,7 +171,7 @@ export async function generateLocalRoundupSection(body, genAI) {
     const sectionModel = genAI.getGenerativeModel(modelConfig);
 
     let realTimeInstruction = await getRealTimeInstruction(useRealTimeSearchData, realTimeDataSource, articleTitle, targetKeyword, heading);
-    let extLinkInstruction = getExternalLinkInstruction(externalLinks);
+    let extLinkInstruction = getExternalLinkInstruction(externalLinks, usedExternalLinks);
     let linkInstruction = getLinkInstruction(internalLinks);
     let seoInstruction = await getSeoInstruction(seoOptimization, manualKeywords, targetKeyword);
     let { mediaInstruction, assignedMediaElement, mediaUrl } = await getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI, usedImageUrls);

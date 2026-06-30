@@ -374,30 +374,35 @@ export async function fetchSerperOutlineData(query) {
   if (!process.env.SERPER_API_KEY) return { organic: [], faqs: [], related: [], authorityLinks: [] };
 
   try {
-    const [standardRes, infoRes] = await Promise.all([
-      fetch(`https://google.serper.dev/search`, {
-        method: 'POST',
-        headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ q: query })
-      }),
-      fetch(`https://google.serper.dev/search`, {
-        method: 'POST',
-        headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          q: `${query} (site:.gov OR site:.org OR site:.edu)`,
-          num: 15
-        })
-      })
-    ]);
+    const res = await fetch(`https://google.serper.dev/search`, {
+      method: 'POST',
+      headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: query })
+    });
 
-    const data = await standardRes.json();
-    const infoData = await infoRes.json();
+    const data = await res.json();
+
+    if (data.statusCode === 400 || data.statusCode === 403) {
+      console.error('Serper API Error:', data.message);
+      return { organic: [], faqs: [], related: [], authorityLinks: [] };
+    }
+
+    const allLinks = data.organic ? data.organic.map(item => item.link) : [];
+
+    let authorityLinks = allLinks.filter(link =>
+      link.includes('.gov') || link.includes('.org') || link.includes('.edu')
+    );
+
+    // if (authorityLinks.length === 0 && allLinks.length > 0) {
+    //   console.log(`[ExtLinks] No .gov/.org/.edu links found for "${query}". Falling back to standard organic results.`);
+    //   authorityLinks = allLinks;
+    // }
 
     return {
       organic: data.organic ? data.organic.slice(0, 4) : [],
       faqs: data.peopleAlsoAsk ? data.peopleAlsoAsk.map(item => item.question) : [],
       related: data.relatedSearches ? data.relatedSearches.map(item => item.query) : [],
-      authorityLinks: infoData.organic ? infoData.organic.map(item => item.link) : []
+      authorityLinks: authorityLinks
     };
   } catch (e) {
     console.error('Serper Outline Error:', e);

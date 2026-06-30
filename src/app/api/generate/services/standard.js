@@ -35,6 +35,7 @@ export async function generateStandardBlogOutline(body, genAI) {
   let relatedInstruction = '';
   let takeawaysInstruction = '';
 
+
   if (automaticExternalLinks || includeFaq) {
     const outlineData = await fetchSerperOutlineData(targetKeyword);
 
@@ -49,6 +50,8 @@ export async function generateStandardBlogOutline(body, genAI) {
           faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled "Frequently Asked Questions" and nest 3-5 highly relevant questions as H3 subheadings.`;
         }
     }
+
+    console.log("extLinks in Outline:", fetchedExternalLinks)
 
     if (outlineData.related.length > 0) {
         relatedInstruction = `\nSEO OPTIMIZATION: Naturally incorporate topics from these related Google searches into your H2 and H3 headings where relevant: ${outlineData.related.slice(0, 5).join(', ')}.`;
@@ -176,7 +179,7 @@ export async function generateStandardBlogSection(body, genAI) {
     getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI, usedImageUrls),
     fetchPeopleAlsoSearchFor(targetKeyword)
   ]);
-  let extLinkInstruction = getExternalLinkInstruction(externalLinks);
+  let extLinkInstruction = getExternalLinkInstruction(externalLinks, usedExternalLinks);
   let linkInstruction = getLinkInstruction(internalLinks);
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
   let povInstruction = getPovInstruction(pointOfView);

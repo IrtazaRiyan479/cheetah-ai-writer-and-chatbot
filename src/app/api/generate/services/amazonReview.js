@@ -184,6 +184,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     amazonProductData,
     externalLinks,
     internalLinks,
+    usedExternalLinks = [],
   } = sectionData;
 
   const {
@@ -203,7 +204,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
   });
 
   let realTimeInstruction = await getRealTimeInstruction(settings.realTimeDataSource, articleTitle, heading, targetKeyword);
-  // let extLinkInstruction = getExternalLinkInstruction(externalLinks);
+  // let extLinkInstruction = getExternalLinkInstruction(externalLinks, usedExternalLinks);
   let linkInstruction = getLinkInstruction(internalLinks);
   let seoInstruction = await getSeoInstruction(targetKeyword);
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
