@@ -9,7 +9,7 @@ import {
   getPovInstruction,
   getToneInstruction,
   getBaseSystemInstruction
-} from '../utils/helpers'
+ ,fetchPeopleAlsoSearchFor } from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 
@@ -96,11 +96,10 @@ export async function generateAmazonReviewOutline(body, genAI) {
   const outlineModel = genAI.getGenerativeModel({
     model: model || 'gemini-3.1-flash-lite',
     generationConfig: { responseMimeType: "application/json" },
-    // Using your exact working schema string from standard.js to ensure stability
-    systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline. You MUST return a JSON object with two keys: "title" (A catchy, click-worthy, viral H1 Title based on the keyword) and "outline" (A flat JSON array of objects). Schema: { "title": "Catchy Title Here", "outline": [{ "type": "h2", "text": "Introduction" }, { "type": "h3", "text": "Subheading" }] }`
+    systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline. You MUST return a JSON object with four keys: "metaTitle" (SEO title, max 60 chars), "metaDescription" (SEO desc, max 160 chars), "title" (A catchy, click-worthy, viral H1 Title based on the keyword) and "outline" (A flat JSON array of objects). Schema: { "metaTitle": "...", "metaDescription": "...", "title": "Catchy Title Here", "outline": [{ "type": "h2", "text": "Introduction" }, { "type": "h3", "text": "Subheading" }] }\n\nCRITICAL OUTLINE RULES:\n- The "title" MUST contain the exact target keyword: "${activeKeyword}".\n- The VERY FIRST "h2" object in the outline array MUST contain the exact target keyword: "${activeKeyword}" in its "text" field.\n- The VERY LAST "h2" object in the outline array MUST be a concluding heading and MUST also contain the exact target keyword: "${activeKeyword}" in its "text" field.`
+
   });
 
-  // Dynamic Structure Rules based on the user's settings
   let outlineStructure = ``;
 
   if (condensedMode) {
@@ -156,7 +155,9 @@ export async function generateAmazonReviewOutline(body, genAI) {
   return {
     success: true,
     title: parsedData.title,
-    outline: parsedData.outline
+    outline: parsedData.outline,
+    metaTitle: parsedData.metaTitle,
+    metaDescription: parsedData.metaDescription
   };
 }
 
@@ -164,7 +165,6 @@ export async function generateAmazonReviewOutline(body, genAI) {
 // 2. GENERATE THE SECTION CONTENT
 // ============================================================================
 export async function generateAmazonReviewSection(sectionData, genAI) {
-  // We extract everything directly from sectionData (no need for the 'body' parameter)
   const {
     heading,
     section,
@@ -189,12 +189,10 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     improveReadability,
   } = settings;
 
-  // Now genAI is properly defined and this will not crash!
   const sectionModel = genAI.getGenerativeModel({
     model: model || 'gemini-3.1-flash-lite',
   });
 
-  // Fetch Instructions from Helpers
   let realTimeInstruction = await getRealTimeInstruction(settings.realTimeDataSource, articleTitle, heading, targetKeyword);
   let extLinkInstruction = getExternalLinkInstruction(externalLinks);
   let linkInstruction = getLinkInstruction(internalLinks);
@@ -204,7 +202,6 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
   const introSection = outlineContext.find(s => s.productData);
   const product = introSection ? introSection.productData : null;
 
-  // 2. Failsafe to find the correct active section type
   const activeHeadingText = heading || section?.text || 'Section';
   let activeSectionType = section?.sectionType || section?.type;
 
@@ -251,6 +248,21 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     ${enableFirstHandExperience ? '5. Write as if you are sharing your personal, hands-on experience. Detail specific things you noticed while "testing" or "using" it.' : '5. Write as an objective, highly knowledgeable product reviewer.'}
   `;
 
+  const activeSEOKeyword = targetKeyword || articleTitle || heading; // Fallback safely
+  const lsiData = await fetchPeopleAlsoSearchFor(activeSEOKeyword);
+  const lsiString = lsiData.length > 0 ? lsiData.join(', ') : 'related SEO topics';
+
+  const keywordSEOInstructions = `
+    CRITICAL SEO & FORMATTING REQUIREMENTS:
+    - Target Keyword: "${activeSEOKeyword}"
+    - LSI / Related Keywords: [${lsiString}]
+
+    1. KEYWORD PLACEMENT & BOLDING: You MUST use the exact Target Keyword multiple times naturally throughout this section to ensure strong topic relevance. If this section is the Introduction or Conclusion, this is absolutely MANDATORY. Format the target keyword in bold (**${activeSEOKeyword}**) every time it is used.
+    2. LSI INTEGRATION: You MUST naturally integrate 1 to 2 of the provided LSI keywords into the paragraphs or subheadings of this section. CRITICAL: Use each LSI keyword a MAXIMUM of 1 or 2 times to avoid keyword stuffing. Ensure the main Target Keyword is used more frequently than any single LSI keyword.
+    3. LSI BOLDING: Every time you use an LSI keyword, you MUST format it in bold (e.g., **LSI keyword**).
+    4. LIST FORMATTING: If you use bullet points or ordered list items anywhere in this section, each individual list item MUST be 2 to 3 sentences long to provide detailed value. Do NOT write single-sentence or one-liner list items.
+  `;
+
   let sectionPrompt = `
     Article Topic: Single Product Review for "${activeKeyword}"
     Current Heading: "${activeHeadingText}"
@@ -258,6 +270,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
 
     TASK: Write a comprehensive section focusing ONLY on the main heading: "${heading}".
 
+    ${keywordSEOInstructions}
     ${condensedInstruction}
     ${experienceInstruction}
     ${amazonContext}
@@ -291,7 +304,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
         <img src="${product?.imageUrl || ''}" alt="${product?.productName || ''}" style="max-width:100%; border-radius:8px; margin: 20px 0;"/>
       </div>
       <div align="center" style="margin: 25px 0;">
-        <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="background-color: #f90; color: #fff; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 5px; font-size: 18px;">Check Price on Amazon</a>
+       <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="display: inline-block; background-color: #f90; color: #fff; padding: 12px 24px; border: none; font-weight: bold; border-radius: 5px; font-size: 18px; cursor: pointer; text-decoration: none;">Check Price on Amazon</a>
       </div>
     `;
   }
@@ -308,7 +321,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
       At the very end of your conclusion, insert this EXACT HTML block:
 
       <div align="center" style="margin: 25px 0;">
-        <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="background-color: #f90; color: #fff; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 5px; font-size: 18px;">Check Price on Amazon</a>
+       <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="display: inline-block; background-color: #f90; color: #fff; padding: 12px 24px; border: none; font-weight: bold; border-radius: 5px; font-size: 18px; cursor: pointer; text-decoration: none;">Check Price on Amazon</a>
       </div>
     `;
   }

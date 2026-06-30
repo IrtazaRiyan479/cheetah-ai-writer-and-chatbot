@@ -198,6 +198,52 @@ export async function fetchLiveKeywords(keyword) {
   return Array.from(keywords).slice(0, 15)
 }
 
+export async function fetchBingTitles(query) {
+  const titles = new Set();
+
+  try {
+    if (process.env.SERP_API_KEY) {
+      const serpUrl = new URL('https://serpapi.com/search.json');
+      serpUrl.searchParams.append('engine', 'bing');
+      serpUrl.searchParams.append('q', query);
+      serpUrl.searchParams.append('cc', 'US');
+      serpUrl.searchParams.append('api_key', process.env.SERP_API_KEY);
+
+      const serpRes = await fetch(serpUrl);
+      if (serpRes.ok) {
+        const serpData = await serpRes.json();
+        if (serpData.organic_results) {
+          serpData.organic_results.forEach(item => titles.add(item.title));
+          return Array.from(titles); // Return early if successful
+        }
+      }
+    }
+  } catch (e) { console.error('SerpAPI Bing Error:', e); }
+
+  try {
+    if (process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD) {
+      const credentials = Buffer.from(`${process.env.DATAFORSEO_LOGIN}:${process.env.DATAFORSEO_PASSWORD}`).toString('base64');
+      const postData = [{ "keyword": query, "language_code": "en", "location_code": 2840 }];
+
+      const dfsRes = await fetch("https://api.dataforseo.com/v3/serp/bing/organic/live/advanced", {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${credentials}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(postData)
+      });
+
+      if (dfsRes.ok) {
+        const dfsData = await dfsRes.json();
+        const results = dfsData.tasks?.[0]?.result?.[0]?.items || [];
+        results.forEach(item => titles.add(item.title));
+      }
+    }
+  } catch (e) { console.error('DataForSEO Error:', e); }
+
+  return Array.from(titles);
+}
 
 export async function fetchYouTubeVideo(query) {
   if (!process.env.YOUTUBE_API_KEY) return null;
@@ -263,7 +309,13 @@ async function getSmartVideoQuery(topic, heading, genAI) {
 }
 
 export async function fetchPeopleAlsoSearchFor(query) {
-  if (!process.env.SERPER_API_KEY) return [];
+  const lsiKeywords = new Set();
+
+  const bingTitles = await fetchBingTitles(query);
+  bingTitles.forEach(title => lsiKeywords.add(title));
+
+  if (!process.env.SERPER_API_KEY) return Array.from(lsiKeywords).slice(0, 15);
+
   try {
     const res = await fetch(`https://google.serper.dev/search`, {
       method: 'POST',
@@ -275,22 +327,19 @@ export async function fetchPeopleAlsoSearchFor(query) {
     });
 
     const data = await res.json();
-    const lsiKeywords = new Set();
 
-    // Extract "People Also Ask" (Questions)
     if (data.peopleAlsoAsk && Array.isArray(data.peopleAlsoAsk)) {
       data.peopleAlsoAsk.forEach(item => lsiKeywords.add(item.question));
     }
 
-    // Extract "Related Searches" (Search queries)
     if (data.relatedSearches && Array.isArray(data.relatedSearches)) {
       data.relatedSearches.forEach(item => lsiKeywords.add(item.query));
     }
 
-    return Array.from(lsiKeywords).slice(0, 8);
+    return Array.from(lsiKeywords).slice(0, 15);
   } catch (e) {
     console.error('Serper LSI Fetch Error:', e);
-    return [];
+    return Array.from(lsiKeywords).slice(0, 15);
   }
 }
 
@@ -543,7 +592,9 @@ export async function getRealTimeInstruction(useRealTimeSearchData, realTimeData
 export function getExternalLinkInstruction(externalLinks) {
         let extLinkInstruction = '';
       if (externalLinks && externalLinks.length > 0) {
-        extLinkInstruction = `\nCRITICAL EXTERNAL LINKING: Naturally weave 3 or 4 of these high-authority external URLs into the text using properly formatted Markdown links (e.g., [anchor text](URL)). URLs to use: ${externalLinks.join(', ')}. Do not force them if they don't fit perfectly.`;
+        extLinkInstruction = `\nCRITICAL EXTERNAL LINKING: Naturally weave exactly 2 to 3 high-authority external URLs into the text. \nRULES:\n1. You MUST ONLY link to informative sources, Government sites (.gov), NGOs (.org), or research papers (e.g., Google Scholar).\n2. Do NOT link to advertising, entertainment, or competitor sites.\n3. URLs you can use: ${externalLinks.join(', ')}. Do not force them if they don't fit perfectly.`;
+      } else {
+        extLinkInstruction = `\nCRITICAL EXTERNAL LINKING: Naturally weave exactly 2 to 3 high-authority external URLs into the text using Markdown formatting. \nRULES:\n1. You MUST ONLY link to informative sources, Government sites (.gov), NGOs (.org), or research papers (e.g., Google Scholar).\n2. Do NOT link to advertising, entertainment, or competitor sites.`;
       }
       return extLinkInstruction;
     }

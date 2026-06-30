@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
-    const { keyword, domain, trackingID } = await request.json();
+    const { keyword, domain } = await request.json();
 
     const tokenRes = await fetch('https://api.amazon.com/auth/o2/token', {
       method: 'POST',
@@ -30,9 +30,6 @@ export async function POST(request) {
 
     const accessToken = tokenData.access_token;
 
-    // ---------------------------------------------------------
-    // 2. Fetch Products using the Access Token
-    // ---------------------------------------------------------
     const searchRes = await fetch('https://creatorsapi.amazon/catalog/v1/searchItems', {
       method: 'POST',
       headers: {

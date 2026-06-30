@@ -67,7 +67,6 @@ const BorderLinearProgress = styled(LinearProgress)(({ theme }) => ({
   }
 }))
 
-// --- TIPTAP TOOLBAR COMPONENT ---
 const EditorToolbar = ({ editor }) => {
   if (!editor) {
     return null
@@ -317,7 +316,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
   }
 };
 
-  const handlePublishToWP = async (status = 'draft') => {
+  const handlePublishToWP = async (status = 'draft', metaTitle, metaDescription) => {
   setIsPublishing(true)
   setPublishSuccessData(null)
   try {
@@ -339,7 +338,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       }
     }
 
-    // 2. If they selected a previously saved custom site from the DB
     if (isDbSaved) {
       const dbId = siteSelectionType.replace('db_', '')
       const targetDbSite = userSavedSites.find(s => s.id === dbId)
@@ -383,7 +381,9 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       siteType: (isCustom || isDbSaved) ? 'custom' : 'predefined',
       siteId: (!isCustom && !isDbSaved) ? activeSiteId : null,
       customSite: (isCustom || isDbSaved) ? activeCustomData : null,
-      featuredImageUrl: finalHeroImage
+      featuredImageUrl: finalHeroImage,
+      metaTitle: metaTitle,
+      metaDescription: metaDescription
     }
 
     const res = await fetch('/api/publish', {
@@ -419,7 +419,6 @@ const handleSaveDraftToDB = async () => {
       return;
     }
 
-    // 2. Save the article to the database
     const res = await fetch('/api/drafts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1132,7 +1131,7 @@ useEffect(() => {
           <Button
             variant="contained"
             color="success"
-            onClick={() => handlePublishToWP('publish')}
+            onClick={() => handlePublishToWP('publish', settings.metaTitle, settings.metaDescription)}
             disabled={isPublishing || !publishTitle.trim()}
           >
             {isPublishing ? <CircularProgress size={24} /> : 'Publish Live'}

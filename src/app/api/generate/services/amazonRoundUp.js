@@ -7,16 +7,12 @@ import {
   getToneInstruction,
   getBaseSystemInstruction,
   fetchUnsplashImage, fetchPexelsImage, fetchPixabayImage, calculateRelevanceScore
-} from '../utils/helpers';
+ ,fetchPeopleAlsoSearchFor,
+ generateFallbackImage} from '../utils/helpers';
 import { languages } from '@/configs/languages';
 import { countries } from '@/configs/countries';
 
-/**
- * 1. Internal Fetcher: The backend automatically fetches the Amazon data itself.
- * This completely removes the need for the frontend to handle Amazon API logic.
- */
 async function fetchInternalAmazonData(keyword, settings) {
-  // Ensure this points to your real domain in production via .env
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
 
   const response = await fetch(`${baseUrl}/api/amazon`, {
@@ -25,9 +21,11 @@ async function fetchInternalAmazonData(keyword, settings) {
     body: JSON.stringify({
       keyword: keyword,
       domain: settings.domain || 'www.amazon.com',
-      partnerTag: settings.partnerTag || 'babiescarrier-20'
+      partnerTag: process.env.AMAZON_PARTNER_TAG
     })
   });
+
+
 
   if (!response.ok) {
     throw new Error(`Failed to fetch from internal /api/amazon route. Status: ${response.status}`);
@@ -35,9 +33,6 @@ async function fetchInternalAmazonData(keyword, settings) {
   return await response.json();
 }
 
-/**
- * 2. Formatter: Cleans the raw Amazon data
- */
 function formatAmazonProducts(apiData, settings) {
   const rawData = apiData?.data?.searchResult?.items || [];
   const numberOfProducts = settings.numberOfProducts || 5;
@@ -45,27 +40,25 @@ function formatAmazonProducts(apiData, settings) {
 
   return limitedProducts.map(item => {
     const title = item?.itemInfo?.title?.displayValue || 'Amazon Product';
-    const affiliateUrl = item?.detailPageURL || `https://www.amazon.com/dp/${item.asin}?tag=${settings.partnerTag}`;
-    const imageUrl = item?.images?.primary?.large?.url || '';
+    let affiliateUrl = new URL(item?.detailPageURL || `https://www.amazon.com/dp/${item.asin}?tag=${process.env.AMAZON_PARTNER_TAG}`);
+    affiliateUrl.searchParams.set('tag', settings.amazonTrackingId);
+    let imageUrl = item?.images?.primary?.large?.url || '';
+    imageUrl = imageUrl.replace(/\._[A-Za-z0-9_]+_\./, '.');
     const price = item?.offersV2?.listings?.[0]?.price?.money?.displayAmount || 'Check Price on Amazon';
 
     return {
       productName: title,
-      amazonUrl: affiliateUrl,
+      amazonUrl: affiliateUrl.toString(),
       imageUrl: imageUrl,
       price: price
     };
   });
 }
 
-/**
- * GENERATOR 1: Outline Generator
- */
 export async function generateAmazonRoundupOutline(body, genAI) {
   const { settings, targetKeyword } = body;
   const { model, language, country, includeFaq } = settings;
 
-  // Automatically fetch data from your existing Amazon API route
   const amazonApiData = await fetchInternalAmazonData(targetKeyword, settings);
   const formattedProducts = formatAmazonProducts(amazonApiData, settings);
 
@@ -86,26 +79,10 @@ export async function generateAmazonRoundupOutline(body, genAI) {
   const outlineModel = genAI.getGenerativeModel({
     model: model || 'gemini-3.1-flash-lite',
     generationConfig: { responseMimeType: 'application/json' },
-    systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging Amazon Roundup article outline for the keyword: "${targetKeyword}". You MUST return a JSON object with two keys: "title" (A catchy H1 Title) and "outline" (A flat JSON array of objects).
-
-For standard sections (intro, buying_guide, faq), use this schema:
-{ "type": "h2", "text": "Section Title", "sectionType": "intro" }
-
-For "product" sections, you MUST include the rich product data provided to you using this schema:
-{
-  "type": "h2",
-  "text": "[Product Name]",
-  "sectionType": "product",
-  "productData": {
-    "productName": "Exact Amazon Title",
-    "amazonUrl": "https://amazon.com/dp/...",
-    "imageUrl": "https://m.media-amazon.com/images/...",
-    "price": "$19.99"
-  }
-}`
+   systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging Amazon Roundup article outline for the keyword: "${targetKeyword}". You MUST return a JSON object with four keys: "metaTitle" (SEO title, max 60 chars), "metaDescription" (SEO desc, max 160 chars), "title" (A catchy H1 Title) and "outline" (A flat JSON array of objects).\n\nFor standard sections (intro, buying_guide, faq), use this schema:\n{ "type": "h2", "text": "Section Title", "sectionType": "intro" }\n\nFor "product" sections, you MUST include the rich product data provided to you using this schema:\n{\n  "type": "h2",\n  "text": "[Product Name]",\n  "sectionType": "product",\n  "productData": {\n    "productName": "Exact Amazon Title",\n    "amazonUrl": "https://amazon.com/dp/...",\n    "imageUrl": "https://m.media-amazon.com/images/...",\n    "price": "$19.99"\n  }\n}\n\nCRITICAL OUTLINE RULES:\n- The "title" MUST contain the exact target keyword: "${targetKeyword}".\n- The VERY FIRST "h2" object (intro) MUST contain the exact target keyword: "${targetKeyword}" in its "text" field.\n- The VERY LAST "h2" object (conclusion or faq) MUST contain the exact target keyword: "${targetKeyword}" in its "text" field.`
   });
 
-  // Strict schema required by OutlineEditor.jsx (type: "h2", text: "heading")
+
   const outlinePrompt = `
     CRITICAL STRUCTURE & SCHEMA REQUIREMENTS:
     You must format the outline array exactly like this to support the frontend editor:
@@ -117,7 +94,7 @@ For "product" sections, you MUST include the rich product data provided to you u
 
     LAYOUT ORDER:
     1. The first item MUST be an "intro" (type: h2).
-    2. Next, you MUST create a "product" (type: h2) for EXACTLY these products using this precise data:
+    2. Next, you MUST create a "product" (type: h2) for EXACTLY these products using this precise data. You MUST explicitly number the product titles in the "text" field (e.g., "1. Product Name", "2. Product Name"):
     ${productListString}
     3. Include a "buying_guide" (type: h2) after the product reviews.
     4. Include a "conclusion" (type: h2).
@@ -135,6 +112,7 @@ For "product" sections, you MUST include the rich product data provided to you u
 
   let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
   let heroImageUrl = '';
+  let fallbackToAiImageTag = false;
 
   if (candidates.length > 0) {
     const scoredCandidates = candidates.map(c => ({
@@ -144,14 +122,29 @@ For "product" sections, you MUST include the rich product data provided to you u
 
     scoredCandidates.sort((a, b) => b.score - a.score);
 
-    heroImageUrl = scoredCandidates[0].url;
-    console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`);
+    if (scoredCandidates[0].score >= 2.0) {
+      heroImageUrl = scoredCandidates[0].url;
+      console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`);
+    } else {
+      console.log(`[Hero Image] Top image score (${scoredCandidates[0].score}) below 2.0. Invoking AI generation logic.`);
+      fallbackToAiImageTag = true;
+    }
+  } else {
+    fallbackToAiImageTag = true;
+  }
+
+  let introductionPrompt = `TASK: Generate a high-relevance opening introduction for the topic...`;
+
+  if (fallbackToAiImageTag) {
+     heroImageUrl = `\n${await generateFallbackImage(`${introductionPrompt}${targetKeyword}`)?.url}`;
   }
 
   return {
   success: true,
   title: parsedData.title,
   outline: parsedData.outline,
+  metaTitle: parsedData.metaTitle,
+  metaDescription: parsedData.metaDescription,
   externalLinks: parsedData.externalLinks || [],
   heroImage: heroImageUrl
 };
@@ -171,11 +164,9 @@ export async function generateAmazonRoundupSection(body, genAI) {
     toneOfVoice,
   } = settings;
 
-  // Automatically fetch the data again so the section generator knows about the products statelessly
   const amazonApiData = await fetchInternalAmazonData(targetKeyword || articleTitle, settings);
   const formattedProducts = formatAmazonProducts(amazonApiData, settings);
 
-  // Accommodate OutlineEditor using 'text' instead of 'heading'
   const activeHeadingText = heading || text || section.text || section.heading || 'Section';
   let activeSectionType = section.sectionType || section.type;
   if (!activeSectionType && Array.isArray(outlineContext)) {
@@ -206,6 +197,23 @@ export async function generateAmazonRoundupSection(body, genAI) {
     ? "CRITICAL: Write this review using strong first-hand experience. Use phrases like 'When I tested this...', 'In my hands-on experience...', and 'What I noticed right away...'. Speak as an expert who has physically unboxed and used the item."
     : "Write this review from an objective, expert standpoint based on specifications, features, and market consensus.";
 
+  const activeSEOKeyword = targetKeyword || articleTitle || heading;
+  const lsiData = await fetchPeopleAlsoSearchFor(activeSEOKeyword);
+  const lsiString = lsiData.length > 0 ? lsiData.join(', ') : 'related SEO topics';
+
+  const keywordSEOInstructions = `
+    CRITICAL SEO & FORMATTING REQUIREMENTS:
+    - Target Keyword: "${activeSEOKeyword}"
+    - LSI / Related Keywords: [${lsiString}]
+
+    1. KEYWORD PLACEMENT & BOLDING: You MUST use the exact Target Keyword multiple times naturally throughout this section to ensure strong topic relevance. If this section is the Introduction or Conclusion, this is absolutely MANDATORY. Format the target keyword in bold (**${activeSEOKeyword}**) every time it is used.
+    2. LSI INTEGRATION: You MUST naturally integrate 1 to 2 of the provided LSI keywords into the paragraphs or subheadings of this section. CRITICAL: Use each LSI keyword a MAXIMUM of 1 or 2 times to avoid keyword stuffing. Ensure the main Target Keyword is used more frequently than any single LSI keyword.
+    3. LSI BOLDING: Every time you use an LSI keyword, you MUST format it in bold (e.g., **LSI keyword**).
+    4. LIST FORMATTING: If you use bullet points or ordered list items anywhere in this section, each individual list item MUST be 2 to 3 sentences long to provide detailed value. Do NOT write single-sentence or one-liner list items.
+  `;
+
+
+
   let sectionPrompt = `
     Article Title Context: ${articleTitle || targetKeyword}
     Full Article Outline Context: ${JSON.stringify(outlineContext)}
@@ -217,6 +225,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
     ${readabilityInstruction}
     ${linkInstruction}
     ${extLinkInstruction}
+    ${keywordSEOInstructions}
   `;
 
   if (activeSectionType === 'intro') {
@@ -225,7 +234,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
     const top3HTML = top3.map(p => {
       const safeTitle = p.productName.replace(/[\r\n]+/g, ' ').replace(/\|/g, '-');
       const safeImageUrl = p.imageUrl ? p.imageUrl.replace(/_/g, '%5F') : '';
-      return `<tr><td><img src="${safeImageUrl}" width="100"/></td><td><strong>${safeTitle}</strong></td><td><a href="${p.amazonUrl}" target="_blank">Check Price</a></td></tr>`;
+      return `<tr><td><img src="${safeImageUrl}" width="100"/></td><td><strong>${safeTitle}</strong></td><td><a href="${p.amazonUrl}" target="_blank" rel="sponsored noopener" style="text-decoration: none!important;" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded inline-block">Check Price</a></td></tr>`;
     }).join('');
 
 
@@ -241,11 +250,8 @@ export async function generateAmazonRoundupSection(body, genAI) {
   }
 
   else if (activeSectionType === 'product') {
-    // FIXED: Changed p.title to p.productName
     const product = formattedProducts.find(p => activeHeadingText.includes(p.productName) || p.productName.includes(activeHeadingText)) || formattedProducts[0];
 
-    // FIXED: Updated all ${product.title} to ${product.productName}
-    // FIXED: Updated ${product.affiliateUrl} to ${product.amazonUrl}
     sectionPrompt += `
       TASK: Write a comprehensive product review for "${product.productName}".
       ${experienceInstruction}
@@ -258,14 +264,16 @@ export async function generateAmazonRoundupSection(body, genAI) {
       Format this section EXACTLY in this order:
       1. **Review:** 2-3 engaging paragraphs reviewing the product.
       2. **HTML Image:** Insert this EXACT HTML centered:
-         <div align="center"><img src="${product.imageUrl}" alt="${product.productName}" style="max-width:100%; border-radius:8px; margin: 20px 0;"/></div>
+         <div align="center" style="margin: 25px 0;">
+            <img src="${product.imageUrl}" alt="${product.title}" style="max-width:100%; height:auto; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.05);" />
+          </div>
       3. **Features:** A bulleted list of 3-4 key features.
       4. **Pros & Cons Table:** A strictly formatted Markdown table with "Pros" and "Cons" columns.
       5. **Real Buyer Opinions:** A brief summary of what real buyers think.
       6. **CTA Button:** Insert this EXACT HTML for the affiliate button:
-         <div align="center" style="margin: 25px 0;">
-           <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" style="background-color: #f90; color: #fff; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 5px; font-size: 18px;">Check Price on Amazon</a>
-         </div>
+         <div align="center" style="margin: 20px 0;">
+            <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" class="no-underline bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded inline-block">Check Price</a>
+          </div>
     `;
   }
 

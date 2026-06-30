@@ -1,4 +1,4 @@
-import {fetchSerperOutlineData, getLinkInstruction, getExternalLinkInstruction, getRealTimeInstruction, getReadabilityInstruction, getMediaInstruction, getSeoInstruction, getPovInstruction, getToneInstruction, getBaseSystemInstruction, fetchPeopleAlsoSearchFor, fetchUnsplashImage, fetchPexelsImage, fetchPixabayImage, calculateRelevanceScore} from '../utils/helpers'
+import {fetchSerperOutlineData, getLinkInstruction, getExternalLinkInstruction, getRealTimeInstruction, getReadabilityInstruction, getMediaInstruction, getSeoInstruction, getPovInstruction, getToneInstruction, getBaseSystemInstruction, fetchPeopleAlsoSearchFor, fetchUnsplashImage, fetchPexelsImage, fetchPixabayImage, calculateRelevanceScore, generateFallbackImage } from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 import { GoogleGenAI } from '@google/genai';
@@ -75,33 +75,48 @@ export async function generateStandardBlogOutline(body, genAI) {
   const parsedData = JSON.parse(result.response.text());
 
   const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
-  fetchUnsplashImage(targetKeyword),
-  fetchPexelsImage(targetKeyword),
-  fetchPixabayImage(targetKeyword)
-]);
+    fetchUnsplashImage(targetKeyword),
+    fetchPexelsImage(targetKeyword),
+    fetchPixabayImage(targetKeyword)
+  ]);
 
-let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
-let heroImageUrl = '';
+  let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
+  let heroImageUrl = '';
+  let fallbackToAiImageTag = false;
 
-if (candidates.length > 0) {
-  const scoredCandidates = candidates.map(c => ({
-    ...c,
-    score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
-  }));
+  if (candidates.length > 0) {
+    const scoredCandidates = candidates.map(c => ({
+      ...c,
+      score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
+    }));
 
-  scoredCandidates.sort((a, b) => b.score - a.score);
+    scoredCandidates.sort((a, b) => b.score - a.score);
 
-  heroImageUrl = scoredCandidates[0].url;
+    if (scoredCandidates[0].score >= 2.0) {
+      heroImageUrl = scoredCandidates[0].url;
+      console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`);
+    } else {
+      console.log(`[Hero Image] Top image score (${scoredCandidates[0].score}) below 2.0. Invoking AI generation logic.`);
+      fallbackToAiImageTag = true;
+    }
+  } else {
+    fallbackToAiImageTag = true;
+  }
 
-  console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`);
-}
+  let introductionPrompt = `TASK: Generate a high-relevance opening introduction for the topic...`;
+
+  if (fallbackToAiImageTag) {
+    introductionPrompt += `\n${await generateFallbackImage(targetKeyword)}`;
+  }
 
   return {
         success: true,
         title: parsedData.title,
         outline: parsedData.outline,
         externalLinks: fetchedExternalLinks,
-        heroImage: heroImageUrl
+        heroImage: heroImageUrl,
+        metaTitle: parsedData.metaTitle,
+        metaDescription: parsedData.metaDescription,
       }
 }
 

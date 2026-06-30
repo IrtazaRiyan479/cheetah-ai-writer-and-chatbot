@@ -105,18 +105,17 @@ const handleCreateArticle = async () => {
         }
         setOutline(data.outline)
 
-        // NOW route the user to the correct screen
         if (settings.useOutlineEditor) {
-          setStep(1) // Go to Outline Editor
+          setStep(1)
         } else {
-          setStep(2) // Skip directly to Article Writer
+          setStep(2)
         }
       } else {
         throw new Error(data.error)
       }
     } catch (error) {
       console.error("Error generating outline:", error)
-      alert("Failed to generate outline. Check console.")
+      alert("Failed to generate outline. Check console.", error)
     } finally {
       setIsGenerating(false)
     }
