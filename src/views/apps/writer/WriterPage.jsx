@@ -113,10 +113,11 @@ const handleCreateArticle = async () => {
         }
       } else {
         throw new Error(data.error)
+
       }
     } catch (error) {
       console.error("Error generating outline:", error)
-      alert("Failed to generate outline. Check console.", error)
+      alert(`Failed to generate outline. ${error.message || error.error || JSON.stringify(error)}`);
     } finally {
       setIsGenerating(false)
     }

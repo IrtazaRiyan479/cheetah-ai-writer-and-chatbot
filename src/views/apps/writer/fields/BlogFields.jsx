@@ -198,6 +198,7 @@ const BlogFields = ({ settings, updateSetting }) => (
     </Select>
   </FormControl>
 </Grid>
+
    <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Country</Typography>
       <FormControl fullWidth size='small'>
@@ -213,6 +214,7 @@ const BlogFields = ({ settings, updateSetting }) => (
         </Select>
       </FormControl>
     </Grid>
+
    <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Point of View</Typography>
       <FormControl fullWidth size='small'>

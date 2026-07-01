@@ -28,7 +28,15 @@ async function fetchInternalAmazonData(keyword, settings) {
 
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch from internal /api/amazon route. Status: ${response.status}`);
+    const errorText = await response.text();
+    let errorDetails = errorText;
+    try {
+        const parsed = JSON.parse(errorText);
+        errorDetails = parsed.details ? JSON.stringify(parsed.details) : errorText;
+    } catch(e) {}
+
+    console.error("Amazon Route Failed:", errorDetails);
+    throw new Error(`Amazon API 400: ${errorDetails}`);
   }
   return await response.json();
 }
@@ -45,12 +53,14 @@ function formatAmazonProducts(apiData, settings) {
     let imageUrl = item?.images?.primary?.large?.url || '';
     imageUrl = imageUrl.replace(/\._[A-Za-z0-9_]+_\./, '.');
     const price = item?.offersV2?.listings?.[0]?.price?.money?.displayAmount || 'Check Price on Amazon';
+    const features = item?.itemInfo?.features?.displayValues || [];
 
     return {
       productName: title,
       amazonUrl: affiliateUrl.toString(),
       imageUrl: imageUrl,
-      price: price
+      price: price,
+      features: features
     };
   });
 }
@@ -259,6 +269,8 @@ export async function generateAmazonRoundupSection(body, genAI) {
   else if (activeSectionType === 'product') {
     const product = formattedProducts.find(p => activeHeadingText.includes(p.productName) || p.productName.includes(activeHeadingText)) || formattedProducts[0];
 
+    console.log(product.features && product.features.length ? `[Product Features] ${product.productName}: ${product.features.join(' | ')}` : `[Product Features] ${product.productName}: No features available.`);
+
     sectionPrompt += `
       TASK: Write a comprehensive product review for "${product.productName}".
       ${experienceInstruction}
@@ -276,7 +288,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
           </div>
       3. **Features:** A bulleted list of 3-4 key features.
       4. **Pros & Cons Table:** A strictly formatted Markdown table with "Pros" and "Cons" columns.
-      5. **Real Buyer Opinions:** A brief summary of what real buyers think.
+      5. **Real Buyer Opinions:** A brief summary of what real buyers think. CRITICAL: You must synthesize this summary directly from the "Official Features" provided above. Frame the feedback around how buyers react to those specific attributes (e.g., if a feature highlights 'lightweight design', mention how users praise its portability).
       6. **CTA Button:** Insert this EXACT HTML for the affiliate button:
          <div align="center" style="margin: 20px 0;">
             <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" class="no-underline bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-block">Check Price</a>

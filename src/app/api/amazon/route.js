@@ -4,6 +4,11 @@ export async function POST(request) {
   try {
     const { keyword, domain } = await request.json();
 
+    let safeDomain = domain || 'www.amazon.com';
+    if (!safeDomain.startsWith('www.')) {
+      safeDomain = `www.${safeDomain}`;
+    }
+
     const tokenRes = await fetch('https://api.amazon.com/auth/o2/token', {
       method: 'POST',
       headers: {
@@ -35,7 +40,7 @@ export async function POST(request) {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json; charset=utf-8',
-        'x-marketplace': domain || 'www.amazon.com',
+        'x-marketplace': safeDomain || 'www.amazon.com',
       },
       body: JSON.stringify({
         keywords: keyword || 'running shoes',

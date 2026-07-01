@@ -29,7 +29,7 @@ async function fetchInternalAmazonData(keyword, settings) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       keyword: keyword,
-      domain: settings.domain || 'www.amazon.com',
+      domain: settings.amazonDomain || 'www.amazon.com',
       partnerTag: settings.partnerTag || 'babiescarrier-20'
     })
   });
@@ -47,13 +47,14 @@ function formatAmazonProducts(apiData, settings) {
 
   return rawData.map(item => {
     const ASIN = item.asin || '';
-    let affiliateUrl =  new URL(item.detailPageURL || `https://${settings.domain || 'www.amazon.com'}/dp/${ASIN}?tag='babiescarrier-20'}&linkCode=osi&th=1&psc=1`);
+    let affiliateUrl =  new URL(item.detailPageURL || `https://${settings.amazonDomain || 'www.amazon.com'}/dp/${ASIN}?tag='babiescarrier-20'}&linkCode=osi&th=1&psc=1`);
     affiliateUrl.searchParams.set('tag', settings.amazonTrackingId);
     return {
       productName: item.itemInfo?.title?.displayValue || 'Amazon Product',
       amazonUrl: affiliateUrl.toString(),
       imageUrl: item.images?.primary?.large?.url || '',
-      price: item.offersV2?.listings?.[0]?.price?.displayAmount || 'Check Amazon'
+      price: item.offersV2?.listings?.[0]?.price?.displayAmount || 'Check Amazon',
+      features: item.itemInfo?.features?.displayValues || []
     };
   });
 }
@@ -299,8 +300,11 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
       PRODUCT CONTEXT (FACTUAL DATA - DO NOT INVENT PRICING OR NAMES):
       - Product Name: ${product.productName}
       - Price: ${product.price}
+      - Core Technical Features: ${product.features && product.features.length ? product.features.join(' | ') : 'N/A'}
     `;
   }
+
+  console.log(product.features && product.features.length ? `[Product Features] ${product.productName}: ${product.features.join(' | ')}` : `[Product Features] ${product.productName}: No features available.`);
 
   // --- RENDER SECTIONS SAFELY ---
   if (activeSectionType === 'intro') {
