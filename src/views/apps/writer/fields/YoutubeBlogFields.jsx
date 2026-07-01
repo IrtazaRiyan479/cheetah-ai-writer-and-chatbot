@@ -22,7 +22,6 @@ const YoutubeBlogFields = ({ settings, updateSetting }) => {
   const [statusColor, setStatusColor] = useState('text-textSecondary');
   const [isValidating, setIsValidating] = useState(false);
 
-  // Auto-validate YouTube URL when it changes
   useEffect(() => {
     const validateUrl = async () => {
       const url = settings.youtubeUrl;
@@ -45,12 +44,11 @@ const YoutubeBlogFields = ({ settings, updateSetting }) => {
 
         if (data.success) {
           setStatusText(`✓ Success: Linked to "${data.title}"`);
-          setStatusColor('text-success'); // Tailwind green class
-          // Auto-fill the target keyword with the video title if it's empty!
-          if (!settings.targetKeyword) updateSetting('targetKeyword', data.title);
+          setStatusColor('text-success');
+          updateSetting('targetKeyword', data.title);
         } else {
           setStatusText(`✕ Error: ${data.error}`);
-          setStatusColor('text-error'); // Tailwind red class
+          setStatusColor('text-error');
         }
       } catch (error) {
         setStatusText('✕ Error connecting to validation server.');

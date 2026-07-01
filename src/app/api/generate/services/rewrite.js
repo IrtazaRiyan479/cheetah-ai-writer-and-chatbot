@@ -8,14 +8,14 @@ import {
   getBaseSystemInstruction,
   fetchArticleData,
   fetchUnsplashImage, fetchPexelsImage, fetchPixabayImage, calculateRelevanceScore
- ,fetchPeopleAlsoSearchFor, generateFallbackImage, getMediaInstruction, getRealTimeInstruction } from '../utils/helpers'
+ ,fetchPeopleAlsoSearchFor, generateFallbackImage, getMediaInstruction, getRealTimeInstruction, fetchSerperOutlineData } from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 
 export async function generateRewriteOutline(body, genAI) {
   const { prompt, settings } = body;
   const {model, targetKeyword, language, country,
-         automaticExternalLinks, includeFaq, improveReadability, includeKeyTakeaways
+         automaticExternalLinks, includeFaq, includeKeyTakeaways, articleUrlToRewrite
     } = settings;
 
   const articleData = await fetchArticleData(articleUrlToRewrite);
@@ -102,7 +102,7 @@ export async function generateRewriteOutline(body, genAI) {
   let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
   let heroImageUrl = '';
   let fallbackToAiImageTag = false;
-  let scoredCandidates;
+  let scoredCandidates = [];
 
   if (candidates.length > 0) {
     scoredCandidates = candidates.map(c => ({
@@ -112,7 +112,7 @@ export async function generateRewriteOutline(body, genAI) {
 
     scoredCandidates.sort((a, b) => b.score - a.score);
 
-    if (scoredCandidates[0].score >= 2.0) {
+    if (scoredCandidates[0].score >= 0.1) {
       heroImageUrl = scoredCandidates[0].url;
       console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`);
     } else {
@@ -163,7 +163,7 @@ export async function generateRewriteSection(body, genAI) {
     } = body;
 
         const {model, targetKeyword, articleTitle, toneOfVoice, customToneOfVoice,
-          pointOfView, useRealTimeSearchData, realTimeDataSource, deepSearch, improveReadability, seoOptimization, manualKeywords, aiImagesAndVideos, listItemPrompt, language, country} = settings;
+          pointOfView, useRealTimeSearchData, realTimeDataSource, deepSearch, improveReadability, seoOptimization, manualKeywords, aiImagesAndVideos, language, country, articleUrlToRewrite} = settings;
 
    const langObj = languages ? languages[language] : null;
     const langName = langObj ? langObj.name : (language || 'English');

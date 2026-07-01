@@ -74,7 +74,7 @@ export async function generateYoutubeBlogOutline(body, genAI) {
     let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
     let heroImageUrl = '';
     let fallbackToAiImageTag = false;
-    let scoredCandidates;
+    let scoredCandidates = [];
 
     if (candidates.length > 0) {
       scoredCandidates = candidates.map(c => ({
@@ -84,7 +84,7 @@ export async function generateYoutubeBlogOutline(body, genAI) {
 
       scoredCandidates.sort((a, b) => b.score - a.score);
 
-      if (scoredCandidates[0].score >= 2.0) {
+      if (scoredCandidates[0].score >= 0.1) {
         heroImageUrl = scoredCandidates[0].url;
         console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`);
       } else {

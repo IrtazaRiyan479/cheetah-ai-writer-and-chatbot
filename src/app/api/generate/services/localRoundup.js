@@ -120,7 +120,7 @@ export async function generateLocalRoundupOutline(body, genAI) {
   let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
   let heroImageUrl = '';
   let fallbackToAiImageTag = false;
-  let scoredCandidates;
+  let scoredCandidates = [];
 
   if (candidates.length > 0) {
     scoredCandidates = candidates.map(c => ({

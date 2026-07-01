@@ -117,7 +117,7 @@ const handleCreateArticle = async () => {
       }
     } catch (error) {
       console.error("Error generating outline:", error)
-      alert(`Failed to generate outline. ${error.message || error.error || JSON.stringify(error)}`);
+      alert(`Failed to generate outline. ${error}`);
     } finally {
       setIsGenerating(false)
     }
@@ -127,7 +127,6 @@ const handleCreateArticle = async () => {
     <Card className='shadow-sm'>
       <CardContent className='p-4 sm:p-6'>
         <Grid container spacing={5}>
-          {/* settings and updateSetting are now defined! */}
           <ActiveFields settings={settings} updateSetting={updateSetting} />
 
           <Grid size={{ xs: 12 }}>

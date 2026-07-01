@@ -105,9 +105,9 @@ const RewriteFields = ({ settings, updateSetting }) => {
         />
       </Grid>
 
-    <Grid size={{ xs: 12 }}>
+    {/* <Grid size={{ xs: 12 }}>
       <FormControlLabel control={<Switch checked={settings.enableRewriting} onChange={(e) => updateSetting('enableRewriting', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable Rewriting</Typography>} />
-    </Grid>
+    </Grid> */}
 
     <Grid size={{ xs: 12 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Automatic Internal Linking</Typography>
