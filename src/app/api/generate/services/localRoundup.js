@@ -33,7 +33,11 @@ export async function generateLocalRoundupOutline(body, genAI) {
         const explicitNumberingStr = format === 'none' ? 'Do not use numbering.' : `Use EXACTLY these prefixes in this order for your list items: ${numberingArray.join(', ')}`;
 
         if (placesData.length > 0) {
-          const placeNames = placesData.map((p, i) => `${i + 1}. ${p.title}`).join('\n');
+          const placeNames = placesData.map((p, i) => {
+            const prefix = numberingArray[i] ? `${numberingArray[i]} ` : '';
+            return `${prefix}${p.title}`;
+          }).join('\n');
+          console.log(`[Outline Debug] Using the following place names for H2 headings:\n${placeNames}`);
           placesInstruction = `You MUST use EXACTLY these locations for the core H2 headings in order:\n${placeNames}`;
         } else {
           placesInstruction = `Generate exactly ${itemCount} H2 headings representing specific real-world locations related to the topic. Number them.${explicitNumberingStr}`;
@@ -86,6 +90,28 @@ export async function generateLocalRoundupOutline(body, genAI) {
           const outlinePrompt = `Article Topic: ${targetKeyword || prompt}\n\n${lengthInstruction}\n${structureInstruction}`
           const result = await outlineModel.generateContent(outlinePrompt)
           const parsedData = JSON.parse(result.response.text());
+          if (placesData && placesData.length > 0) {
+            let currentPlaceIndex = 0;
+
+            parsedData.outline.forEach(item => {
+              if (item.type === 'h2') {
+                const lowerText = item.text.toLowerCase();
+
+                if (!lowerText.includes('introduction') &&
+                    !lowerText.includes('key takeaways') &&
+                    !lowerText.includes('frequently asked') &&
+                    !lowerText.includes('conclusion')) {
+
+                  if (currentPlaceIndex < placesData.length) {
+                    const prefix = numberingArray[currentPlaceIndex] ? `${numberingArray[currentPlaceIndex]} ` : '';
+                    item.text = `${prefix}${placesData[currentPlaceIndex].title}`;
+                    currentPlaceIndex++;
+                  }
+                }
+              }
+            });
+          }
+          console.log(`[Outline Debug] Parsed Outline Data:\n${JSON.stringify(parsedData, null, 2)}`);
 
           const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
     fetchUnsplashImage(targetKeyword),
@@ -180,6 +206,7 @@ export async function generateLocalRoundupSection(body, genAI) {
     let readabilityInstruction = getReadabilityInstruction(improveReadability);
 
    const isCoreLocation = (!subheadings || subheadings.length === 0) && !heading.toLowerCase().includes('introduction') && !heading.toLowerCase().includes('faq') && !heading.toLowerCase().includes('supplemental');
+
    let narrativeRequirement = '';
    let placeDataStr = '';
   if (isCoreLocation) {
@@ -192,6 +219,7 @@ export async function generateLocalRoundupSection(body, genAI) {
           const mapImgUrl = (p.latitude && p.longitude)
             ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${p.longitude},${p.latitude}&z=16&l=map&size=600,300&pt=${p.longitude},${p.latitude},pm2rdm`
             : `https://placehold.co/800x400/ececec/555555?text=Map+Location:+${encodeURIComponent(p.title)}`;
+
 
           assignedMediaElement = `<a href="${mapLink}" target="_blank" rel="noopener noreferrer" class="block w-full my-6 transition-transform hover:scale-[1.02]"><img src="${mapImgUrl}" alt="Map of ${p.title}" class="w-full h-auto rounded-xl shadow-md border border-gray-200 object-cover aspect-[2/1]" /></a>`;
           mediaInstruction = `\n[NOTE: A map image has been automatically inserted. Do NOT output image HTML.]`;

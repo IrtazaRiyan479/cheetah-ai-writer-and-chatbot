@@ -418,8 +418,8 @@ export async function fetchSerperPlacesData(query, count = 10, countryCode = 'us
       headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         q: query,
-        gl: countryCode.toLowerCase(), // 'gl' forces the Google Search country
-        hl: languageCode.toLowerCase() // 'hl' forces the Google Search language
+        gl: countryCode.toLowerCase(),
+        hl: languageCode.toLowerCase()
       })
     });
     const data = await res.json();

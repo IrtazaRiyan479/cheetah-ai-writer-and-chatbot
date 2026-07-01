@@ -20,7 +20,7 @@ async function fetchInternalAmazonData(keyword, settings) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       keyword: keyword,
-      domain: settings.domain || 'www.amazon.com',
+      domain: settings.amazonDomain || 'www.amazon.com',
       partnerTag: process.env.AMAZON_PARTNER_TAG
     })
   });
@@ -40,7 +40,7 @@ function formatAmazonProducts(apiData, settings) {
 
   return limitedProducts.map(item => {
     const title = item?.itemInfo?.title?.displayValue || 'Amazon Product';
-    let affiliateUrl = new URL(item?.detailPageURL || `https://${settings.domain || 'www.amazon.com'}/dp/${item.asin}?tag=${process.env.AMAZON_PARTNER_TAG}`);
+    let affiliateUrl = new URL(item?.detailPageURL || `https://${settings.amazonDomain || 'www.amazon.com'}/dp/${item.asin}?tag=${process.env.AMAZON_PARTNER_TAG}`);
     affiliateUrl.searchParams.set('tag', settings.amazonTrackingId);
     let imageUrl = item?.images?.primary?.large?.url || '';
     imageUrl = imageUrl.replace(/\._[A-Za-z0-9_]+_\./, '.');

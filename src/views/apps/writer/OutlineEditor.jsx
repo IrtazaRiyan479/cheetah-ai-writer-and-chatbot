@@ -84,15 +84,13 @@ const OutlineEditor = ({ settings, setStep, outline, setOutline }) => {
     handleMenuClose()
   }
 
-  // --- DRAG AND DROP HANDLERS ---
   const handleDragStart = (e, index) => {
     setDraggedIndex(index)
-    // Optional: Make the dragged item slightly transparent
     e.dataTransfer.effectAllowed = 'move'
   }
 
   const handleDragOver = (e) => {
-    e.preventDefault() // Necessary to allow dropping
+    e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
   }
 

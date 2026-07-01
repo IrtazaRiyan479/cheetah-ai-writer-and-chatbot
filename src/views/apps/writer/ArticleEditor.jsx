@@ -739,7 +739,7 @@ useEffect(() => {
             editor.chain().focus('end').insertContent(formattedContent).run()
 
             // 🟢 2. INJECT MEDIA AFTER THE TEXT
-            if (data.mediaHtml && ((settings.type == "blog" || settings.type == "listicle") && i!=0)) {
+            if (data.mediaHtml && (i !== 0 || !["blog", "listicle"].includes(settings.type))) {
               editor.chain().focus('end').insertContent(data.mediaHtml).run()
             }
           } else {
