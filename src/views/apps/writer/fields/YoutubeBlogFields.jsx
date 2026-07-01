@@ -14,6 +14,7 @@ import ListItemText from '@mui/material/ListItemText'
 import OutlinedInput from '@mui/material/OutlinedInput'
 import Chip from '@mui/material/Chip'
 import { languages } from '@/configs/languages'
+import { countries } from '@/configs/countries'
 import CircularProgress from '@mui/material/CircularProgress'
 
 const YoutubeBlogFields = ({ settings, updateSetting }) => {
@@ -149,7 +150,6 @@ const YoutubeBlogFields = ({ settings, updateSetting }) => {
         </Select>
       </FormControl>
 
-      {/* Conditionally render custom tone input */}
       {settings.toneOfVoice === 'custom' && (
         <TextField
           fullWidth
@@ -190,6 +190,22 @@ const YoutubeBlogFields = ({ settings, updateSetting }) => {
         </Select>
       </FormControl>
     </Grid>
+
+     <Grid size={{ xs: 12, sm: 6 }}>
+          <Typography variant='subtitle2' className='font-medium mbe-1'>Country</Typography>
+          <FormControl fullWidth size='small'>
+            <Select
+              value={settings.country}
+              onChange={(e) => updateSetting('country', e.target.value)}
+            >
+              {countries.map((c) => (
+                <MenuItem key={c.code} value={c.code}>
+                  {c.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Grid>
 
     <Grid size={{ xs: 12 }}><Divider className='my-2' /></Grid>
 

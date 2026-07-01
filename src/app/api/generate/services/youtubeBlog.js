@@ -16,7 +16,6 @@ export async function generateYoutubeBlogOutline(body, genAI) {
   const {
     model, targetKeyword, language, country, youtubeUrl, enableCaptionRewriting } = settings;
 
-  // 1. Fetch the YouTube Transcript
   const videoData = await fetchYoutubeVideoData(youtubeUrl);
   if (!videoData.success) {
     throw new Error('Failed to fetch YouTube transcript. The video might be private or lacking captions.');
