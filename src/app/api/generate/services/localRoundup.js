@@ -37,7 +37,6 @@ export async function generateLocalRoundupOutline(body, genAI) {
             const prefix = numberingArray[i] ? `${numberingArray[i]} ` : '';
             return `${prefix}${p.title}`;
           }).join('\n');
-          console.log(`[Outline Debug] Using the following place names for H2 headings:\n${placeNames}`);
           placesInstruction = `You MUST use EXACTLY these locations for the core H2 headings in order:\n${placeNames}`;
         } else {
           placesInstruction = `Generate exactly ${itemCount} H2 headings representing specific real-world locations related to the topic. Number them.${explicitNumberingStr}`;
@@ -111,7 +110,6 @@ export async function generateLocalRoundupOutline(body, genAI) {
               }
             });
           }
-          console.log(`[Outline Debug] Parsed Outline Data:\n${JSON.stringify(parsedData, null, 2)}`);
 
           const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
     fetchUnsplashImage(targetKeyword),
