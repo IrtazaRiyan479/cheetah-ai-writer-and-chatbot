@@ -269,8 +269,6 @@ export async function generateAmazonRoundupSection(body, genAI) {
   else if (activeSectionType === 'product') {
     const product = formattedProducts.find(p => activeHeadingText.includes(p.productName) || p.productName.includes(activeHeadingText)) || formattedProducts[0];
 
-    console.log(product.features && product.features.length ? `[Product Features] ${product.productName}: ${product.features.join(' | ')}` : `[Product Features] ${product.productName}: No features available.`);
-
     sectionPrompt += `
       TASK: Write a comprehensive product review for "${product.productName}".
       ${experienceInstruction}

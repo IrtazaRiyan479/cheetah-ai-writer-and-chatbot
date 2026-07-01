@@ -160,7 +160,6 @@ export async function generateAmazonReviewOutline(body, genAI) {
     parsedData.outline[0].productData = product;
   }
 
-  console.log(parsedData.metaTitle, parsedData.metaDescription)
   return {
     success: true,
     title: parsedData.title,
@@ -304,7 +303,6 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     `;
   }
 
-  console.log(product.features && product.features.length ? `[Product Features] ${product.productName}: ${product.features.join(' | ')}` : `[Product Features] ${product.productName}: No features available.`);
 
   // --- RENDER SECTIONS SAFELY ---
   if (activeSectionType === 'intro') {
