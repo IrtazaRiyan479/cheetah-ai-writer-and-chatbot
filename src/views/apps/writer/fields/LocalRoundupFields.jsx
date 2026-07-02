@@ -21,7 +21,7 @@ const LocalRoundupFields = ({ settings, updateSetting }) => (
     {/* Top Section */}
 
     <Grid size={{ xs: 12 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Target Keyword (Optional)</Typography>
+      <Typography variant='subtitle2' className='font-medium mbe-1'>Target Keyword</Typography>
       <TextField fullWidth size='small' placeholder='e.g. best running shoes for flat feet' value={settings.targetKeyword} onChange={(e) => updateSetting('targetKeyword', e.target.value)} />
     </Grid>
 

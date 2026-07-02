@@ -312,7 +312,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
       STRICT LAYOUT REQUIREMENT (Image & CTA):
       Immediately following your introductory text, you MUST insert this EXACT HTML block to display link:
       <div align="center" style="margin: 25px 0;">
-       <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" class="no-underline bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-block">Check Price on Amazon</a>
+        <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 8px 16px; border-radius: 4px; display: inline-block;">Check Price on Amazon</a>
       </div>
     `;
   }
@@ -329,7 +329,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
       At the very end of your conclusion, insert this EXACT HTML block:
 
       <div align="center" style="margin: 25px 0;">
-       <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" class="no-underline bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-block">Check Price on Amazon</a>
+       <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 8px 16px; border-radius: 4px; display: inline-block;">Check Price on Amazon</a>
       </div>
     `;
   }

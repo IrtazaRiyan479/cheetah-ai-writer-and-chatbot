@@ -517,9 +517,9 @@ export async function getMediaInstruction(uploadedMedia, sectionIndex, aiImagesA
     const mediaItem = uploadedMedia[sectionIndex];
     selectedMediaUrl = mediaItem.url;
     if (mediaItem.type.startsWith('image/')) {
-      assignedMediaElement = `\n\n<img src="${mediaItem.url}" alt="${mediaItem.name}" class="rounded-xl shadow-md my-8 w-full aspect-video object-cover" />\n\n`;
+      assignedMediaElement = `\n\n<img src="${mediaItem.url}" alt="${mediaItem.name}" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;" />\n\n`;
     } else if (mediaItem.type.startsWith('video/')) {
-      assignedMediaElement = `\n\n<video src="${mediaItem.url}" controls class="rounded-xl shadow-md my-8 w-full"></video>\n\n`;
+      assignedMediaElement = `\n\n<video src="${mediaItem.url}" controls style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%;"></video>\n\n`;
     }
     mediaInstruction = `\n[NOTE: A media file is placed at the end of this section. DO NOT output HTML tags for media.]`;
   }
@@ -572,14 +572,14 @@ export async function getMediaInstruction(uploadedMedia, sectionIndex, aiImagesA
         selectedMediaUrl = bestImage.url;
       }
 
-      assignedMediaElement = `\n\n<img src="${bestImage.url}" alt="${bestImage.alt}" class="rounded-xl shadow-md my-8 w-full aspect-video object-cover" />\n\n`;
+      assignedMediaElement = `\n\n<img src="${bestImage.url}" alt="${bestImage.alt}" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;" />\n\n`;
 
     } else {
       const smartYtQuery = await getSmartVideoQuery(articleTitle || targetKeyword, heading, genAI);
       const ytVideo = await fetchYouTubeVideo(smartYtQuery);
       if (ytVideo) {
         selectedMediaUrl = ytVideo.id;
-        assignedMediaElement = `\n\n<div data-youtube-video class="my-8"><iframe src="https://www.youtube.com/embed/${ytVideo.id}" title="${ytVideo.title}" class="w-full aspect-video rounded-xl shadow-md"></iframe></div>\n\n`;
+        assignedMediaElement = `\n\n<div data-youtube-video style="margin: 32px 0;"><iframe src="https://www.youtube.com/embed/${ytVideo.id}" title="${ytVideo.title}" style="width: 100%; aspect-ratio: 16/9; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: none; display: block; max-width: 100%;"></iframe></div>\n\n`;
       }
     }
     mediaInstruction = `\n[NOTE: A contextual image or video is placed at the end of this section. DO NOT attempt to generate image/video tags yourself.]`;

@@ -251,7 +251,17 @@ export async function generateAmazonRoundupSection(body, genAI) {
     const top3HTML = top3.map(p => {
       const safeTitle = p.productName.replace(/[\r\n]+/g, ' ').replace(/\|/g, '-');
       const safeImageUrl = p.imageUrl ? p.imageUrl.replace(/_/g, '%5F') : '';
-      return `<tr><td><img src="${safeImageUrl}" width="100"/></td><td><strong>${safeTitle}</strong></td><td><a href="${p.amazonUrl}" target="_blank" rel="sponsored noopener" class="not-prose bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-block no-underline">Check Price</a></td></tr>`;
+      return `<tr>
+  <td style="padding: 16px; border-bottom: 1px solid rgba(38, 43, 67, 0.08); vertical-align: middle; text-align: center;">
+    <img src="${safeImageUrl}" width="100" style="max-width: 100%; height: auto; border-radius: 8px; display: inline-block;"/>
+  </td>
+  <td style="padding: 16px; border-bottom: 1px solid rgba(38, 43, 67, 0.08); vertical-align: middle; color: rgba(38, 43, 67, 0.9);">
+    <strong>${safeTitle}</strong>
+  </td>
+  <td style="padding: 16px; border-bottom: 1px solid rgba(38, 43, 67, 0.08); vertical-align: middle; text-align: center;">
+    <a href="${p.amazonUrl}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 10px 24px; border-radius: 9999px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); border: 1px solid #4f46e5; letter-spacing: 0.025em; white-space: nowrap;">Check Price</a>
+  </td>
+</tr>`;
     }).join('');
 
 
@@ -288,9 +298,9 @@ export async function generateAmazonRoundupSection(body, genAI) {
       4. **Pros & Cons Table:** A strictly formatted Markdown table with "Pros" and "Cons" columns.
       5. **Real Buyer Opinions:** A brief summary of what real buyers think. CRITICAL: You must synthesize this summary directly from the "Official Features" provided above. Frame the feedback around how buyers react to those specific attributes (e.g., if a feature highlights 'lightweight design', mention how users praise its portability).
       6. **CTA Button:** Insert this EXACT HTML for the affiliate button:
-         <div align="center" style="margin: 20px 0;">
-            <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" class="no-underline bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-block">Check Price</a>
-          </div>
+                <div style="display: block; width: 100%; text-align: center; margin: 25px 0;">
+  <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 12px 28px; border-radius: 9999px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); border: 1px solid #4f46e5; letter-spacing: 0.025em; text-align: center; vertical-align: middle;">Check Price</a>
+</div>
     `;
   }
 

@@ -219,7 +219,7 @@ export async function generateLocalRoundupSection(body, genAI) {
             : `https://placehold.co/800x400/ececec/555555?text=Map+Location:+${encodeURIComponent(p.title)}`;
 
 
-          assignedMediaElement = `<a href="${mapLink}" target="_blank" rel="noopener noreferrer" class="block w-full my-6 transition-transform hover:scale-[1.02]"><img src="${mapImgUrl}" alt="Map of ${p.title}" class="w-full h-auto rounded-xl shadow-md border border-gray-200 object-cover aspect-[2/1]" /></a>`;
+          assignedMediaElement = `<a href="${mapLink}" target="_blank" rel="noopener noreferrer" style="display: block; width: 100%; margin: 24px 0;"><img src="${mapImgUrl}" alt="Map of ${p.title}" style="width: 100%; height: auto; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; object-fit: cover; aspect-ratio: 2/1;" /></a>`;
           mediaInstruction = `\n[NOTE: A map image has been automatically inserted. Do NOT output image HTML.]`;
         }
 

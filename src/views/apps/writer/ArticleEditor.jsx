@@ -30,6 +30,7 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import { styled } from '@mui/material/styles'
 import LinearProgress, { linearProgressClasses } from '@mui/material/LinearProgress'
+import { Extension } from '@tiptap/core'
 
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
@@ -43,6 +44,7 @@ import Alert from '@mui/material/Alert'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Checkbox from '@mui/material/Checkbox'
 import { useRouter, useSearchParams } from 'next/navigation'
+
 
 
 const ProgressCircularWithLabel = ({ value, color }) => {
@@ -147,8 +149,37 @@ const VideoExtension = Node.create({
     return [{ tag: 'video' }]
   },
   renderHTML({ HTMLAttributes }) {
-    return ['video', mergeAttributes(HTMLAttributes, { class: 'w-full aspect-video rounded-xl shadow-md my-6 max-w-3xl mx-auto block' })]
+    return ['video', mergeAttributes(HTMLAttributes, { style: 'width: 100%; aspect-ratio: 16/9; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 24px auto; display: block; max-width: 48rem;' })]
   },
+})
+
+const GlobalAttributes = Extension.create({
+  name: 'globalAttributes',
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['textStyle', 'paragraph', 'heading', 'link', 'image', 'table', 'tableCell', 'tableHeader', 'tableRow'],
+        attributes: {
+          class: {
+            default: null,
+            parseHTML: element => element.getAttribute('class'),
+            renderHTML: attributes => {
+              if (!attributes.class) return {}
+              return { class: attributes.class }
+            },
+          },
+          style: {
+            default: null,
+            parseHTML: element => element.getAttribute('style'),
+            renderHTML: attributes => {
+              if (!attributes.style) return {}
+              return { style: attributes.style }
+            },
+          }
+        }
+      }
+    ]
+  }
 })
 
 
@@ -160,34 +191,40 @@ const extensions = [
     bulletList: {
       keepMarks: true,
       keepAttributes: false,
-      HTMLAttributes: { class: 'list-disc ml-8 my-4 space-y-2' }
+      HTMLAttributes: { style: 'list-style-type: disc; margin-left: 32px; padding-left: 0; margin-top: 16px; margin-bottom: 16px;' }
     },
     orderedList: {
       keepMarks: true,
       keepAttributes: false,
-      HTMLAttributes: { class: 'list-decimal ml-8 my-4 space-y-2' }
+      HTMLAttributes: { style: 'list-style-type: decimal; margin-left: 32px; padding-left: 0; margin-top: 16px; margin-bottom: 16px;' }
     },
     blockquote: {
-      HTMLAttributes: { class: 'border-l-4 border-primary pl-4 py-2 my-4 italic text-textSecondary bg-actionHover/50 rounded-r-lg' }
+      HTMLAttributes: { style: 'border-left: 4px solid #666CFF; padding-left: 16px; padding-top: 8px; padding-bottom: 8px; margin: 16px 0; font-style: italic; color: rgba(38, 43, 67, 0.7); background-color: rgba(38, 43, 67, 0.03); border-top-right-radius: 8px; border-bottom-right-radius: 8px;' }
+    },
+    // FIX FOR THE LIST ITEM BUG
+    listItem: {
+      HTMLAttributes: { style: 'margin-bottom: 8px;' }
+    },
+    paragraph: {
+      HTMLAttributes: { style: 'margin-top: 0; margin-bottom: 16px;' }
     }
   }),
+  GlobalAttributes,
   TaskList,
-  TaskItem.configure({
-    nested: true,
-  }),
-Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }).extend({
+  TaskItem.configure({ nested: true }),
+  Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }).extend({
     renderHTML({ node, HTMLAttributes }) {
       const hasLevel = this.options.levels.includes(node.attrs.level)
       const level = hasLevel ? node.attrs.level : this.options.levels[0]
-      const classes = {
-        1: 'text-3xl font-extrabold mt-12 mb-6 text-textPrimary',
-        2: 'text-2xl font-bold mt-10 mb-4 text-textPrimary',
-        3: 'text-xl font-semibold mt-8 mb-3 text-textPrimary',
-        4: 'text-lg font-bold mt-6 mb-2 text-textPrimary',
-        5: 'text-base font-bold mt-4 mb-2 text-textPrimary',
-        6: 'text-sm font-bold mt-4 mb-2 text-textSecondary uppercase tracking-wider',
+      const styles = {
+        1: 'font-size: 1.875rem; font-weight: 800; margin-top: 48px; margin-bottom: 24px; color: rgba(38, 43, 67, 0.9); line-height: 1.2;',
+        2: 'font-size: 1.5rem; font-weight: 700; margin-top: 40px; margin-bottom: 16px; color: rgba(38, 43, 67, 0.9); line-height: 1.3;',
+        3: 'font-size: 1.25rem; font-weight: 600; margin-top: 32px; margin-bottom: 12px; color: rgba(38, 43, 67, 0.9); line-height: 1.4;',
+        4: 'font-size: 1.125rem; font-weight: 700; margin-top: 24px; margin-bottom: 8px; color: rgba(38, 43, 67, 0.9); line-height: 1.5;',
+        5: 'font-size: 1rem; font-weight: 700; margin-top: 16px; margin-bottom: 8px; color: rgba(38, 43, 67, 0.9); line-height: 1.5;',
+        6: 'font-size: 0.875rem; font-weight: 700; margin-top: 16px; margin-bottom: 8px; color: rgba(38, 43, 67, 0.7); text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.5;',
       }
-      return ['h' + level, mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, { class: classes[level] }), 0]
+      return ['h' + level, mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, { style: styles[level] }), 0]
     }
   }),
   Placeholder.configure({ placeholder: 'Document ready.' }),
@@ -195,27 +232,42 @@ Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }).extend({
     inline: true,
     allowBase64: true,
     HTMLAttributes: {
-      class: 'rounded-xl max-w-full sm:max-w-2xl mx-auto block shadow-md my-8 aspect-video object-cover'
+      style: 'border-radius: 12px; max-width: 100%; width: 672px; margin: 32px auto; display: block; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); aspect-ratio: 16/9; object-fit: cover;'
     }
   }),
   Link.configure({
     openOnClick: false,
     HTMLAttributes: {
-      class: 'text-primary underline cursor-pointer',
+      style: 'color: #666CFF; text-decoration: underline; cursor: pointer;'
     },
   }),
   Youtube.configure({
     controls: true,
     nocookie: true,
     HTMLAttributes: {
-      class: 'w-full aspect-video rounded-xl shadow-md my-6'
+      style: 'width: 100%; aspect-ratio: 16/9; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 24px 0; border: none; display: block; max-width: 100%;'
     }
   }),
-  Table.configure({ HTMLAttributes: { class: 'w-full border-collapse border border-divider my-8 text-left rounded-lg overflow-hidden shadow-sm' } }),
-  TableRow.configure({ HTMLAttributes: { class: 'border-b border-divider hover:bg-actionHover/50 transition-colors' } }),
-  TableHeader.configure({ HTMLAttributes: { class: 'bg-actionHover p-4 border border-divider font-bold text-textPrimary' } }),
-  TableCell.configure({ HTMLAttributes: { class: 'p-4 border border-divider text-textSecondary' } }),
-  VideoExtension
+Table.configure({
+    HTMLAttributes: {
+      style: 'width: 100%; border-collapse: separate; border-spacing: 0; margin: 32px 0; text-align: left; font-size: 0.875rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); border-radius: 12px; overflow: hidden; border: 1px solid rgba(38, 43, 67, 0.12); display: table; max-width: 100%;'
+    }
+  }),
+  TableRow.configure({
+    HTMLAttributes: {
+      style: 'transition: background-color 0.2s ease;'
+    }
+  }),
+  TableHeader.configure({
+    HTMLAttributes: {
+      style: 'background-color: rgba(38, 43, 67, 0.04); padding: 16px; font-weight: 600; color: rgba(38, 43, 67, 0.9); border-bottom: 1px solid rgba(38, 43, 67, 0.12); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;'
+    }
+  }),
+  TableCell.configure({
+    HTMLAttributes: {
+      style: 'padding: 16px; color: rgba(38, 43, 67, 0.7); border-bottom: 1px solid rgba(38, 43, 67, 0.08); vertical-align: middle;'
+    }
+  }),
 ]
 
 // --- HELPER: HTML to MARKDOWN CONVERTER ---
@@ -650,10 +702,10 @@ useEffect(() => {
             let cleanMd = finalSectionText.replace(/^##\s+.*$/gm, '') // Remove redundant main heading
 
             // A. CODE BLOCKS (Must happen first! Escape HTML so Tiptap doesn't execute it)
-            cleanMd = cleanMd.replace(/```[a-zA-Z]*\n([\s\S]*?)```/g, (match, code) => {
-              const escapedCode = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-              return `<pre class="bg-gray-900 text-gray-100 p-4 rounded-xl my-6 overflow-x-auto font-mono text-sm shadow-md border border-gray-700"><code>${escapedCode}</code></pre>`;
-            });
+           cleanMd = cleanMd.replace(/```[a-zA-Z]*\n([\s\S]*?)```/g, (match, code) => {
+  const escapedCode = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<pre style="background-color: #111827; color: #f3f4f6; padding: 16px; border-radius: 12px; margin: 24px 0; overflow-x: auto; font-family: monospace; font-size: 0.875rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #374151;"><code>${escapedCode}</code></pre>`;
+});
 
             // B. TABLES
             cleanMd = cleanMd.replace(/:\-\-+/g, '').replace(/\-\-+:/g, '');
@@ -696,13 +748,13 @@ useEffect(() => {
             cleanMd = cleanMd.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
 
             // F. HORIZONTAL RULES
-            cleanMd = cleanMd.replace(/^---$/gm, '<hr class="my-8 border-divider" />')
+            cleanMd = cleanMd.replace(/^---$/gm, '<hr style="margin: 32px 0; border: 0; border-top: 1px solid rgba(38, 43, 67, 0.12);" />')
 
             // G. HALLUCINATED IMAGES (Catch ![alt](url) and force our UI styles)
-            cleanMd = cleanMd.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, '<img src="$2" alt="$1" class="rounded-xl max-w-full sm:max-w-2xl mx-auto block shadow-md my-8 aspect-video object-cover" />')
+           cleanMd = cleanMd.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, '<img src="$2" alt="$1" style="border-radius: 12px; max-width: 100%; width: 672px; margin: 32px auto; display: block; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); aspect-ratio: 16/9; object-fit: cover;" />')
 
             // H. LINKS
-            cleanMd = cleanMd.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" class="text-primary underline font-medium">$1</a>')
+            cleanMd = cleanMd.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" style="color: #666CFF; text-decoration: underline; font-weight: 500;">$1</a>')
 
           // H. RAW HTML BUTTON FIX
           //   cleanMd = cleanMd.replace(/<a([^>]+)>(.*?(?:Check Price|Amazon).*?)<\/a>/gi, (match, attributes, text) => {
@@ -714,11 +766,10 @@ useEffect(() => {
 
             // I. INLINE FORMATTING (Bold, Italics, Code, Strike)
             cleanMd = cleanMd.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            cleanMd = cleanMd.replace(/(?<!\w)\*(.*?)\*(?!\w)/g, '<em>$1</em>') // Safely catch italics
-            cleanMd = cleanMd.replace(/(?<!\w)_(.*?)_(?!\w)/g, '<em>$1</em>') // Catch underscore italics
-            cleanMd = cleanMd.replace(/`([^`]+)`/g, '<code class="bg-actionHover px-1.5 py-0.5 rounded text-primary font-mono text-sm border border-divider">$1</code>')
+            cleanMd = cleanMd.replace(/(?<!\w)\*(.*?)\*(?!\w)/g, '<em>$1</em>')
+            cleanMd = cleanMd.replace(/(?<!\w)_(.*?)_(?!\w)/g, '<em>$1</em>')
+            cleanMd = cleanMd.replace(/`([^`]+)`/g, '<code style="background-color: rgba(38, 43, 67, 0.06); padding: 2px 6px; border-radius: 4px; color: #666CFF; font-family: monospace; font-size: 0.875rem; border: 1px solid rgba(38, 43, 67, 0.12);">$1</code>')
             cleanMd = cleanMd.replace(/~~(.*?)~~/g, '<s>$1</s>')
-
             // 🟢 CRITICAL FIX 2: Force double newlines around structural blocks before paragraph parsing.
             // If Tiptap sees <ul> inside <p>, it actively destroys the list structure!
             cleanMd = cleanMd.replace(/(<(ul|ol|table|blockquote|pre|hr|h[1-6]|img))/g, '\n\n$1')
