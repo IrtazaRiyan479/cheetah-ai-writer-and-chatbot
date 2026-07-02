@@ -286,6 +286,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
 
     sectionPrompt += `
       TASK: Write a comprehensive product review for "${product.productName}".
+      CRITICAL: Start writing directly from the review body paragraphs. Do NOT output a heading or title for the product, as the editor handles this automatically.
       ${experienceInstruction}
 
       PRODUCT CONTEXT (DO NOT INVENT PRICING):
