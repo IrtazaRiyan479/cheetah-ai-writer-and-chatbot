@@ -277,7 +277,12 @@ export async function generateAmazonRoundupSection(body, genAI) {
   }
 
   else if (activeSectionType === 'product') {
-    const product = formattedProducts.find(p => activeHeadingText.includes(p.productName) || p.productName.includes(activeHeadingText)) || formattedProducts[0];
+    const cleanHeading = activeHeadingText.replace(/^\d+\.\s*/, '').toLowerCase().trim();
+
+    const product = formattedProducts.find(p => {
+      const pName = p.productName.toLowerCase();
+      return cleanHeading.includes(pName) || pName.includes(cleanHeading);
+    }) || formattedProducts[0];
 
     sectionPrompt += `
       TASK: Write a comprehensive product review for "${product.productName}".
