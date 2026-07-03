@@ -143,6 +143,7 @@ export async function generateStandardBlogSection(body, genAI) {
     internalLinks,
     usedImageUrls = [],
     usedExternalLinks = [],
+    usedInternalLinks = [],
     settings = {}
   } = body;
 
@@ -172,15 +173,18 @@ export async function generateStandardBlogSection(body, genAI) {
     realTimeInstruction,
     seoInstruction,
     { mediaInstruction, assignedMediaElement, mediaUrl },
-    lsiData
+    lsiData,
+    { instruction: linkInstruction, selectedUrl: internalLinkUrl }
   ] = await Promise.all([
     getRealTimeInstruction(useRealTimeSearchData, realTimeDataSource, articleTitle, targetKeyword, heading),
     getSeoInstruction(seoOptimization, manualKeywords, targetKeyword),
     getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI, usedImageUrls),
-    fetchPeopleAlsoSearchFor(targetKeyword)
+    fetchPeopleAlsoSearchFor(targetKeyword),
+    getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
   ]);
-  let extLinkInstruction = getExternalLinkInstruction(externalLinks, usedExternalLinks);
-  let linkInstruction = getLinkInstruction(internalLinks);
+  let extLinkInstruction = settings.automaticExternalLinks
+    ? getExternalLinkInstruction(externalLinks, usedExternalLinks)
+    : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.';
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
   let povInstruction = getPovInstruction(pointOfView);
   let readabilityInstruction = getReadabilityInstruction(improveReadability);
@@ -231,7 +235,8 @@ export async function generateStandardBlogSection(body, genAI) {
       isDeepSearch: true,
       interactionId: interaction.id,
       mediaHtml: assignedMediaElement,
-      mediaUrl: mediaUrl
+      mediaUrl: mediaUrl,
+      internalLinkUrl: internalLinkUrl
     };
   }
 
@@ -270,6 +275,7 @@ export async function generateStandardBlogSection(body, genAI) {
     success: true,
     text: result.response.text(),
     mediaHtml: assignedMediaElement,
-    mediaUrl: mediaUrl
+    mediaUrl: mediaUrl,
+    internalLinkUrl: internalLinkUrl
   };
 }

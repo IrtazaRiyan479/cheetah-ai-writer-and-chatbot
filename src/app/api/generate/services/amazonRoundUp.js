@@ -180,6 +180,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
     pointOfView,
     toneOfVoice,
     usedExternalLinks = [],
+    usedInternalLinks = [],
   } = settings;
 
   const amazonApiData = await fetchInternalAmazonData(targetKeyword || articleTitle, settings);
@@ -207,8 +208,10 @@ export async function generateAmazonRoundupSection(body, genAI) {
   let linkInstruction = '';
   // let extLinkInstruction = '';
   if (activeSectionType === 'intro' || activeSectionType === 'buying_guide') {
-    linkInstruction = getLinkInstruction(internalLinks);
-    // let extLinkInstruction = getExternalLinkInstruction(externalLinks, usedExternalLinks);
+    linkInstruction = await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
+    // let extLinkInstruction = settings.automaticExternalLinks
+    ? getExternalLinkInstruction(externalLinks, usedExternalLinks)
+    : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.';
   }
 
   const experienceInstruction = enableFirstHandExperience
@@ -357,5 +360,5 @@ export async function generateAmazonRoundupSection(body, genAI) {
   }
 
 
-  return { success: true, text: result.response.text(), mediaHtml: null };
+  return { success: true, text: result.response.text(), mediaHtml: null, internalLinkUrl: internalLinkUrl };
 }

@@ -164,7 +164,7 @@ export async function generateYoutubeBlogSection(body, genAI) {
 
   const sectionModel = genAI.getGenerativeModel(modelConfig);
 
-  let linkInstruction = getLinkInstruction(internalLinks);
+  let linkInstruction = await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
   let seoInstruction = await getSeoInstruction(seoOptimization, manualKeywords, targetKeyword);
 
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
@@ -254,5 +254,5 @@ let sectionStructureRequirements = `
     }
   }
 
-  return { success: true, text: result.response.text()};
+  return { success: true, text: result.response.text(), internalLinkUrl: internalLinkUrl};
 }

@@ -248,10 +248,13 @@ export async function fetchBingTitles(query) {
 export async function fetchYouTubeVideo(query) {
   if (!process.env.YOUTUBE_API_KEY) return null;
   try {
-    const res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=1&key=${process.env.YOUTUBE_API_KEY}`);
+    const res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=5&key=${process.env.YOUTUBE_API_KEY}`);
     const data = await res.json();
     if (data.items && data.items.length > 0) {
-      return { id: data.items[0].id.videoId, title: data.items[0].snippet.title };
+      return data.items.map(item => ({
+        id: item.id.videoId,
+        title: item.snippet.title
+      }));
     }
   } catch (e) { console.error('YouTube Data API Error:', e); }
   return null;
@@ -432,12 +435,10 @@ export async function fetchSerperPlacesData(query, count = 10, countryCode = 'us
 
 export async function fetchYoutubeVideoData(url) {
   try {
-    // 1. Fetch Video Metadata via YouTube's public oEmbed API
     const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
     if (!oembedRes.ok) throw new Error('Invalid YouTube URL or private video.');
     const metadata = await oembedRes.json();
 
-    // 2. Fetch Transcript
     const transcriptArray = await YoutubeTranscript.fetchTranscript(url);
     const fullTranscript = transcriptArray.map(t => t.text).join(' ');
 
@@ -576,9 +577,12 @@ export async function getMediaInstruction(uploadedMedia, sectionIndex, aiImagesA
 
     } else {
       const smartYtQuery = await getSmartVideoQuery(articleTitle || targetKeyword, heading, genAI);
-      const ytVideo = await fetchYouTubeVideo(smartYtQuery);
-      if (ytVideo) {
+      const ytVideos = await fetchYouTubeVideo(smartYtQuery);
+      const availableVideos = ytVideos.filter(video => !usedImageUrls.includes(video.id));
+      if (availableVideos.length > 0) {
+        const ytVideo = availableVideos[0];
         selectedMediaUrl = ytVideo.id;
+
         assignedMediaElement = `\n\n<div data-youtube-video style="margin: 32px 0;"><iframe src="https://www.youtube.com/embed/${ytVideo.id}" title="${ytVideo.title}" style="width: 100%; aspect-ratio: 16/9; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: none; display: block; max-width: 100%;"></iframe></div>\n\n`;
       }
     }
@@ -626,9 +630,129 @@ export function getExternalLinkInstruction(externalLinks, usedExternalLinks = []
         return extLinkInstruction;
     }
 
-export function getLinkInstruction(internalLinks) {
-        const linkInstruction = internalLinks && internalLinks.length > 0
-        ? `\nCRITICAL INTERNAL LINKING: Naturally integrate 1 or 2 of the following URLs into your paragraphs using properly formatted Markdown links (e.g., [anchor text](URL)). URLs to use: ${internalLinks.join(', ')}. Do not force them if they don't fit perfectly.`
-        : '';
-        return linkInstruction;
+const sitemapCache = new Map();
+
+export async function getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks = []) {
+
+  const browserHeaders = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.5',
+  'Connection': 'keep-alive',
+};
+
+  if (!internalLinks || internalLinks.length === 0) return { instruction: '', selectedUrl: null };
+  const domain = internalLinks[0];
+  if (!domain) return { instruction: '', selectedUrl: null };
+
+  let cleanDomain = String(domain).replace(/^https?:\/\//, '').replace(/\/$/, '');
+  if (!cleanDomain.startsWith('www.')) cleanDomain = `www.${cleanDomain}`;
+
+  const homeUrl = `https://${cleanDomain}`;
+  let extractedUrls = [];
+
+  if (sitemapCache.has(cleanDomain)) {
+    extractedUrls = sitemapCache.get(cleanDomain);
+  } else {
+    const sitemapPaths = ['/sitemap_index.xml', '/sitemap.xml', '/wp-sitemap.xml'];
+    let sitemapFound = false;
+
+    for (const path of sitemapPaths) {
+      try {
+        const response = await fetch(`${homeUrl}${path}`, {
+          headers: browserHeaders,
+          signal: AbortSignal.timeout(6000)
+        });
+
+        if (response.ok) {
+          sitemapFound = true;
+          const xmlText = await response.text();
+          let matches = [...xmlText.matchAll(/<loc>(.*?)<\/loc>/g)];
+          extractedUrls = matches.map(m => m[1]);
+
+          const isSitemapIndex = extractedUrls.some(url => url.endsWith('.xml'));
+          if (isSitemapIndex) {
+            const subSitemaps = extractedUrls.filter(url =>
+              url.includes('post-sitemap') ||
+              url.includes('page-sitemap') ||
+              url.includes('wp-sitemap-posts')
+            );
+            extractedUrls = [];
+
+            for (const subMap of subSitemaps) {
+              const subResponse = await fetch(subMap, { headers: browserHeaders, signal: AbortSignal.timeout(6000) });
+              if (subResponse.ok) {
+                const subXmlText = await subResponse.text();
+                const subMatches = [...subXmlText.matchAll(/<loc>(.*?)<\/loc>/g)];
+                extractedUrls.push(...subMatches.map(m => m[1]));
+              }
+            }
+          }
+          break;
+        }
+      } catch (error) { continue; }
+    }
+
+    extractedUrls = extractedUrls.filter(url => {
+      if (!url) return false;
+      try {
+        const path = new URL(url).pathname;
+        return path.length > 1 && !url.endsWith('.xml') && !url.includes('/wp-content/uploads/');
+      } catch(e) { return false; }
+    });
+
+    extractedUrls = [...new Set(extractedUrls)].slice(0, 100);
+    sitemapCache.set(cleanDomain, extractedUrls);
+  }
+
+  let availableUrls = extractedUrls.filter(url => !usedInternalLinks.includes(url));
+
+  if (availableUrls.length === 0) {
+    if (!usedInternalLinks.includes(homeUrl)) {
+      availableUrls = [homeUrl];
+    } else if (!usedInternalLinks.includes(domain)) {
+      availableUrls = [domain];
+    } else {
+      return { instruction: '', selectedUrl: null };
+    }
+  }
+
+  let bestMatchUrl = availableUrls[0];
+
+  if (availableUrls.length > 1) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: 'gemini-3.1-flash-lite',
+        generationConfig: { responseMimeType: "application/json" }
+      });
+
+      const prompt = `You are an internal linking expert. Analyze these URLs and find the ONE that is most contextually relevant to this heading.
+      Heading: "${heading}"
+      Available URLs:
+      ${availableUrls.map(u => `- ${u}`).join('\n')}
+
+      Output strictly this JSON schema:
+      { "bestUrl": "The exact chosen URL from the list, or null if none are remotely relevant" }`;
+
+      const result = await model.generateContent(prompt);
+      const parsed = JSON.parse(result.response.text());
+
+      if (parsed.bestUrl && availableUrls.includes(parsed.bestUrl)) {
+        bestMatchUrl = parsed.bestUrl;
+      }
+    } catch (e) {
+      console.error('GenAI Link Matching Error, falling back to keyword logic:', e);
+      const cleanHeading = heading.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 3);
+      let maxScore = -1;
+      for (const url of availableUrls) {
+        let score = 0;
+        cleanHeading.forEach(word => { if (url.toLowerCase().includes(word)) score++; });
+        if (score > maxScore) { maxScore = score; bestMatchUrl = url; }
+      }
+    }
+  }
+
+  const instruction = `\nCRITICAL INTERNAL LINKING: Naturally integrate the following URL into your paragraph using properly formatted Markdown links (e.g., [anchor text](URL)). URL to use: ${bestMatchUrl}. Make the anchor text highly relevant to the context.`;
+
+  return { instruction, selectedUrl: bestMatchUrl };
 }

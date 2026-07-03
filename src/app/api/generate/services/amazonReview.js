@@ -184,6 +184,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     amazonProductData,
     externalLinks,
     internalLinks,
+    usedInternalLinks = [],
     usedExternalLinks = [],
   } = sectionData;
 
@@ -204,8 +205,8 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
   });
 
   let realTimeInstruction = await getRealTimeInstruction(settings.realTimeDataSource, articleTitle, heading, targetKeyword);
-  // let extLinkInstruction = getExternalLinkInstruction(externalLinks, usedExternalLinks);
-  let linkInstruction = getLinkInstruction(internalLinks);
+  // let extLinkInstruction = settings.automaticExternalLinks ? getExternalLinkInstruction(externalLinks, usedExternalLinks) : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.';
+  let linkInstruction = await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
   let seoInstruction = await getSeoInstruction(targetKeyword);
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
 
@@ -381,6 +382,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
   return {
     success: true,
     text: result.response.text(),
-    mediaHtml: null
+    mediaHtml: null,
+    internalLinkUrl: internalLinkUrl
   };
 }

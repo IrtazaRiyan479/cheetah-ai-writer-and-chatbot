@@ -554,6 +554,7 @@ useEffect(() => {
       let currentH2Group = null
 
       let trackedImages = [];
+      let trackedInternalLinks = [];
       if (settings.heroImage) {
         trackedImages.push(settings.heroImage);
       }
@@ -577,6 +578,10 @@ useEffect(() => {
 
         const group = groupedSections[i]
         setCurrentIndex(group.originalIndex)
+
+        const shouldGenerateMedia = (i === 0 && settings.heroImage)
+          ? false
+          : settings.aiImagesAndVideos;
 
 
         if (i!=0) {
@@ -606,7 +611,7 @@ useEffect(() => {
               internalLinks: allLinks,
               seoOptimization: settings.seoOptimization,
               manualKeywords: settings.manualKeywords,
-              aiImagesAndVideos: settings.aiImagesAndVideos,
+              aiImagesAndVideos: shouldGenerateMedia,
               sectionIndex: i,
               totalSections: groupedSections.length,
               toneOfVoice: settings.toneOfVoice,
@@ -622,7 +627,8 @@ useEffect(() => {
               articleTitle: settings.generatedTitle,
               improveReadability: settings.improveReadability,
               uploadedMedia: settings.uploadedMedia,
-              usedImageUrls: trackedImages
+              usedImageUrls: trackedImages,
+              usedInternalLinks: trackedInternalLinks
             })
           })
 
@@ -633,6 +639,10 @@ useEffect(() => {
 
             if (data.mediaUrl) {
               trackedImages.push(data.mediaUrl);
+            }
+
+            if (data.internalLinkUrl) {
+              trackedInternalLinks.push(data.internalLinkUrl);
             }
 
             // 🟢 NEW DEEP SEARCH POLLING LOGIC 🟢

@@ -138,6 +138,7 @@ export async function generateListicleSection(body, genAI) {
       externalLinks,
     internalLinks,
     usedImageUrls = [],
+    usedInternalLinks = [],
     usedExternalLinks = []
     } = body;
 
@@ -169,8 +170,10 @@ export async function generateListicleSection(body, genAI) {
   const sectionModel = genAI.getGenerativeModel(modelConfig);
 
   let realTimeInstruction = await getRealTimeInstruction(useRealTimeSearchData, realTimeDataSource, articleTitle, targetKeyword, heading);
-  let extLinkInstruction = getExternalLinkInstruction(externalLinks, usedExternalLinks);
-  let linkInstruction = getLinkInstruction(internalLinks);
+  let extLinkInstruction = settings.automaticExternalLinks
+    ? getExternalLinkInstruction(externalLinks, usedExternalLinks)
+    : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.';
+  let linkInstruction = await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
   let seoInstruction = await getSeoInstruction(seoOptimization, manualKeywords, targetKeyword);
   let { mediaInstruction, assignedMediaElement, mediaUrl } = await getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI, usedImageUrls);
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
@@ -249,5 +252,5 @@ export async function generateListicleSection(body, genAI) {
     }
   }
 
-      return { success: true, text: result.response.text(), mediaHtml: assignedMediaElement, mediaUrl: mediaUrl}
+      return { success: true, text: result.response.text(), mediaHtml: assignedMediaElement, mediaUrl: mediaUrl, internalLinkUrl: internalLinkUrl}
 }
