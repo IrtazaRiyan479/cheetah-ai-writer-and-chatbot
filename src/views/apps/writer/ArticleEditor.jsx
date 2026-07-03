@@ -699,7 +699,7 @@ useEffect(() => {
             }
 
             // 🟢 1. THE DEFINITIVE MARKDOWN PARSER
-            let cleanMd = finalSectionText.replace(/^##?\s+.*$/gm, '').trim();
+            let cleanMd = finalSectionText.replace(/^##\s+.*$/gm, '').trim();
 
             // A. CODE BLOCKS (Must happen first! Escape HTML so Tiptap doesn't execute it)
            cleanMd = cleanMd.replace(/```[a-zA-Z]*\n([\s\S]*?)```/g, (match, code) => {

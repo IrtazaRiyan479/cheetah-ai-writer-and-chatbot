@@ -12,12 +12,11 @@ import OutlineEditor from '@views/apps/writer/OutlineEditor'
 import ArticleEditor from '@views/apps/writer/ArticleEditor'
 
 const defaultSettings = {
-  // Existing Base Fields
   model: 'gemini-3.1-flash-lite',
   type: 'blog',
   targetKeyword: '',
   internalLinking: [],
-  customInternalLink: '', //
+  customInternalLink: '',
   seoOptimization: 'default',
   aiImagesAndVideos: 'none',
   articleLength: 'default',
@@ -25,7 +24,7 @@ const defaultSettings = {
   language: 'en',
   country: 'US',
   pointOfView: 'third',
-  automaticExternalLinks: true,
+  automaticExternalLinks: false,
   citeSources: false,
   useRealTimeSearchData: false,
   realTimeDataSource: 'search',
@@ -50,18 +49,18 @@ const defaultSettings = {
   listNumberingFormat: '1.',
 
   // Toggles
-  useOutlineEditor: true,
+  useOutlineEditor: false,
   enableFirstHandExperience: false,
   enableCondensedMode: false,
   enableSupplementalInformation: false,
   enableAutoLength: false,
   useDescendingOrder: false,
-  enableRewriting: true,
+  enableRewriting: false,
   includeExternalLinks: false,
   enableCaptionRewriting: false,
 
   // --- LOCAL ROUNDUP SPECIFIC FIELDS ---
-  generateUniqueMapImages: true,
+  generateUniqueMapImages: false,
   manualKeywords: '',
   customArticleLength: 5,
   customToneOfVoice: '',
@@ -176,7 +175,13 @@ const AffiGenieWriter = () => {
         <Grid size={{ xs: 12 }}>
           <ArticleTypeMenu
             selectedType={settings.type}
-            setSelectedType={(val) => updateSetting('type', val)}
+            setSelectedType={(val) => {
+      setSettings((prev) => ({
+        ...defaultSettings,
+        model: prev.model,
+        type: val
+      }))
+    }}
           />
         </Grid>
 
