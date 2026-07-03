@@ -164,7 +164,7 @@ export async function generateYoutubeBlogSection(body, genAI) {
 
   const sectionModel = genAI.getGenerativeModel(modelConfig);
 
-  let linkInstruction = await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
+  let { instruction: linkInstruction, selectedUrl: internalLinkUrl }= await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
   let seoInstruction = await getSeoInstruction(seoOptimization, manualKeywords, targetKeyword);
 
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);

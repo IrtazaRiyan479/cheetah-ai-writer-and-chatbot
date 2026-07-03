@@ -49,7 +49,7 @@ function formatAmazonProducts(apiData, settings) {
   return limitedProducts.map(item => {
     const title = item?.itemInfo?.title?.displayValue || 'Amazon Product';
     let affiliateUrl = new URL(item?.detailPageURL || `https://${settings.amazonDomain || 'www.amazon.com'}/dp/${item.asin}?tag=${process.env.AMAZON_PARTNER_TAG}`);
-    affiliateUrl.searchParams.set('tag', settings.amazonTrackingId);
+    if (settings.amazonTrackingId) affiliateUrl.searchParams.set('tag', settings.amazonTrackingId);
     let imageUrl = item?.images?.primary?.large?.url || '';
     imageUrl = imageUrl.replace(/\._[A-Za-z0-9_]+_\./, '.');
     const price = item?.offersV2?.listings?.[0]?.price?.money?.displayAmount || 'Check Price on Amazon';
@@ -205,13 +205,11 @@ export async function generateAmazonRoundupSection(body, genAI) {
   const readabilityInstruction = getReadabilityInstruction(improveReadability);
   const seoInstruction = await getSeoInstruction(targetKeyword);
 
-  let linkInstruction = '';
+  let { instruction: linkInstruction, selectedUrl: internalLinkUrl }= '';
   // let extLinkInstruction = '';
   if (activeSectionType === 'intro' || activeSectionType === 'buying_guide') {
     linkInstruction = await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
-    // let extLinkInstruction = settings.automaticExternalLinks
-    ? getExternalLinkInstruction(externalLinks, usedExternalLinks)
-    : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.';
+    // let extLinkInstruction = settings.automaticExternalLinks ? getExternalLinkInstruction(externalLinks, usedExternalLinks) : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.';
   }
 
   const experienceInstruction = enableFirstHandExperience
@@ -262,7 +260,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
     <strong>${safeTitle}</strong>
   </td>
   <td style="padding: 16px; border-bottom: 1px solid rgba(38, 43, 67, 0.08); vertical-align: middle; text-align: center;">
-    <a href="${p.amazonUrl}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 10px 24px; border-radius: 9999px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); border: 1px solid #4f46e5; letter-spacing: 0.025em; white-space: nowrap;">Check Price</a>
+    <a href="${p.amazonUrl}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 10px 24px; border-radius: 9999px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); border: 1px solid #4f46e5; letter-spacing: 0.025em; white-space: nowrap;" class="cta-button">Check Price</a>
   </td>
 </tr>`;
     }).join('');
@@ -308,7 +306,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
       5. **Real Buyer Opinions:** A brief summary of what real buyers think. CRITICAL: You must synthesize this summary directly from the "Official Features" provided above. Frame the feedback around how buyers react to those specific attributes (e.g., if a feature highlights 'lightweight design', mention how users praise its portability).
       6. **CTA Button:** Insert this EXACT HTML for the affiliate button:
                 <div style="display: block; width: 100%; text-align: center; margin: 25px 0;">
-  <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 12px 28px; border-radius: 9999px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); border: 1px solid #4f46e5; letter-spacing: 0.025em; text-align: center; vertical-align: middle;">Check Price</a>
+  <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 12px 28px; border-radius: 9999px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); border: 1px solid #4f46e5; letter-spacing: 0.025em; text-align: center; vertical-align: middle;" class="cta-button">Check Price</a>
 </div>
     `;
   }

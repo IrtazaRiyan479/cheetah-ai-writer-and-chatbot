@@ -48,7 +48,7 @@ function formatAmazonProducts(apiData, settings) {
   return rawData.map(item => {
     const ASIN = item.asin || '';
     let affiliateUrl =  new URL(item.detailPageURL || `https://${settings.amazonDomain || 'www.amazon.com'}/dp/${ASIN}?tag='babiescarrier-20'}&linkCode=osi&th=1&psc=1`);
-    affiliateUrl.searchParams.set('tag', settings.amazonTrackingId);
+    if (settings.amazonTrackingId) affiliateUrl.searchParams.set('tag', settings.amazonTrackingId);
     return {
       productName: item.itemInfo?.title?.displayValue || 'Amazon Product',
       amazonUrl: affiliateUrl.toString(),
@@ -206,7 +206,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
 
   let realTimeInstruction = await getRealTimeInstruction(settings.realTimeDataSource, articleTitle, heading, targetKeyword);
   // let extLinkInstruction = settings.automaticExternalLinks ? getExternalLinkInstruction(externalLinks, usedExternalLinks) : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.';
-  let linkInstruction = await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
+  let { instruction: linkInstruction, selectedUrl: internalLinkUrl }= await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
   let seoInstruction = await getSeoInstruction(targetKeyword);
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
 
@@ -313,7 +313,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
       STRICT LAYOUT REQUIREMENT (Image & CTA):
       Immediately following your introductory text, you MUST insert this EXACT HTML block to display link:
       <div align="center" style="margin: 25px 0;">
-        <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 8px 16px; border-radius: 4px; display: inline-block;">Check Price on Amazon</a>
+        <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 8px 16px; border-radius: 4px; display: inline-block;" class="cta-button">Check Price on Amazon</a>
       </div>
     `;
   }
@@ -330,7 +330,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
       At the very end of your conclusion, insert this EXACT HTML block:
 
       <div align="center" style="margin: 25px 0;">
-       <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 8px 16px; border-radius: 4px; display: inline-block;">Check Price on Amazon</a>
+       <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 8px 16px; border-radius: 4px; display: inline-block;" class="cta-button">Check Price on Amazon</a>
       </div>
     `;
   }
