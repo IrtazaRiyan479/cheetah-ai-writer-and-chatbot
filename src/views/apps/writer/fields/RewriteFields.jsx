@@ -172,15 +172,15 @@ const RewriteFields = ({ settings, updateSetting }) => {
         />
       )}
     </Grid>
-     <Grid size={{ xs: 12, sm: 6 }}>
-          <Typography variant='subtitle2' className='font-medium mbe-1'>Royalty Free Images & Youtube Videos</Typography>
+     <Grid size={{ xs: 12, sm: settings.aiImagesAndVideos === 'auto' ? 4 : 6 }}>
+          <Typography variant='subtitle2' className='font-medium mbe-1'>Royalty Free Images & YouTube Videos</Typography>
           <FormControl fullWidth size='small' className={settings.aiImagesAndVideos.startsWith('upload') ? 'mbe-3' : ''}>
             <Select
               value={settings.aiImagesAndVideos}
               onChange={(e) => updateSetting('aiImagesAndVideos', e.target.value)}
             >
               <MenuItem value='none'>None</MenuItem>
-              <MenuItem value='auto'>Royalty Free Images</MenuItem>
+              <MenuItem value='auto'>Royalty Free Images & Videos</MenuItem>
               <MenuItem disabled>──────────</MenuItem>
               <MenuItem value='upload-images'>Upload Custom Images</MenuItem>
               {/* <MenuItem value='upload-videos'>Upload Custom Videos</MenuItem>
@@ -188,6 +188,23 @@ const RewriteFields = ({ settings, updateSetting }) => {
             </Select>
           </FormControl>
         </Grid>
+
+        {settings.aiImagesAndVideos === 'auto' && (
+  <Grid size={{ xs: 12, sm: 2 }}>
+    <Typography variant='subtitle2' className='font-medium mbe-1'>
+      YT Video Limit
+    </Typography>
+    <TextField
+      fullWidth
+      type="number"
+      size='small'
+      placeholder="No limit"
+      value={settings.numberOfYoutubeVideos || ''}
+      onChange={(e) => updateSetting('numberOfYoutubeVideos', e.target.value)}
+    />
+  </Grid>
+)}
+
    <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Tone of Voice</Typography>
       <FormControl fullWidth size='small' className={settings.toneOfVoice === 'custom' ? 'mbe-3' : ''}>

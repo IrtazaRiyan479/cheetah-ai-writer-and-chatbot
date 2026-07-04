@@ -8,8 +8,9 @@ import {
   getSeoInstruction,
   getPovInstruction,
   getToneInstruction,
-  getBaseSystemInstruction
- ,fetchPeopleAlsoSearchFor } from '../utils/helpers'
+  getBaseSystemInstruction,
+  fetchPeopleAlsoSearchFor
+} from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 
@@ -72,7 +73,8 @@ export async function generateAmazonReviewOutline(body, genAI) {
     country,
     condensedMode,
     enableFirstHandExperience,
-    includeFaq
+    includeFaq,
+    automaticExternalLinks,
   } = settings;
 
   const langObj = languages ? languages[language] : null;
@@ -94,6 +96,31 @@ export async function generateAmazonReviewOutline(body, genAI) {
   }
 
   const activeKeyword = targetKeyword || product.productName;
+
+  let fetchedExternalLinks = [];
+  let faqInstruction = '';
+  let relatedInstruction = '';
+
+  if (automaticExternalLinks || includeFaq) {
+      const outlineData = await fetchSerperOutlineData(targetKeyword);
+
+      if (automaticExternalLinks) {
+        fetchedExternalLinks = outlineData.authorityLinks;
+      }
+
+      if (includeFaq) {
+          if (outlineData.faqs.length > 0) {
+            faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled exactly "Frequently Asked Questions". Under this H2, you MUST nest exactly these questions directly from Google as H3 subheadings:\n${outlineData.faqs.slice(0, 5).map(q => `- ${q}`).join('\n')}`;
+          } else {
+            faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled "Frequently Asked Questions" and nest 3-5 highly relevant questions as H3 subheadings.`;
+          }
+      }
+
+
+      if (outlineData.related.length > 0) {
+          relatedInstruction = `\nSEO OPTIMIZATION: Naturally incorporate topics from these related Google searches into your H2 and H3 headings where relevant: ${outlineData.related.slice(0, 5).join(', ')}.`;
+      }
+    }
 
   const outlineModel = genAI.getGenerativeModel({
     model: model || 'gemini-3.1-flash-lite',
@@ -124,12 +151,6 @@ export async function generateAmazonReviewOutline(body, genAI) {
     `;
   }
 
-  if (includeFaq) {
-    outlineStructure += `
-      - Include an FAQ section with 3 to 4 commonly asked questions about the product formatted as H3s under an "FAQ" H2.
-    `;
-  }
-
   const outlinePrompt = `Create an Amazon Single-Product Review Outline for: ${prompt || targetKeyword}\n\nIMPORTANT STRUCTURE RULES:\n${outlineStructure}
   CRITICAL STRUCTURE & SCHEMA REQUIREMENTS:
     You are writing an outline for a single product review.
@@ -151,7 +172,8 @@ export async function generateAmazonReviewOutline(body, genAI) {
     2. Next, create 2 or 3 feature-focused headings (type: h2).
     3. Include a "pros_cons" section (type: h2).
     4. Include a "conclusion" (type: h2).
-    ${includeFaq ? '5. The final item MUST be an "faq" (type: h2).' : ''}`;
+    5. ${faqInstruction}}
+    6- ${relatedInstruction}`;
 
   const result = await outlineModel.generateContent(outlinePrompt);
   const parsedData = JSON.parse(result.response.text());
@@ -166,7 +188,8 @@ export async function generateAmazonReviewOutline(body, genAI) {
     outline: parsedData.outline,
     metaTitle: parsedData.metaTitle,
     metaDescription: parsedData.metaDescription,
-    heroImage: product?.imageUrl || ''
+    heroImage: product?.imageUrl || '',
+    externalLinks: fetchedExternalLinks,
   };
 }
 
@@ -197,7 +220,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     toneOfVoice,
     customToneOfVoice,
     pointOfView,
-    improveReadability,
+    improveReadability
   } = settings;
 
   const sectionModel = genAI.getGenerativeModel({
@@ -205,7 +228,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
   });
 
   let realTimeInstruction = await getRealTimeInstruction(settings.realTimeDataSource, articleTitle, heading, targetKeyword);
-  // let extLinkInstruction = settings.automaticExternalLinks ? getExternalLinkInstruction(externalLinks, usedExternalLinks) : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.';
+  let extLinkInstruction = settings.automaticExternalLinks ? getExternalLinkInstruction(externalLinks, usedExternalLinks) : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.';
   let { instruction: linkInstruction, selectedUrl: internalLinkUrl }= await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
   let seoInstruction = await getSeoInstruction(targetKeyword);
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
@@ -289,6 +312,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     ${sectionStructureRequirements}
     ${realTimeInstruction}
     ${linkInstruction}
+    ${extLinkInstruction}
     ${seoInstruction}
     ${toneInstruction}
     ${povInstruction}
@@ -363,13 +387,15 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
 
       const errorMessage = error.message ? error.message.toLowerCase() : '';
 
+      const isTypeError = error.name === 'TypeError' || errorMessage.includes('typeerror');
+
       const is503 = error.status === 503 || errorMessage.includes('503');
 
       const isFetchFailed = errorMessage.includes('fetch failed') ||
                             errorMessage.includes('econnreset') ||
                             errorMessage.includes('etimedout');
 
-      if (is503 || isFetchFailed) {
+      if (is503 || isFetchFailed || isTypeError) {
         console.warn(`[Gemini API] Transient Error (${is503 ? '503' : 'Fetch Failed'}). Retrying in ${delay / 1000} seconds... (Attempt ${i + 1} of ${retries})`);
         await new Promise(res => setTimeout(res, delay));
         delay *= 2;

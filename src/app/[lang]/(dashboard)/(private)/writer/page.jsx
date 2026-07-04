@@ -33,6 +33,7 @@ const defaultSettings = {
   includeKeyTakeaways: false,
   improveReadability: false,
   generatedTitle: '',
+  numberOfYoutubeVideos: '',
 
   // Text Inputs
   amazonProductUrl: '',

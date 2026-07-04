@@ -6,9 +6,14 @@ import {
   getPovInstruction,
   getToneInstruction,
   getBaseSystemInstruction,
-  fetchUnsplashImage, fetchPexelsImage, fetchPixabayImage, calculateRelevanceScore
- ,fetchPeopleAlsoSearchFor,
- generateFallbackImage} from '../utils/helpers';
+  fetchUnsplashImage,
+  fetchPexelsImage,
+  fetchPixabayImage,
+  calculateRelevanceScore,
+  fetchPeopleAlsoSearchFor,
+  generateFallbackImage,
+  fetchSerperOutlineData
+} from '../utils/helpers';
 import { languages } from '@/configs/languages';
 import { countries } from '@/configs/countries';
 
@@ -67,7 +72,7 @@ function formatAmazonProducts(apiData, settings) {
 
 export async function generateAmazonRoundupOutline(body, genAI) {
   const { settings, targetKeyword } = body;
-  const { model, language, country, includeFaq } = settings;
+  const { model, language, country, includeFaq, automaticExternalLinks } = settings;
 
   const amazonApiData = await fetchInternalAmazonData(targetKeyword, settings);
   const formattedProducts = formatAmazonProducts(amazonApiData, settings);
@@ -85,6 +90,31 @@ export async function generateAmazonRoundupOutline(body, genAI) {
   const productListString = formattedProducts.map((p, index) =>
     `${index + 1}. ${p.productName}\n   URL: ${p.amazonUrl}\n   Image: ${p.imageUrl}\n   Price: ${p.price}`
   ).join('\n\n');
+
+  let fetchedExternalLinks = [];
+  let faqInstruction = '';
+  let relatedInstruction = '';
+
+  if (automaticExternalLinks || includeFaq) {
+      const outlineData = await fetchSerperOutlineData(targetKeyword);
+
+      if (automaticExternalLinks) {
+        fetchedExternalLinks = outlineData.authorityLinks;
+      }
+
+      if (includeFaq) {
+          if (outlineData.faqs.length > 0) {
+            faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled exactly "Frequently Asked Questions". Under this H2, you MUST nest exactly these questions directly from Google as H3 subheadings:\n${outlineData.faqs.slice(0, 5).map(q => `- ${q}`).join('\n')}`;
+          } else {
+            faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled "Frequently Asked Questions" and nest 3-5 highly relevant questions as H3 subheadings.`;
+          }
+      }
+
+
+      if (outlineData.related.length > 0) {
+          relatedInstruction = `\nSEO OPTIMIZATION: Naturally incorporate topics from these related Google searches into your H2 and H3 headings where relevant: ${outlineData.related.slice(0, 5).join(', ')}.`;
+      }
+    }
 
   const outlineModel = genAI.getGenerativeModel({
     model: model || 'gemini-3.1-flash-lite',
@@ -108,7 +138,8 @@ export async function generateAmazonRoundupOutline(body, genAI) {
     ${productListString}
     3. Include a "buying_guide" (type: h2) after the product reviews.
     4. Include a "conclusion" (type: h2).
-    ${includeFaq ? '5. The final item MUST be an "faq" (type: h2).' : ''}
+    5. ${faqInstruction}
+    6. ${relatedInstruction}
   `;
 
   const result = await outlineModel.generateContent(outlinePrompt);
@@ -165,22 +196,20 @@ export async function generateAmazonRoundupOutline(body, genAI) {
   outline: parsedData.outline,
   metaTitle: parsedData.metaTitle,
   metaDescription: parsedData.metaDescription,
-  externalLinks: parsedData.externalLinks || [],
+  externalLinks: fetchedExternalLinks,
   heroImage: heroImageUrl
 };
 }
 
 export async function generateAmazonRoundupSection(body, genAI) {
-  const { heading, text, section = {}, articleTitle, outlineContext, settings = {}, targetKeyword, internalLinks, externalLinks } = body;
+  const { heading, text, section = {}, articleTitle, outlineContext, settings = {}, targetKeyword, internalLinks, externalLinks, usedExternalLinks = [], usedInternalLinks = [] } = body;
 
   const {
     model,
     enableFirstHandExperience,
     improveReadability,
     pointOfView,
-    toneOfVoice,
-    usedExternalLinks = [],
-    usedInternalLinks = [],
+    toneOfVoice
   } = settings;
 
   const amazonApiData = await fetchInternalAmazonData(targetKeyword || articleTitle, settings);
@@ -206,10 +235,10 @@ export async function generateAmazonRoundupSection(body, genAI) {
   const seoInstruction = await getSeoInstruction(targetKeyword);
 
   let { instruction: linkInstruction, selectedUrl: internalLinkUrl }= '';
-  // let extLinkInstruction = '';
+  let extLinkInstruction = '';
   if (activeSectionType === 'intro' || activeSectionType === 'buying_guide') {
     linkInstruction = await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
-    // let extLinkInstruction = settings.automaticExternalLinks ? getExternalLinkInstruction(externalLinks, usedExternalLinks) : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.';
+    extLinkInstruction = settings.automaticExternalLinks ? getExternalLinkInstruction(externalLinks, usedExternalLinks) : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.';
   }
 
   const experienceInstruction = enableFirstHandExperience
@@ -243,6 +272,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
     ${povInstruction}
     ${readabilityInstruction}
     ${linkInstruction}
+    ${extLinkInstruction}
     ${keywordSEOInstructions}
   `;
 
@@ -341,13 +371,15 @@ export async function generateAmazonRoundupSection(body, genAI) {
 
       const errorMessage = error.message ? error.message.toLowerCase() : '';
 
+const isTypeError = error.name === 'TypeError' || errorMessage.includes('typeerror');
+
       const is503 = error.status === 503 || errorMessage.includes('503');
 
       const isFetchFailed = errorMessage.includes('fetch failed') ||
                             errorMessage.includes('econnreset') ||
                             errorMessage.includes('etimedout');
 
-      if (is503 || isFetchFailed) {
+      if (is503 || isFetchFailed || isTypeError) {
         console.warn(`[Gemini API] Transient Error (${is503 ? '503' : 'Fetch Failed'}). Retrying in ${delay / 1000} seconds... (Attempt ${i + 1} of ${retries})`);
         await new Promise(res => setTimeout(res, delay));
         delay *= 2;

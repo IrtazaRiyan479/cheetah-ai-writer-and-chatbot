@@ -237,6 +237,15 @@ const AmazonRoundupFields = ({ settings, updateSetting }) => {
      {/* REAL-TIME DATA & EXTERNAL LINKS */}
 
       <FormControlLabel control={<Switch checked={settings.enableFirstHandExperience} onChange={(e) => updateSetting('enableFirstHandExperience', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable First-Hand Experience</Typography>} />
+      <Grid size={{ xs: 12, sm: 12 }}>
+                  <FormControlLabel
+                    control={<Switch checked={settings.automaticExternalLinks} onChange={(e) => updateSetting('automaticExternalLinks', e.target.checked)} />}
+                    label={<Typography className='font-medium text-textPrimary'>Automatic External Links</Typography>}
+                  />
+                  <Typography variant='caption' color='text.secondary' className='ml-[42px] -mt-1 block mbe-2'>
+                    Finds and embeds highly relevant, authoritative outbound links via Google Search.
+                  </Typography>
+                </Grid>
       <FormControlLabel control={<Switch checked={settings.useOutlineEditor} onChange={(e) => updateSetting('useOutlineEditor', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Outline Editor</Typography>} />
       <FormControlLabel control={<Switch checked={settings.includeFaq} onChange={(e) => updateSetting('includeFaq', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Include FAQ Section</Typography>} />
       <FormControlLabel control={<Switch checked={settings.improveReadability} onChange={(e) => updateSetting('improveReadability', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Improve Readability</Typography>} />

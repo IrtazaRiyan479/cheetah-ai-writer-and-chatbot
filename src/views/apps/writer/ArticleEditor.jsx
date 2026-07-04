@@ -404,6 +404,22 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
     }
 
     let finalContent = editor?.getHTML() || '';
+
+    if (typeof window !== 'undefined') {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = finalContent;
+
+      tempDiv.querySelectorAll('li > p').forEach(p => {
+        const parent = p.parentNode;
+        while (p.firstChild) {
+          parent.insertBefore(p.firstChild, p);
+        }
+        parent.removeChild(p);
+      });
+
+      finalContent = tempDiv.innerHTML;
+    }
+
     let finalHeroImage = heroImageUrl;
 
    if (!finalHeroImage) {

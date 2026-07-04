@@ -260,6 +260,19 @@ export async function fetchYouTubeVideo(query) {
   return null;
 }
 
+export async function isYouTubeVideoAvailable(url) {
+  try {
+
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    const res = await fetch(oembedUrl);
+
+    return res.ok;
+  } catch (error) {
+    console.error('Error verifying YouTube URL:', error);
+    return false;
+  }
+}
+
 async function getSmartVideoQuery(topic, heading, genAI) {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
@@ -509,7 +522,7 @@ export async function getSeoInstruction(seoOptimization, manualKeywords, targetK
       return seoInstruction;
 }
 
-export async function getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI, usedImageUrls = []) {
+export async function getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI, usedImageUrls = [], settings) {
   let mediaInstruction = '';
   let assignedMediaElement = null;
   let selectedMediaUrl = null;
@@ -576,14 +589,28 @@ export async function getMediaInstruction(uploadedMedia, sectionIndex, aiImagesA
       assignedMediaElement = `\n\n<img src="${bestImage.url}" alt="${bestImage.alt}" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;" />\n\n`;
 
     } else {
-      const smartYtQuery = await getSmartVideoQuery(articleTitle || targetKeyword, heading, genAI);
-      const ytVideos = await fetchYouTubeVideo(smartYtQuery);
-      const availableVideos = ytVideos.filter(video => !usedImageUrls.includes(video.id));
-      if (availableVideos.length > 0) {
-        const ytVideo = availableVideos[0];
-        selectedMediaUrl = ytVideo.id;
+      const limitValue = parseInt(settings.numberOfYoutubeVideos);
+      const hasLimit = !isNaN(limitValue) && settings.numberOfYoutubeVideos.trim() !== '';
 
-        assignedMediaElement = `\n\n<div data-youtube-video style="margin: 32px 0;"><iframe src="https://www.youtube.com/embed/${ytVideo.id}" title="${ytVideo.title}" style="width: 100%; aspect-ratio: 16/9; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: none; display: block; max-width: 100%;"></iframe></div>\n\n`;
+      const currentYtCount = usedImageUrls.filter(url => !url.startsWith('http')).length;
+
+      if (!hasLimit || currentYtCount < limitValue) {
+        const smartYtQuery = await getSmartVideoQuery(articleTitle || targetKeyword, heading, genAI);
+        const ytVideos = await fetchYouTubeVideo(smartYtQuery);
+
+        const availableVideos = ytVideos.filter(video => !usedImageUrls.includes(video.id));
+
+        for (const ytVideo of availableVideos) {
+          const videoUrl = `https://www.youtube.com/watch?v=${ytVideo.id}`;
+          const isAvailable = await isYouTubeVideoAvailable(videoUrl);
+
+          if (isAvailable) {
+            selectedMediaUrl = ytVideo.id;
+            assignedMediaElement = `\n\n<div data-youtube-video style="margin: 32px 0;"><iframe src="https://www.youtube.com/embed/${ytVideo.id}" title="${ytVideo.title}" style="width: 100%; aspect-ratio: 16/9; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: none; display: block; max-width: 100%;"></iframe></div>\n\n`;
+
+            break;
+          }
+        }
       }
     }
     mediaInstruction = `\n[NOTE: A contextual image or video is placed at the end of this section. DO NOT attempt to generate image/video tags yourself.]`;

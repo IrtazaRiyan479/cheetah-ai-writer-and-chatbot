@@ -200,7 +200,7 @@ export async function generateLocalRoundupSection(body, genAI) {
     : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.';
     let { instruction: linkInstruction, selectedUrl: internalLinkUrl }= await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
     let seoInstruction = await getSeoInstruction(seoOptimization, manualKeywords, targetKeyword);
-    let { mediaInstruction, assignedMediaElement, mediaUrl } = await getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI, usedImageUrls);
+    let { mediaInstruction, assignedMediaElement, mediaUrl } = await getMediaInstruction(uploadedMedia, sectionIndex, aiImagesAndVideos, articleTitle, targetKeyword, heading, genAI, usedImageUrls, settings);
     let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
     let povInstruction = getPovInstruction(pointOfView);
     let readabilityInstruction = getReadabilityInstruction(improveReadability);
@@ -302,13 +302,15 @@ export async function generateLocalRoundupSection(body, genAI) {
 
       const errorMessage = error.message ? error.message.toLowerCase() : '';
 
+const isTypeError = error.name === 'TypeError' || errorMessage.includes('typeerror');
+
       const is503 = error.status === 503 || errorMessage.includes('503');
 
       const isFetchFailed = errorMessage.includes('fetch failed') ||
                             errorMessage.includes('econnreset') ||
                             errorMessage.includes('etimedout');
 
-      if (is503 || isFetchFailed) {
+      if (is503 || isFetchFailed || isTypeError) {
         console.warn(`[Gemini API] Transient Error (${is503 ? '503' : 'Fetch Failed'}). Retrying in ${delay / 1000} seconds... (Attempt ${i + 1} of ${retries})`);
         await new Promise(res => setTimeout(res, delay));
         delay *= 2;
