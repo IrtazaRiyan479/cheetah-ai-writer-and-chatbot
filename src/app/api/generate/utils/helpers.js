@@ -594,7 +594,7 @@ export async function getMediaInstruction(uploadedMedia, sectionIndex, aiImagesA
 
       const currentYtCount = usedImageUrls.filter(url => !url.startsWith('http')).length;
 
-      if (!hasLimit || currentYtCount < limitValue) {
+      if (!hasLimit || currentYtCount <= limitValue) {
         const smartYtQuery = await getSmartVideoQuery(articleTitle || targetKeyword, heading, genAI);
         const ytVideos = await fetchYouTubeVideo(smartYtQuery);
 

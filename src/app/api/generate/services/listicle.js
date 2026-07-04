@@ -106,7 +106,7 @@ export async function generateListicleOutline(body, genAI) {
     try { const fallbackImage =  await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
     if (fallbackImage && fallbackImage.url) {
       heroImageUrl = fallbackImage.url;
-      console.log(`[Hero Image] AI Fallback successful: ${heroImageUrl}`);
+
     } } catch(error) {
       heroImageUrl = safetyBackup;
       console.log(`[Hero Image] AI Fallback failed to generate a URL.`);
