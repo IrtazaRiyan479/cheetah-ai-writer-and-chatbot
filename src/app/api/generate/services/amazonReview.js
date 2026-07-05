@@ -20,9 +20,6 @@ function extractASIN(url) {
   return match ? match[1] : null;
 }
 
-/**
- * Internal Fetcher: Hits your existing route.js
- */
 async function fetchInternalAmazonData(keyword, settings) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
   const response = await fetch(`${baseUrl}/api/amazon`, {
@@ -39,9 +36,6 @@ async function fetchInternalAmazonData(keyword, settings) {
   return await response.json();
 }
 
-/**
- * Formatter: Cleans the data so the AI can read it perfectly
- */
 function formatAmazonProducts(apiData, settings) {
   const rawData = apiData?.data?.searchResult?.items || [];
   if (!rawData.length) return [];
@@ -60,9 +54,6 @@ function formatAmazonProducts(apiData, settings) {
   });
 }
 
-// ============================================================================
-// 1. GENERATE THE OUTLINE
-// ============================================================================
 export async function generateAmazonReviewOutline(body, genAI) {
   const { prompt, settings } = body;
   const {
@@ -193,9 +184,6 @@ export async function generateAmazonReviewOutline(body, genAI) {
   };
 }
 
-// ============================================================================
-// 2. GENERATE THE SECTION CONTENT
-// ============================================================================
 export async function generateAmazonReviewSection(sectionData, genAI) {
   const {
     heading,
@@ -329,7 +317,6 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
   }
 
 
-  // --- RENDER SECTIONS SAFELY ---
   if (activeSectionType === 'intro') {
     sectionPrompt += `
       TASK: Write a highly engaging introduction.

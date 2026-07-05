@@ -3,7 +3,6 @@ import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
-// GET: Fetch all presets
 export async function GET() {
   try {
     const presets = await prisma.preset.findMany({ orderBy: { createdAt: 'asc' } })
@@ -13,7 +12,6 @@ export async function GET() {
   }
 }
 
-// POST: Create a new preset
 export async function POST(request) {
   try {
     const { name, settings } = await request.json()
@@ -26,7 +24,6 @@ export async function POST(request) {
   }
 }
 
-// PUT: Update an existing preset
 export async function PUT(request) {
   try {
     const { id, settings } = await request.json()
@@ -40,7 +37,6 @@ export async function PUT(request) {
   }
 }
 
-// DELETE: Remove a preset
 export async function DELETE(request) {
   try {
     const { id } = await request.json()

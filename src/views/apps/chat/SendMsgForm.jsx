@@ -53,7 +53,6 @@ const SendMsgForm = ({ handleSendMessage, isTyping, isBelowSmScreen, messageInpu
       />
 
       <div className='flex items-center gap-2'>
-        {/* Restored UI Options */}
         <IconButton size='small' className='text-textPrimary'>
           <i className='ri-mic-line' />
         </IconButton>

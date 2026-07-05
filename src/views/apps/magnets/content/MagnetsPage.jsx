@@ -30,20 +30,16 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import ReactMarkdown from 'react-markdown';
 
 const MagnetsPage = () => {
-  // Magnet Builder State
   const [prompt, setPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedMagnet, setGeneratedMagnet] = useState(null)
 
-  // Magnet Execution State
   const [magnetValues, setMagnetValues] = useState({})
   const [isExecuting, setIsExecuting] = useState(false)
   const [magnetResult, setMagnetResult] = useState(null)
 
-  // Embed Modal State
   const [embedOpen, setEmbedOpen] = useState(false)
 
-  // 1. Ask API to create the tool blueprint
   const handleCreateMagnet = async () => {
     if (!prompt.trim()) return
     setIsGenerating(true)
@@ -72,7 +68,6 @@ const MagnetsPage = () => {
     }
   }
 
-  // 2. Ask API to run the tool logic
   const handleRunMagnet = async () => {
     setIsExecuting(true)
     setMagnetResult(null)
@@ -101,7 +96,6 @@ const MagnetsPage = () => {
     }
   }
 
-  // Copy Result Function (FIXED)
   const handleCopyResult = () => {
     if (magnetResult) {
       navigator.clipboard.writeText(magnetResult)
@@ -109,7 +103,6 @@ const MagnetsPage = () => {
     }
   }
 
-  // Copy Embed Code Function
   const handleCopyEmbed = () => {
     const embedStr = `<iframe src="https://yourdomain.com/embed/magnet-id" width="100%" height="600" style="border:none;"></iframe>`
     navigator.clipboard.writeText(embedStr)
@@ -257,22 +250,18 @@ const MagnetsPage = () => {
                       <Box className="prose dark:prose-invert max-w-none text-textPrimary leading-relaxed space-y-4">
                         <ReactMarkdown
                           components={{
-                            // Map Markdown headers to MUI Typography
                             h2: ({ node, ...props }) => (
                               <Typography variant="h5" className="font-bold pt-4 border-b border-divider pb-2 text-textPrimary" {...props} />
                             ),
                             h3: ({ node, ...props }) => (
                               <Typography variant="h6" className="font-bold pt-2 border-b border-divider pb-1 text-textPrimary" {...props} />
                             ),
-                            // Map standard paragraphs
                             p: ({ node, ...props }) => (
                               <Typography variant="body1" className="text-textSecondary text-[15px] mb-4" {...props} />
                             ),
-                            // Map bold text
                             strong: ({ node, ...props }) => (
                               <Box component="span" sx={{ fontWeight: 'bold', color: 'text.primary' }} {...props} />
                             ),
-                            // Map lists for better wellness tip rendering
                             ul: ({ node, ...props }) => (
                               <Box component="ul" className="list-disc pl-5 mb-4" {...props} />
                             ),

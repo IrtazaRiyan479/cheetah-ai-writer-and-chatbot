@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react' // Needed to authenticate API requests
+import { useSession } from 'next-auth/react'
 
-// MUI Imports
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import Box from '@mui/material/Box'
@@ -21,7 +20,6 @@ import TextField from '@mui/material/TextField'
 import CircularProgress from '@mui/material/CircularProgress'
 import Alert from '@mui/material/Alert'
 
-// MUI Icons
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 
@@ -30,7 +28,6 @@ const AccountSettings = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [tooltipText, setTooltipText] = useState("Copy ID")
 
-  // Dialog States
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [newEmail, setNewEmail] = useState('')
   const [updateError, setUpdateError] = useState('')
@@ -45,7 +42,6 @@ const AccountSettings = () => {
     chatsLimit: '25 / 25 chats'
   })
 
-  // Fetch user data on component mount
   useEffect(() => {
     const fetchUserData = async () => {
       if (session?.user?.email) {
@@ -73,7 +69,6 @@ const AccountSettings = () => {
     if (session) fetchUserData()
   }, [session])
 
-  // Handle Copy to Clipboard
   const handleCopyId = () => {
     if (userData.userId) {
       navigator.clipboard.writeText(userData.userId)
@@ -82,7 +77,6 @@ const AccountSettings = () => {
     }
   }
 
-  // Handle Email Update Submission
   const handleEmailUpdate = async () => {
     setUpdateError('')
     setIsUpdating(true)
@@ -97,10 +91,8 @@ const AccountSettings = () => {
       const data = await res.json()
 
       if (res.ok) {
-        // Update local state
         setUserData(prev => ({ ...prev, email: data.user.email }))
 
-        // Force NextAuth to update the session object with the new email
         await updateSession({ email: data.user.email })
 
         setIsDialogOpen(false)

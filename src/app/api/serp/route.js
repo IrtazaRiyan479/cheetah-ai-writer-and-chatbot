@@ -19,7 +19,6 @@ export async function POST(request) {
 
     const data = await response.json()
 
-    // Returns organic results and PAA questions
     return NextResponse.json({
       success: true,
       organic: data.organic || [],

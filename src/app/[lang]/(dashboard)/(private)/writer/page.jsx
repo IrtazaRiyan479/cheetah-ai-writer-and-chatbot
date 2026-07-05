@@ -34,22 +34,16 @@ const defaultSettings = {
   improveReadability: false,
   generatedTitle: '',
   numberOfYoutubeVideos: '',
-
-  // Text Inputs
   amazonProductUrl: '',
   amazonSearchUrl: '',
   amazonTrackingId: '',
   articleUrlToRewrite: '',
   youtubeUrl: '',
-
-  // Select Inputs
   numberOfProducts: '5',
   totalListItems: '10',
   listItemPrompt: '',
   numberOfPlaces: '10',
   listNumberingFormat: '1.',
-
-  // Toggles
   useOutlineEditor: false,
   enableFirstHandExperience: false,
   enableCondensedMode: false,
@@ -59,8 +53,6 @@ const defaultSettings = {
   enableRewriting: false,
   includeExternalLinks: false,
   enableCaptionRewriting: false,
-
-  // --- LOCAL ROUNDUP SPECIFIC FIELDS ---
   generateUniqueMapImages: false,
   manualKeywords: '',
   customArticleLength: 5,
@@ -75,22 +67,20 @@ const AffiGenieWriter = () => {
   const [step, setStep] = useState(0)
   const [outline, setOutline] = useState([])
 
-  // Load presets on mount
   const fetchPresets = async () => {
     try {
       const res = await fetch('/api/presets')
       const data = await res.json()
 
-      // Check if it's an array before setting the state!
       if (Array.isArray(data)) {
         setPresets(data)
       } else {
         console.error("API did not return an array:", data)
-        setPresets([]) // Keep it as an array to prevent the crash
+        setPresets([])
       }
     } catch (error) {
       console.error("Failed to fetch presets:", error)
-      setPresets([]) // Fallback to empty array on network failure
+      setPresets([])
     }
   }
 
@@ -98,12 +88,10 @@ const AffiGenieWriter = () => {
     fetchPresets()
   }, [])
 
-  // A helper function to update any setting dynamically
   const updateSetting = (key, value) => {
     setSettings(prev => ({ ...prev, [key]: value }))
   }
 
-  // --- PRESET DATABASE ACTIONS ---
 
   const handleLoadPreset = (presetId) => {
     setSelectedPresetId(presetId)
@@ -113,13 +101,11 @@ const AffiGenieWriter = () => {
     }
     const preset = presets.find(p => p.id === presetId)
     if (preset) {
-      // Load saved settings, but keep the current targetKeyword blank!
       setSettings({ ...JSON.parse(preset.settings), targetKeyword: '' })
     }
   }
 
   const handleCreatePreset = async (name) => {
-    // Exclude targetKeyword from being saved
     const { targetKeyword, ...settingsToSave } = settings
     const res = await fetch('/api/presets', {
       method: 'POST',

@@ -214,7 +214,7 @@ export async function fetchBingTitles(query) {
         const serpData = await serpRes.json();
         if (serpData.organic_results) {
           serpData.organic_results.forEach(item => titles.add(item.title));
-          return Array.from(titles); // Return early if successful
+          return Array.from(titles);
         }
       }
     }
@@ -317,7 +317,6 @@ async function getSmartVideoQuery(topic, heading, genAI) {
 
     return keyword;
   } catch(e) {
-    // Error fallback: derive the safest core words from the topic
     const cleanTopic = topic.toLowerCase().replace(/[^\w\s]|_/g, "");
     const fallbackWords = cleanTopic.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
     return fallbackWords.slice(0, 4).join(' ') || topic.trim();
@@ -361,8 +360,6 @@ export async function fetchArticleData(url) {
   if (!url) return { success: false, text: '', title: '' };
 
   try {
-    // r.jina.ai is a free, powerful tool that converts any URL into clean Markdown,
-    // removing ads, navbars, and junk—perfect for LLM processing.
     const res = await fetch(`https://r.jina.ai/${url}`);
 
     if (!res.ok) {
@@ -371,7 +368,6 @@ export async function fetchArticleData(url) {
 
     const markdownText = await res.text();
 
-    // Extract a rough title from the markdown if possible (usually the first line)
     const firstLine = markdownText.split('\n')[0];
     const extractedTitle = firstLine.replace(/^#+\s*/, '').trim() || 'Extracted Article';
 

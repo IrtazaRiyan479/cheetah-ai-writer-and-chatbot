@@ -58,7 +58,6 @@ const YoutubeBlogFields = ({ settings, updateSetting }) => {
       }
     };
 
-    // Debounce the check so it doesn't fire on every single keystroke
     const timeoutId = setTimeout(validateUrl, 800);
     return () => clearTimeout(timeoutId);
   }, [settings.youtubeUrl]);

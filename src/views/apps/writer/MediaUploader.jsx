@@ -36,9 +36,7 @@ const MediaUploader = ({ uploadType, onFilesUpdate }) => {
       setIsUploading(true)
       const newUploadedFiles = []
 
-      // Upload each file to your Hostinger server
       for (const file of acceptedFiles) {
-        // Create a safe local URL for the file to prevent createObjectURL crashes
         const safeUrl = URL.createObjectURL(file)
         newUploadedFiles.push({ name: file.name, url: safeUrl, type: file.type })
       }

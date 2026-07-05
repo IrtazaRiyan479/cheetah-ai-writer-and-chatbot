@@ -9,11 +9,9 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'Invalid URL format' }, { status: 400 });
     }
 
-    // Attempt to scrape the article using the helper we made earlier
     const data = await fetchArticleData(url);
 
     if (data.success && data.text && data.text.trim().length > 100) {
-      // If it successfully pulled text, return the title
       return NextResponse.json({
         success: true,
         title: data.title || 'Article extracted successfully'

@@ -39,14 +39,11 @@ const formatedChatData = (chats, profileUserId) => {
 }
 
 const ChatLog = ({ messages, isBelowMdScreen, isBelowSmScreen, isBelowLgScreen }) => {
-  // Hardcoded IDs for our real chat setup
   const PROFILE_USER_ID = 'user'
   const AI_USER_ID = 'ai-assistant'
 
-  // Refs
   const scrollRef = useRef(null)
 
-  // Scroll to bottom whenever a new message is added
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight

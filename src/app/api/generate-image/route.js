@@ -85,7 +85,6 @@ export async function POST(req) {
         if (lossless) finalPrompt = `${finalPrompt}, 8k resolution, ultra-crisp, uncompressed style`;
         finalPrompt = `${style} style. ${finalPrompt}`;
 
-        // Initial push to frontend
         const initPayload = JSON.stringify({ status: 'processing', promptUsed: finalPrompt, modelUsed: displayNames[model] });
         controller.enqueue(encoder.encode(`data: ${initPayload}\n\n`));
 
@@ -148,7 +147,6 @@ export async function POST(req) {
               }
             });
 
-            // Stream image immediately when ready
             const successPayload = JSON.stringify({ success: true, image: dbRecord });
             controller.enqueue(encoder.encode(`data: ${successPayload}\n\n`));
 
@@ -160,7 +158,6 @@ export async function POST(req) {
 
         await Promise.all(fetchPromises);
 
-        // Signal completion
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
         controller.close();
 

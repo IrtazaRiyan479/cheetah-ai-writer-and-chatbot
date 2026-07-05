@@ -14,19 +14,15 @@ export async function POST(request) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Create a unique filename and ensure the uploads directory exists
     const filename = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
     const uniqueFilename = `${Date.now()}-${filename}`;
     const uploadDir = path.join(process.cwd(), 'public/uploads');
 
-    // Create the folder if it doesn't exist yet
     await mkdir(uploadDir, { recursive: true });
 
-    // Save the file
     const filepath = path.join(uploadDir, uniqueFilename);
     await writeFile(filepath, buffer);
 
-    // Return the public URL
     return NextResponse.json({
       success: true,
       url: `/uploads/${uniqueFilename}`,
@@ -54,7 +50,7 @@ export async function DELETE(request) {
 
     if (fileUrls.length > 0) {
       for (const url of fileUrls) {
-        const filename = path.basename(url); // Extracts just the filename, prevents path traversal attacks
+        const filename = path.basename(url);
         const filepath = path.join(uploadDir, filename);
         try {
           await unlink(filepath);

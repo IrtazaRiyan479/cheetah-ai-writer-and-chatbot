@@ -7,9 +7,7 @@ export async function POST(request) {
 
     let transporter;
 
-    // 1. Check if we are running locally or on Hostinger
     if (process.env.NODE_ENV === 'production') {
-      // 🟢 PRODUCTION (Hostinger): Uses your .env variables
       transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
         port: 465,
@@ -20,7 +18,6 @@ export async function POST(request) {
         },
       });
     } else {
-      // 🛠️ LOCAL TESTING (Localhost): Creates a temporary fake account
       const testAccount = await nodemailer.createTestAccount();
       transporter = nodemailer.createTransport({
         host: "smtp.ethereal.email",
@@ -34,19 +31,16 @@ export async function POST(request) {
       console.log("Testing locally with Ethereal Email...");
     }
 
-    // 2. Set up the email data
     const mailOptions = {
       from: process.env.NODE_ENV === 'production' ? process.env.SMTP_USER : '"Test Sender" <test@example.com>',
-      to: 'author@yourdomain.com', // Who should receive the email
+      to: 'author@yourdomain.com',
       replyTo: email,
       subject: `New Contact Message from ${name}`,
       text: `Name: ${name}\nEmail: ${email}\n\nMessage:\n${message}`,
     };
 
-    // 3. Send the email and capture the info
     const info = await transporter.sendMail(mailOptions);
 
-    // 4. If testing locally, print the link to view the fake email!
     if (process.env.NODE_ENV !== 'production') {
       console.log("✅ Message sent successfully!");
       console.log("👀 PREVIEW YOUR EMAIL HERE: %s", nodemailer.getTestMessageUrl(info));

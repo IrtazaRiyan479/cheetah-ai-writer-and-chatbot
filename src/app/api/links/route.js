@@ -28,7 +28,6 @@ export async function POST(req) {
       let extractedUrls = [];
       let sitemapFound = false;
 
-      // Extract URLs from sitemap
       for (const path of sitemapPaths) {
         try {
           const response = await fetch(`https://${cleanDomain}${path}`, { headers: browserHeaders, signal: AbortSignal.timeout(6000) });
@@ -63,7 +62,6 @@ export async function POST(req) {
          return NextResponse.json({ success: false, error: 'No standard XML sitemap found.' }, { status: 404 });
       }
 
-      // Filter invalid URLs
       extractedUrls = extractedUrls.filter(url => {
         if (!url) return false;
         const path = new URL(url).pathname;
@@ -77,7 +75,6 @@ export async function POST(req) {
           try {
             const checkLiveness = async (url) => {
               try {
-                // Included browserHeaders to prevent 403s on HEAD requests
                 const res = await fetch(url, { method: 'HEAD', headers: browserHeaders, signal: AbortSignal.timeout(4000) });
                 return res.ok ? url : null;
               } catch (e) {

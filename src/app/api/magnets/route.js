@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 export async function POST(req) {
@@ -9,9 +8,6 @@ export async function POST(req) {
     const body = await req.json();
     const { action = 'create', prompt, aiInstructions, userInputs } = body;
 
-    // ==========================================
-    // ACTION 1: BUILD THE TOOL (UI + Logic)
-    // ==========================================
     if (action === 'create') {
       if (!prompt) return NextResponse.json({ error: 'Please provide a description.' }, { status: 400 });
 
@@ -48,14 +44,10 @@ export async function POST(req) {
       return NextResponse.json({ success: true, magnetConfig });
     }
 
-    // ==========================================
-    // ACTION 2: EXECUTE THE TOOL
-    // ==========================================
     if (action === 'execute') {
 
       const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
 
-      // FIX: Robust Data Passing. We pass the raw JSON data directly to Gemini instead of relying on string replacements.
       const executionPrompt = `
         You are the execution engine for a specialized web tool. Provide a direct, helpful, user-friendly, and concise response formatted cleanly. Do not explain how you generated the result.
 

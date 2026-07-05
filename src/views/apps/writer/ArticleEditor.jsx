@@ -13,7 +13,6 @@ import MenuItem from '@mui/material/MenuItem'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemText from '@mui/material/ListItemText'
 
-// Tiptap imports
 import { Color } from '@tiptap/extension-color'
 import { ListItem } from '@tiptap/extension-list-item'
 import { Placeholder } from '@tiptap/extension-placeholder'
@@ -201,7 +200,7 @@ const extensions = [
     blockquote: {
       HTMLAttributes: { style: 'border-left: 4px solid #666CFF; padding-left: 16px; padding-top: 8px; padding-bottom: 8px; margin: 16px 0; font-style: italic; color: rgba(38, 43, 67, 0.7); background-color: rgba(38, 43, 67, 0.03); border-top-right-radius: 8px; border-bottom-right-radius: 8px;' }
     },
-    // FIX FOR THE LIST ITEM BUG
+
     listItem: {
       HTMLAttributes: { style: 'margin-bottom: 8px;' }
     },
@@ -270,7 +269,6 @@ Table.configure({
   }),
 ]
 
-// --- HELPER: HTML to MARKDOWN CONVERTER ---
 const convertHtmlToMarkdown = (html) => {
   if (!html) return ''
   let md = html
@@ -306,7 +304,6 @@ const convertHtmlToMarkdown = (html) => {
   return md.trim()
 }
 
-// --- MAIN ARTICLE EDITOR COMPONENT ---
 const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) => {
   const router = useRouter()
   const searchParams = useSearchParams()       // ADD THIS
@@ -314,7 +311,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
   const [isGenerating, setIsGenerating] = useState(true)
   const [currentIndex, setCurrentIndex] = useState(0)
 
-  // Export Menu State
   const [exportAnchorEl, setExportAnchorEl] = useState(null)
   const isExportMenuOpen = Boolean(exportAnchorEl)
 
@@ -661,7 +657,6 @@ useEffect(() => {
               trackedInternalLinks.push(data.internalLinkUrl);
             }
 
-            // 🟢 NEW DEEP SEARCH POLLING LOGIC 🟢
            if (data.isDeepSearch && data.interactionId) {
               setPollingStatus(`Initializing Deep Research Agent...`);
               setDeepSearchProgress(5);
@@ -698,7 +693,7 @@ useEffect(() => {
 
                   if (pollData.status === 'completed') {
                     finalSectionText = pollData.text;
-                    setDeepSearchProgress(100); // Snap to 100% when done
+                    setDeepSearchProgress(100);
                     isCompleted = true;
                   } else if (pollData.status === 'failed') {
                     finalSectionText = `## ${group.h2.text}\n<p><em>❌ Deep Research failed for this section.</em></p>`;
@@ -708,7 +703,6 @@ useEffect(() => {
                   if (pollError.name === 'AbortError') throw pollError;
                 }
               }
-              // Clear UI states after a short delay so the user sees 100%
               await new Promise(resolve => setTimeout(resolve, 1000));
               setPollingStatus('');
               setDeepSearchProgress(0);
@@ -724,16 +718,13 @@ useEffect(() => {
               }
             }
 
-            // 🟢 1. THE DEFINITIVE MARKDOWN PARSER
             let cleanMd = finalSectionText.replace(/^##\s+.*$/gm, '').trim();
 
-            // A. CODE BLOCKS (Must happen first! Escape HTML so Tiptap doesn't execute it)
            cleanMd = cleanMd.replace(/```[a-zA-Z]*\n([\s\S]*?)```/g, (match, code) => {
   const escapedCode = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return `<pre style="background-color: #111827; color: #f3f4f6; padding: 16px; border-radius: 12px; margin: 24px 0; overflow-x: auto; font-family: monospace; font-size: 0.875rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #374151;"><code>${escapedCode}</code></pre>`;
 });
 
-            // B. TABLES
             cleanMd = cleanMd.replace(/:\-\-+/g, '').replace(/\-\-+:/g, '');
             cleanMd = cleanMd.replace(/(?:\|.*\|\n)+/g, (match) => {
               const rows = match.trim().split('\n');
@@ -749,37 +740,27 @@ useEffect(() => {
               return html;
             });
 
-            // C. BLOCKQUOTES
             cleanMd = cleanMd.replace(/^>\s+(.*)$/gm, '<blockquote>$1</blockquote>')
             cleanMd = cleanMd.replace(/<\/blockquote>\n<blockquote>/g, '<br/>')
 
-            // D. LISTS
-            // Convert unordered list items
             cleanMd = cleanMd.replace(/^[\s]*(?:-|\*)\s+(.*)$/gm, '<ul><li>$1</li></ul>')
-            // Convert ordered list items
             cleanMd = cleanMd.replace(/^[\s]*\d+\.\s+(.*)$/gm, '<ol><li>$1</li></ol>')
 
-            // 🟢 CRITICAL FIX 1: Merge adjacent identical lists using \s* to ignore weird line breaks
             cleanMd = cleanMd.replace(/<\/ul>\s*<ul>/g, '')
             cleanMd = cleanMd.replace(/<\/ol>\s*<ol>/g, '')
 
-            // E. HEADINGS (H3 through H6)
             cleanMd = cleanMd.replace(/^######\s+(.*)$/gm, '<h6>$1</h6>')
             cleanMd = cleanMd.replace(/^#####\s+(.*)$/gm, '<h5>$1</h5>')
             cleanMd = cleanMd.replace(/^####\s+(.*)$/gm, '<h4>$1</h4>')
             cleanMd = cleanMd.replace(/^###\s+(.*)$/gm, '<h3>$1</h3>')
 
-            // F. IMAGES & LINKS
             cleanMd = cleanMd.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />');
             cleanMd = cleanMd.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
 
-            // F. HORIZONTAL RULES
             cleanMd = cleanMd.replace(/^---$/gm, '<hr style="margin: 32px 0; border: 0; border-top: 1px solid rgba(38, 43, 67, 0.12);" />')
 
-            // G. HALLUCINATED IMAGES (Catch ![alt](url) and force our UI styles)
            cleanMd = cleanMd.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, '<img src="$2" alt="$1" style="border-radius: 12px; max-width: 100%; width: 672px; margin: 32px auto; display: block; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); aspect-ratio: 16/9; object-fit: cover;" />')
 
-            // H. LINKS
             cleanMd = cleanMd.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" style="color: #666CFF; text-decoration: underline; font-weight: 500;">$1</a>')
 
           // H. RAW HTML BUTTON FIX
@@ -790,24 +771,24 @@ useEffect(() => {
           //   return `<a href="${href || '#'}" target="_blank" rel="sponsored noopener" class="no-underline bg-blue-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-block">Check Price on Amazon</a>`;
           // });
 
-            // I. INLINE FORMATTING (Bold, Italics, Code, Strike)
+
             cleanMd = cleanMd.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             cleanMd = cleanMd.replace(/(?<!\w)\*(.*?)\*(?!\w)/g, '<em>$1</em>')
             cleanMd = cleanMd.replace(/(?<!\w)_(.*?)_(?!\w)/g, '<em>$1</em>')
             cleanMd = cleanMd.replace(/`([^`]+)`/g, '<code style="background-color: rgba(38, 43, 67, 0.06); padding: 2px 6px; border-radius: 4px; color: #666CFF; font-family: monospace; font-size: 0.875rem; border: 1px solid rgba(38, 43, 67, 0.12);">$1</code>')
             cleanMd = cleanMd.replace(/~~(.*?)~~/g, '<s>$1</s>')
-            // 🟢 CRITICAL FIX 2: Force double newlines around structural blocks before paragraph parsing.
-            // If Tiptap sees <ul> inside <p>, it actively destroys the list structure!
+
+
             cleanMd = cleanMd.replace(/(<(ul|ol|table|blockquote|pre|hr|h[1-6]|img))/g, '\n\n$1')
             cleanMd = cleanMd.replace(/(<\/(ul|ol|table|blockquote|pre|h[1-6])>)/g, '$1\n\n')
 
-            // J. SAFELY WRAP PARAGRAPHS
+
             let formattedContent = cleanMd
               .split(/\n\n+/)
               .map(block => {
                 block = block.trim()
                 if (!block) return ''
-                // Do NOT wrap structural HTML block elements in <p> tags
+
                 if (block.match(/^(<h|<ul|<ol|<blockquote|<pre|<table|<hr|<img)/)) return block
                 return `<p>${block.replace(/\n/g, '<br/>')}</p>`
               })
@@ -815,7 +796,7 @@ useEffect(() => {
 
             editor.chain().focus('end').insertContent(formattedContent).run()
 
-            // 🟢 2. INJECT MEDIA AFTER THE TEXT
+
             if (data.mediaHtml && (i !== 0 || !["blog", "listicle"].includes(settings.type))) {
               editor.chain().focus('end').insertContent(data.mediaHtml).run()
             }
@@ -911,7 +892,7 @@ useEffect(() => {
     clearUploadedMedia(settings.uploadedMedia);
   }
 
-  // --- EXPORT HANDLERS ---
+
   const handleDownloadFile = (content, filename, type) => {
     const blob = new Blob([content], { type })
     const url = URL.createObjectURL(blob)

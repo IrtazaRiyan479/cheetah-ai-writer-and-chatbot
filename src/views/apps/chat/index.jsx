@@ -38,40 +38,32 @@ const ChatWrapper = () => {
   const isBelowMdScreen = useMediaQuery(theme => theme.breakpoints.down('md'))
   const isBelowSmScreen = useMediaQuery(theme => theme.breakpoints.down('sm'))
 
-  // Get active user’s data
   const activeUser = id => {
     dispatch(getActiveUserData(id))
   }
 
-  // Focus on message input when active user changes
   useEffect(() => {
     if (chatStore.activeUser?.id !== null && messageInputRef.current) {
       messageInputRef.current.focus()
     }
   }, [chatStore.activeUser])
 
-  // Close backdrop when sidebar is open on below md screen
   useEffect(() => {
     if (!isBelowMdScreen && backdropOpen && sidebarOpen) {
       setBackdropOpen(false)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isBelowMdScreen])
 
-  // Open backdrop when sidebar is open on below sm screen
   useEffect(() => {
     if (!isBelowSmScreen && sidebarOpen) {
       setBackdropOpen(true)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isBelowSmScreen])
 
-  // Close sidebar when backdrop is closed on below md screen
   useEffect(() => {
     if (!backdropOpen && sidebarOpen) {
       setSidebarOpen(false)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backdropOpen])
 
   return (

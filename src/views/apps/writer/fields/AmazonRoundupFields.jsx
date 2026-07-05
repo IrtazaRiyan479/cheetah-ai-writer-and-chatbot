@@ -142,11 +142,9 @@ const AmazonRoundupFields = ({ settings, updateSetting }) => {
           onChange={(e) => {
             let value = e.target.value;
 
-            // If the user types a number greater than 48, force it back to 48
             if (Number(value) > 48) {
               value = 48;
             }
-            // Optional: prevent negative numbers or 0
             else if (value !== '' && Number(value) < 1) {
               value = 1;
             }

@@ -14,7 +14,7 @@ import OutlinedInput from '@mui/material/OutlinedInput'
 import Chip from '@mui/material/Chip'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
-import MediaUploader from '../MediaUploader' // Adjust the path based on where you saved it
+import MediaUploader from '../MediaUploader'
 
 const ListicleFields = ({ settings, updateSetting }) => (
   <>

@@ -33,7 +33,6 @@ import StopCircleIcon from '@mui/icons-material/StopCircle'
 import InternalLinker from './InternalLinker'
 
 const LinksPage = () => {
-  // Workflow States
   const [domain, setDomain] = useState('')
   const [isCrawling, setIsCrawling] = useState(false)
   const [crawledPages, setCrawledPages] = useState([])

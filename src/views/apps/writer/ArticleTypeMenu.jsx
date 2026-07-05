@@ -17,7 +17,6 @@ const articleTypes = [
   { id: 'rewrite', title: 'Rewrite Blog Post', icon: 'ri-edit-2-line' }
 ]
 
-// CHANGED: Accept props from the parent instead of using local state
 const ArticleTypeMenu = ({ selectedType, setSelectedType }) => {
   return (
     <div className='flex flex-col gap-3'>

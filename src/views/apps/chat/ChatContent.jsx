@@ -17,7 +17,6 @@ const ChatContent = props => {
   const [isTyping, setIsTyping] = useState(false)
   const [messages, setMessages] = useState([])
 
-  // 1. Fetch Chat History on Load
   useEffect(() => {
     const fetchChat = async () => {
       const res = await fetch('/api/chat')
@@ -32,13 +31,11 @@ const ChatContent = props => {
     fetchChat()
   }, [])
 
-  // 2. Reset Chat Logic
   const handleResetChat = async () => {
     await fetch('/api/chat', { method: 'DELETE' })
     setMessages([{ senderId: 'ai-assistant', message: 'Chat history cleared. How can I help you?', time: new Date().toISOString() }])
   }
 
-  // 3. Send Message Logic
   const handleSendMessage = async (userText) => {
     if (!userText.trim() || isTyping) return
 
@@ -47,10 +44,8 @@ const ChatContent = props => {
     setIsTyping(true)
 
     try {
-      // Save User Message to DB
       await fetch('/api/chat', { method: 'POST', body: JSON.stringify(userMsg) })
 
-      // Call Gemini API
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -63,7 +58,6 @@ const ChatContent = props => {
         const aiMsg = { senderId: 'ai-assistant', message: data.text, time: new Date().toISOString() }
         setMessages(prev => [...prev, aiMsg])
 
-        // Save AI Message to DB
         await fetch('/api/chat', { method: 'POST', body: JSON.stringify(aiMsg) })
       } else {
         throw new Error(data.error)
@@ -77,7 +71,6 @@ const ChatContent = props => {
 
   return (
     <div className='flex flex-col flex-grow is-full overflow-hidden'>
-      {/* NEW: Chat Header with Reset Button */}
       <div className='flex items-center justify-between border-b p-5 border-divider'>
         <div className='flex items-center gap-4'>
           <CustomAvatar skin='light' color='primary' className='bs-10 is-10'>

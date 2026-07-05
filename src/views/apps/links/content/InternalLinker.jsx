@@ -12,7 +12,6 @@ import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
 import LinkIcon from '@mui/icons-material/Link'
 
-// Notice we changed sourcePostId to sourceUrl
 export default function InternalLinker({ siteUrl, sourceUrl, targetUrl, anchorText }) {
   const [isInjecting, setIsInjecting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)

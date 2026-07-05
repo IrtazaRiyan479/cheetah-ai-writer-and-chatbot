@@ -49,7 +49,6 @@ const ImageGeneratorBoard = () => {
   const feedRef = useRef(null)
   const feedTasks = kanbanStore.tasks
 
-  // Configuration States matching the exact requirements
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState('nano-banana')
   const [style, setStyle] = useState('Photographic')
@@ -64,7 +63,6 @@ const ImageGeneratorBoard = () => {
   useEffect(() => {
     const fetchImages = async () => {
       try {
-        // Ensure this URL matches your actual API route file path
         const res = await fetch('/api/generate-image');
         const data = await res.json();
 

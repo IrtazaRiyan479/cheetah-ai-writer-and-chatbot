@@ -4,14 +4,12 @@ export async function POST(request) {
     try {
         const { query } = await request.json();
 
-        // DataForSEO requires base64 encoded Basic Auth credentials
         const credentials = Buffer.from(`${process.env.DATAFORSEO_LOGIN}:${process.env.DATAFORSEO_PASSWORD}`).toString('base64');
 
-        // Payload for a live Bing organic search
         const postData = [{
             "keyword": query,
             "language_code": "en",
-            "location_code": 2840 // Location code for the United States
+            "location_code": 2840
         }];
 
         const response = await fetch("https://api.dataforseo.com/v3/serp/bing/organic/live/advanced", {
@@ -29,10 +27,8 @@ export async function POST(request) {
 
         const data = await response.json();
 
-        // Extract the search results from DataForSEO's nested response structure
         const results = data.tasks?.[0]?.result?.[0]?.items || [];
 
-        // Map to a clean, predictable array of objects
         const cleanResults = results.map(item => ({
             title: item.title,
             url: item.url,

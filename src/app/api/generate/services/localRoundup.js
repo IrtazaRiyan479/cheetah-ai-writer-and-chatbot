@@ -66,7 +66,6 @@ export async function generateLocalRoundupOutline(body, genAI) {
             }
           }
 
-          // --- KEY TAKEAWAYS INSTRUCTION ---
           if (includeKeyTakeaways) {
               takeawaysInstruction = `\nCRITICAL REQUIREMENT - KEY TAKEAWAYS: The second H2 heading (immediately after the Introduction) MUST be titled exactly "Key Takeaways". Do NOT nest any H3 subheadings under it.`;
           }

@@ -12,7 +12,6 @@ export async function POST(request) {
     if (!wpUsername || !wpPassword) {
       const predefinedSites = JSON.parse(process.env.PREDEFINED_WP_SITES || '[]')
 
-      // DEFENSIVE CAST
       const normalizeStr = (str) => {
         if (!str) return '';
         return String(str).replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase()
@@ -38,7 +37,6 @@ export async function POST(request) {
       }
     }
 
-    // DEFENSIVE CAST
     const cleanSiteUrl = String(siteUrl || '').replace(/\/$/, '')
     const credentials = Buffer.from(`${wpUsername}:${wpPassword}`).toString('base64')
 
@@ -82,7 +80,6 @@ export async function POST(request) {
     let linkInjected = false
     let usedFallback = false
 
-    // DEFENSIVE CAST: Prevents weird text crashes
     const safeAnchor = String(anchorText || '').trim();
     const escapedAnchor = safeAnchor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const regex = new RegExp(`\\b(${escapedAnchor.replace(/\\s+/g, '\\s+')})\\b`, 'i')

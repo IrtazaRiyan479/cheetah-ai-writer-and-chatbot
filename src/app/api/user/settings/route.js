@@ -4,7 +4,6 @@ import { getServerSession } from 'next-auth/next';
 
 const prisma = new PrismaClient();
 
-// GET: Fetch User Data
 export async function GET(request) {
   const session = await getServerSession();
 
@@ -24,7 +23,6 @@ export async function GET(request) {
   }
 }
 
-// PATCH: Update Email
 export async function PATCH(request) {
   const session = await getServerSession();
 
@@ -47,7 +45,6 @@ export async function PATCH(request) {
     return NextResponse.json({ success: true, user: updatedUser });
   } catch (error) {
     console.error(error);
-    // Prisma code P2002 means unique constraint failed (email already in use)
     if (error.code === 'P2002') {
         return NextResponse.json({ error: "Email is already in use by another account" }, { status: 400 });
     }

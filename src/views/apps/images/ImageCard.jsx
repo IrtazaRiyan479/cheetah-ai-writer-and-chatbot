@@ -1,4 +1,4 @@
-import { useState } from 'react' // 1. Added useState
+import { useState } from 'react'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Typography from '@mui/material/Typography'
@@ -6,22 +6,20 @@ import Chip from '@mui/material/Chip'
 import IconButton from '@mui/material/IconButton'
 import Box from '@mui/material/Box'
 import Tooltip from '@mui/material/Tooltip'
-import Dialog from '@mui/material/Dialog' // 2. Added Dialog for the popup
+import Dialog from '@mui/material/Dialog'
 
 // Icons
 import DownloadIcon from '@mui/icons-material/Download'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
-import CloseIcon from '@mui/icons-material/Close' // 3. Added Close Icon
+import CloseIcon from '@mui/icons-material/Close'
 
 const themeColors = ['primary', 'secondary', 'error', 'warning', 'info', 'success']
 
 const ImageCard = ({ task, index }) => {
   const colorTag = themeColors[index % themeColors.length]
 
-  // State to control the image modal
   const [isModalOpen, setIsModalOpen] = useState(false)
 
-  // Handles copying the actual image file to the user's clipboard
   const handleCopyImage = async () => {
     try {
       const response = await fetch(task.image);
@@ -35,7 +33,6 @@ const ImageCard = ({ task, index }) => {
     }
   }
 
-  // Handles triggering a direct file download
   const handleDownload = async () => {
     try {
       const response = await fetch(task.image);

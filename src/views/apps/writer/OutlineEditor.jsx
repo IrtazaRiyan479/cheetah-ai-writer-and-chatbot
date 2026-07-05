@@ -42,7 +42,6 @@ const OutlineEditor = ({ settings, setStep, outline, setOutline }) => {
     setActiveItemIndex(null)
   }
 
-  // --- OUTLINE MANIPULATION ---
   const handleTextChange = (index, newText) => {
     const newOutline = [...outline]
     newOutline[index].text = newText

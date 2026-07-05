@@ -10,7 +10,6 @@ export async function POST(request) {
 
     const credentials = Buffer.from(`api:${process.env.TINYPNG_API_KEY}`).toString('base64');
 
-    // Strip "data:image/png;base64," if it exists so we just have raw base64 string
     const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
     const buffer = Buffer.from(base64Data, 'base64');
 
@@ -18,7 +17,7 @@ export async function POST(request) {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${credentials}`,
-        'Content-Type': 'image/png' // Tell TinyPNG we are sending binary image data
+        'Content-Type': 'image/png'
       },
       body: buffer
     });

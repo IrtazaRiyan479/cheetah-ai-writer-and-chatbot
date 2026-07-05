@@ -1,7 +1,5 @@
-// Component Imports
 import Login from '@views/pages/auth/Login'
 
-// Server Action Imports
 import { getServerMode } from '@core/utils/serverHelpers'
 
 const LoginPage = async () => {

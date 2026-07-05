@@ -22,12 +22,10 @@ const RewriteFields = ({ settings, updateSetting }) => {
   const [statusColor, setStatusColor] = useState('text-textSecondary');
   const [isValidating, setIsValidating] = useState(false);
 
-  // --- Auto-Validate Article URL ---
   useEffect(() => {
     const validateUrl = async () => {
       const url = settings.articleUrlToRewrite;
 
-      // Clear status if empty or not a full URL
       if (!url || !url.startsWith('http')) {
         setStatusText('');
         return;
@@ -47,12 +45,10 @@ const RewriteFields = ({ settings, updateSetting }) => {
         const data = await res.json();
 
         if (res.ok && data.success) {
-          // Success text styling
           setStatusText(`Successfully fetched: ${data.title}`);
           setStatusColor('text-success');
           updateSetting('targetKeyword', data.title);
         } else {
-          // Error text styling
           setStatusText('Failed to fetch article data. Check URL or try another.');
           setStatusColor('text-error');
         }
@@ -64,7 +60,6 @@ const RewriteFields = ({ settings, updateSetting }) => {
       }
     };
 
-    // Debounce to wait 800ms after the user stops typing before fetching
     const timeoutId = setTimeout(() => {
       validateUrl();
     }, 800);

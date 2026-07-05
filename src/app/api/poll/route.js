@@ -17,7 +17,6 @@ export async function GET(request) {
       return NextResponse.json({ status: "failed", error: "Deep search failed." });
     }
 
-    // If it is still 'in_progress' or 'processing', just return processing
     return NextResponse.json({ status: "processing" });
 
   } catch (error) {

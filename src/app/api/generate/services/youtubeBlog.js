@@ -37,7 +37,7 @@ export async function generateYoutubeBlogOutline(body, genAI) {
   systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline. You MUST return a JSON object with four keys: "metaTitle" (SEO title, max 60 chars), "metaDescription" (SEO desc, max 160 chars), "title" (A catchy, click-worthy, viral H1 Title based on the keyword) and "outline" (A flat JSON array of objects). Schema: { "metaTitle": "...", "metaDescription": "...", "title": "Catchy Title Here", "outline": [{ "type": "h2", "text": "Introduction" }, { "type": "h3", "text": "Subheading" }] }\n\nCRITICAL OUTLINE RULES:\n- The "title" MUST contain the exact target keyword: "${targetKeyword}".\n- The VERY FIRST "h2" object in the outline array MUST contain the exact target keyword: "${targetKeyword}" in its "text" field.\n- The VERY LAST "h2" object in the outline array MUST be a concluding heading and MUST also contain the exact target keyword: "${targetKeyword}" in its "text" field.`
   });
 
-  // 2. Handle "Enable Rewriting" Logic based on the UI toggle name
+
   const rewriteInstruction = enableCaptionRewriting
     ? `REWRITING ENABLED: Use the video transcript as your core inspiration, but creatively restructure it into a standalone, highly engaging blog post. You do not need to follow the video's exact chronological order. Add logical headings that make it a better reading experience.`
     : `STRICT ADHERENCE: Closely follow the chronological flow, exact arguments, and structure of the video. Your outline should act as a direct text adaptation of the video's timeline.`;
@@ -182,7 +182,7 @@ let sectionStructureRequirements = `
     ? `Approach this section as an expert author writing an original piece inspired by the video content. Add depth where necessary.`
     : `Extract and summarize the information exactly as it was presented in the video for this specific section. Do not add outside information.`;
 
-  const activeSEOKeyword = targetKeyword || articleTitle || heading; // Fallback safely
+  const activeSEOKeyword = targetKeyword || articleTitle || heading;
   const lsiData = await fetchPeopleAlsoSearchFor(activeSEOKeyword);
   const lsiString = `Google Keywords: [${lsiData.google.join(', ')}]. Bing Keywords: [${lsiData.bing.join(', ')}].`;
 
