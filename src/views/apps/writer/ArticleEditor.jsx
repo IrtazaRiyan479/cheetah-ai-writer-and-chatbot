@@ -940,69 +940,88 @@ useEffect(() => {
   }
 
   groupedSections.forEach((group, i) => {
-    const shouldGenerateMedia =
-      i === 0 && settings.heroImage ? false : settings.aiImagesAndVideos
+  const shouldGenerateMedia =
+    i === 0 && settings.heroImage ? false : settings.aiImagesAndVideos
 
-    const subheadings = group.h3s.map((h3) => h3.text)
+  const subheadings = group.h3s.map((h3) => h3.text)
 
-    let allLinks = Array.isArray(settings.internalLinking)
-      ? [...settings.internalLinking]
-      : []
-    if (settings.customInternalLink) {
-      const customLinks = settings.customInternalLink
-        .split(',')
-        .map((l) => l.trim())
-        .filter((l) => l)
-      allLinks = [...allLinks, ...customLinks]
+  let allLinks = Array.isArray(settings.internalLinking)
+    ? [...settings.internalLinking]
+    : []
+  if (settings.customInternalLink) {
+    const customLinks = settings.customInternalLink
+      .split(',')
+      .map((l) => l.trim())
+      .filter((l) => l)
+    allLinks = [...allLinks, ...customLinks]
+  }
+
+  const fetchWithRetry = async (url, options, retries = 4, delay = 2000) => {
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const res = await fetch(url, options)
+        if (!res.ok) {
+          const errText = await res.text().catch(() => '')
+          throw new Error(`HTTP ${res.status}: ${errText.slice(0, 100)}`)
+        }
+        return await res.json()
+      } catch (err) {
+        if (attempt === retries - 1 || err.name === 'AbortError') throw err
+        console.warn(
+          `[Client Retry] Section ${i} failed (attempt ${attempt + 1}/${retries}): ${err.message}. Retrying in ${delay}ms...`
+        )
+        await new Promise((r) => setTimeout(r, delay))
+        delay *= 1.8
+      }
     }
+  }
 
-    fetch('/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: abortControllerRef.current.signal,
-      body: JSON.stringify({
-        mode: 'section',
-        settings: settings,
-        targetKeyword: settings.targetKeyword,
-        model: settings.model,
-        outlineContext: outline,
-        heading: group.h2.text,
-        subheadings: subheadings,
-        internalLinks: allLinks,
-        seoOptimization: settings.seoOptimization,
-        manualKeywords: settings.manualKeywords,
-        aiImagesAndVideos: shouldGenerateMedia,
-        sectionIndex: i,
-        totalSections: groupedSections.length,
-        toneOfVoice: settings.toneOfVoice,
-        customToneOfVoice: settings.customToneOfVoice,
-        language: settings.language,
-        country: settings.country,
-        pointOfView: settings.pointOfView,
-        useRealTimeSearchData: settings.useRealTimeSearchData,
-        realTimeDataSource: settings.realTimeDataSource,
-        externalLinks: settings.fetchedExternalLinks,
-        usedExternalLinks: trackedExternalLinks,
-        deepSearch: false,
-        articleTitle: settings.generatedTitle,
-        improveReadability: settings.improveReadability,
-        uploadedMedia: settings.uploadedMedia,
-        usedImageUrls: trackedImages,
-        usedInternalLinks: trackedInternalLinks
-      })
+  fetchWithRetry('/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal: abortControllerRef.current.signal,
+    body: JSON.stringify({
+      mode: 'section',
+      settings: settings,
+      targetKeyword: settings.targetKeyword,
+      model: settings.model,
+      outlineContext: outline,
+      heading: group.h2.text,
+      subheadings: subheadings,
+      internalLinks: allLinks,
+      seoOptimization: settings.seoOptimization,
+      manualKeywords: settings.manualKeywords,
+      aiImagesAndVideos: shouldGenerateMedia,
+      sectionIndex: i,
+      totalSections: groupedSections.length,
+      toneOfVoice: settings.toneOfVoice,
+      customToneOfVoice: settings.customToneOfVoice,
+      language: settings.language,
+      country: settings.country,
+      pointOfView: settings.pointOfView,
+      useRealTimeSearchData: settings.useRealTimeSearchData,
+      realTimeDataSource: settings.realTimeDataSource,
+      externalLinks: settings.fetchedExternalLinks,
+      usedExternalLinks: trackedExternalLinks,
+      deepSearch: false,
+      articleTitle: settings.generatedTitle,
+      improveReadability: settings.improveReadability,
+      uploadedMedia: settings.uploadedMedia,
+      usedImageUrls: trackedImages,
+      usedInternalLinks: trackedInternalLinks
     })
-      .then((res) => res.json())
-      .then((data) => {
-        if (isCancelled) return
-        resultsBuffer[i] = { i, group, data, error: null }
-        tryFlush()
-      })
-      .catch((error) => {
-        if (isCancelled) return
-        resultsBuffer[i] = { i, group, data: null, error }
-        tryFlush()
-      })
   })
+    .then((data) => {
+      if (isCancelled) return
+      resultsBuffer[i] = { i, group, data, error: null }
+      tryFlush()
+    })
+    .catch((error) => {
+      if (isCancelled) return
+      resultsBuffer[i] = { i, group, data: null, error }
+      tryFlush()
+    })
+})
 }
 
     generateArticleSequentially()

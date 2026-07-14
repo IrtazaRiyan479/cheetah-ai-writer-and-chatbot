@@ -34,6 +34,7 @@ const defaultSettings = {
   improveReadability: false,
   generatedTitle: '',
   numberOfYoutubeVideos: '',
+  numberOfImages: '',
   amazonProductUrl: '',
   amazonSearchUrl: '',
   amazonTrackingId: '',

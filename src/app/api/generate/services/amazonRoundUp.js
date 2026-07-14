@@ -278,25 +278,25 @@ export async function generateAmazonRoundupSection(body, genAI) {
   if (activeSectionType === 'intro') {
     const top3 = formattedProducts.slice(0, 3);
 
-    const top3HTML = top3.map(p => {
-  const safeTitle = p.productName.replace(/[\r\n]+/g, ' ').replace(/\|/g, '-')
-  const shortName = safeTitle.length > 55 ? safeTitle.substring(0, 52) + '…' : safeTitle
-  const safeImageUrl = p.imageUrl ? p.imageUrl.replace(/_/g, '%5F') : ''
-  const altText = `${targetKeyword} ${shortName}`
+   const top3HTML = top3.map(p => {
+  const safeTitle = p.productName.replace(/[\r\n]+/g, ' ').replace(/\|/g, '-');
+  const shortName = safeTitle.length > 42 ? safeTitle.substring(0, 40) + '…' : safeTitle;
+  const safeImageUrl = p.imageUrl ? p.imageUrl.replace(/_/g, '%5F') : '';
+  const altText = `${targetKeyword} ${shortName}`;
 
   return `<tr>
-  <td style="padding: 12px; border-bottom: 1px solid rgba(38, 43, 67, 0.08); vertical-align: middle; text-align: center; width: 120px;">
-    <img src="${safeImageUrl}" width="110" alt="${altText}" title="${shortName}" style="max-width: 100%; height: auto; border-radius: 8px; display: inline-block;"/>
+  <td style="padding: 10px; border-bottom: 1px solid rgba(38,43,67,0.08); vertical-align: middle; text-align: center; width: 90px;">
+    <img src="${safeImageUrl}" width="80" height="80" alt="${altText}" title="${shortName}" style="width:80px!important;height:80px!important;max-width:80px!important;object-fit:contain;border-radius:8px;display:inline-block;" />
   </td>
-  <td style="padding: 12px; border-bottom: 1px solid rgba(38, 43, 67, 0.08); vertical-align: middle; color: rgba(38, 43, 67, 0.9);">
-    <strong class="product-name-desktop">${safeTitle}</strong>
-    <strong class="product-name-mobile" style="display:none;">${shortName}</strong>
+  <td style="padding: 10px; border-bottom: 1px solid rgba(38,43,67,0.08); vertical-align: middle; color: rgba(38,43,67,0.9); font-size: 14px; line-height: 1.35;">
+    <span class="product-name-desktop">${safeTitle}</span>
+    <span class="product-name-mobile">${shortName}</span>
   </td>
-  <td style="padding: 12px; border-bottom: 1px solid rgba(38, 43, 67, 0.08); vertical-align: middle; text-align: center;">
-    <a href="${p.amazonUrl}" target="_blank" rel="sponsored noopener" class="cheetah-cta">Check Price</a>
+  <td style="padding: 10px; border-bottom: 1px solid rgba(38,43,67,0.08); vertical-align: middle; text-align: center;">
+    <a href="${p.amazonUrl}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 10px 24px; border-radius: 9999px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); border: 1px solid #4f46e5; letter-spacing: 0.025em; white-space: nowrap;">Check Price</a>
   </td>
-</tr>`
-}).join('')
+</tr>`;
+}).join('');
 
 
     sectionPrompt += `
@@ -339,7 +339,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
       5. **Real Buyer Opinions:** A brief summary of what real buyers think. CRITICAL: You must synthesize this summary directly from the "Official Features" provided above. Frame the feedback around how buyers react to those specific attributes (e.g., if a feature highlights 'lightweight design', mention how users praise its portability).
       6. **CTA Button:** Insert this EXACT HTML for the affiliate button:
                 <div style="display: block; width: 100%; text-align: center; margin: 25px 0;">
-  <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" class="cheetah-cta">Check Price</a>
+  <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" class="no-underline bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-block">Check Price</a>
 </div>
     `;
   }

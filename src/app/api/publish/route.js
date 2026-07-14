@@ -10,6 +10,7 @@ async function uploadImageToWP(imageUrl, siteUrl, credentials, articleTitle) {
     const extension = mimeType.split('/')[1] || 'jpg'
     const filename = `hero-image-${Date.now()}.${extension}`
 
+    // 1. Upload the binary
     const wpMediaResponse = await fetch(`${siteUrl}/wp-json/wp/v2/media`, {
       method: 'POST',
       headers: {
@@ -23,6 +24,7 @@ async function uploadImageToWP(imageUrl, siteUrl, credentials, articleTitle) {
     const mediaData = await wpMediaResponse.json()
     if (!mediaData.id) return null
 
+    // 2. Immediately update Title + Alt Text to the H1 / article title
     await fetch(`${siteUrl}/wp-json/wp/v2/media/${mediaData.id}`, {
       method: 'POST',
       headers: {
@@ -78,73 +80,66 @@ export async function POST(request) {
 
    const masterStyles = `
 <style id="cheetah-master-styles">
-  #cheetah-article-wrapper {
-    line-height: 1.7;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  }
+  #cheetah-article-wrapper { line-height: 1.7; font-family: system-ui, -apple-system, sans-serif; }
 
-  /* ========== Images ========== */
-  #cheetah-article-wrapper .cheetah-img {
-    border-radius: 12px !important;
-    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1) !important;
-    max-width: 100% !important;
-    height: auto !important;
-    display: block !important;
-    margin: 32px auto !important;
-  }
+  /* Tables */
+  #cheetah-article-wrapper table { width: 100% !important; border-collapse: separate !important; border-spacing: 0 !important; margin: 28px 0 !important; border-radius: 12px !important; border: 1px solid rgba(38,43,67,0.12) !important; overflow: hidden !important; }
+  #cheetah-article-wrapper th, #cheetah-article-wrapper td { padding: 14px 12px !important; vertical-align: middle !important; border-bottom: 1px solid rgba(38,43,67,0.1) !important; }
+  #cheetah-article-wrapper th { background: rgba(38,43,67,0.04) !important; font-weight: 700 !important; font-size: 13px !important; }
 
-  /* ========== CTA Buttons ========== */
-  #cheetah-article-wrapper .cheetah-cta {
+  /* Buttons */
+  #cheetah-article-wrapper a.cta-button {
     text-decoration: none !important;
     background-color: #6366f1 !important;
     color: #ffffff !important;
     font-weight: 700 !important;
-    padding: 12px 28px !important;
+    padding: 12px 26px !important;
     border-radius: 9999px !important;
     display: inline-block !important;
     box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1) !important;
     border: 1px solid #4f46e5 !important;
-    text-align: center !important;
   }
 
-  #cheetah-article-wrapper .cheetah-cta-wrapper {
-    text-align: center !important;
-    margin: 28px 0 !important;
-    width: 100% !important;
-  }
-
-  /* ========== Tables ========== */
-  #cheetah-article-wrapper table {
-    width: 100% !important;
-    border-collapse: separate !important;
-    border-spacing: 0 !important;
-    margin: 32px 0 !important;
+  /* Images */
+  #cheetah-article-wrapper img {
     border-radius: 12px !important;
-    border: 1px solid rgba(38,43,67,0.12) !important;
-    overflow: hidden !important;
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1) !important;
+    max-width: 100% !important;
+    height: auto !important;
   }
 
-  #cheetah-article-wrapper th,
-  #cheetah-article-wrapper td {
-    padding: 14px 12px !important;
-    vertical-align: middle !important;
-    border-bottom: 1px solid rgba(38,43,67,0.1) !important;
+  /* Mobile fixes for Top-3 table */
+ @media (max-width: 640px) {
+  #cheetah-article-wrapper .product-name-desktop { display: none !important; }
+  #cheetah-article-wrapper .product-name-mobile { display: inline !important; font-size: 13px !important; line-height: 1.3 !important; }
+
+  #cheetah-article-wrapper table td:first-child {
+    width: 90px !important;
+    min-width: 90px !important;
+    max-width: 90px !important;
   }
 
-  #cheetah-article-wrapper th {
-    background: rgba(38,43,67,0.04) !important;
-    font-weight: 700 !important;
-    font-size: 13px !important;
+  #cheetah-article-wrapper table td:first-child img {
+    width: 80px !important;
+    height: 80px !important;
+    max-width: 80px !important;
+    object-fit: contain !important;
   }
 
-  /* ========== Mobile fixes for Top-3 table ========== */
-  @media (max-width: 640px) {
-    #cheetah-article-wrapper .product-name-desktop { display: none !important; }
-    #cheetah-article-wrapper .product-name-mobile { display: inline !important; font-size: 14px !important; }
-    #cheetah-article-wrapper table td:first-child { width: 100px !important; }
-    #cheetah-article-wrapper table img { width: 90px !important; }
-    #cheetah-article-wrapper .cheetah-cta { padding: 10px 16px !important; font-size: 13px !important; }
+  #cheetah-article-wrapper a.cta-button {
+    padding: 8px 12px !important;
+    font-size: 12px !important;
   }
+}
+
+#cheetah-article-wrapper table img {
+  width: 80px !important;
+  height: auto !important;
+  max-width: 90px !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+  aspect-ratio: auto !important;
+}
 </style>
 `;
 

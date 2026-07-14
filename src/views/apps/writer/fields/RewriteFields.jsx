@@ -216,7 +216,7 @@ const RewriteFields = ({ settings, updateSetting }) => {
   </>
 )}
 
-   <Grid size={{ xs: 12, sm: 6 }}>
+   <Grid size={{ xs: 12, sm: settings.aiImagesAndVideos === 'auto' ? 4 : 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Tone of Voice</Typography>
       <FormControl fullWidth size='small' className={settings.toneOfVoice === 'custom' ? 'mbe-3' : ''}>
         <Select value={settings.toneOfVoice} onChange={(e) => updateSetting('toneOfVoice', e.target.value)}>

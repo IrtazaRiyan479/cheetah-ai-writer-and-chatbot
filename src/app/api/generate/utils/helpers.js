@@ -527,15 +527,16 @@ export async function getMediaInstruction(uploadedMedia, sectionIndex, aiImagesA
     const mediaItem = uploadedMedia[sectionIndex];
     selectedMediaUrl = mediaItem.url;
     if (mediaItem.type.startsWith('image/')) {
-      assignedMediaElement = `\n\n<img src="${mediaItem.url}" alt="${mediaItem.name}" class="cheetah-img" />\n\n`;
+       assignedMediaElement = `\n\n<img src="${mediaItem.url}" alt="${mediaItem.name}" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;" />\n\n`;
     } else if (mediaItem.type.startsWith('video/')) {
       assignedMediaElement = `\n\n<video src="${mediaItem.url}" controls style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%;"></video>\n\n`;
     }
     mediaInstruction = `\n[NOTE: A media file is placed at the end of this section. DO NOT output HTML tags for media.]`;
   }
 
-  else if (aiImagesAndVideos === 'auto') {
+ else if (aiImagesAndVideos === 'auto') {
   const lowerHeading = (heading || '').toLowerCase();
+
   if (
     lowerHeading.includes('conclusion') ||
     lowerHeading.includes('final verdict') ||
@@ -545,84 +546,94 @@ export async function getMediaInstruction(uploadedMedia, sectionIndex, aiImagesA
     return { mediaInstruction: '', assignedMediaElement: null, mediaUrl: null };
   }
 
-  if (sectionIndex % 2 === 0) {
-    const currentImageCount = usedImageUrls.filter(url => url.startsWith('http')).length;
-    const imageLimit = parseInt(settings.numberOfImages);
-    const hasImageLimit = !isNaN(imageLimit) && settings.numberOfImages?.toString().trim() !== '';
+  const imageLimit = parseInt(settings?.numberOfImages);
+  const hasImageLimit = !isNaN(imageLimit) && String(settings?.numberOfImages || '').trim() !== '';
 
-    if (hasImageLimit && currentImageCount >= imageLimit) {
-    } else {
-      const coreTopic = articleTitle || targetKeyword;
-      const smartImageData = await getSmartImageKeyword(coreTopic, heading, genAI);
+  const videoLimit = parseInt(settings?.numberOfYoutubeVideos);
+  const hasVideoLimit = !isNaN(videoLimit) && String(settings?.numberOfYoutubeVideos || '').trim() !== '';
 
-      let bestImage = null;
+  const maxImageSlots = hasImageLimit ? imageLimit : 999;
+  const maxVideoSlots = hasVideoLimit ? videoLimit : 999;
 
-      if (smartImageData.isRealisticStockPhoto && smartImageData.stockSearchQuery) {
-        const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
-          fetchUnsplashImage(smartImageData.stockSearchQuery),
-          fetchPexelsImage(smartImageData.stockSearchQuery),
-          fetchPixabayImage(smartImageData.stockSearchQuery)
-        ]);
+  const isImageSlot = sectionIndex % 2 === 0;
+  const imageSlotNumber = settings?.heroImage
+  ? Math.floor((sectionIndex - 1) / 2)
+  : Math.floor(sectionIndex / 2);
+  const videoSlotNumber = Math.floor(sectionIndex / 2);
 
-        let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes];
+  const canHaveImage = isImageSlot && imageSlotNumber < maxImageSlots;
+  const canHaveVideo = !isImageSlot && videoSlotNumber < maxVideoSlots;
 
-        if (candidates.length > 0) {
-          const imageSectionCount = Math.floor(sectionIndex / 2);
-          const preferredSources = ['Unsplash', 'Pexels', 'Pixabay'];
-          const preferredSource = preferredSources[imageSectionCount % 3];
+  if (!canHaveImage && !canHaveVideo) {
+    return { mediaInstruction: '', assignedMediaElement: null, mediaUrl: null };
+  }
 
-          candidates = candidates.map(c => {
+  if (canHaveImage) {
+    const coreTopic = articleTitle || targetKeyword;
+    const smartImageData = await getSmartImageKeyword(coreTopic, heading, genAI);
+
+    let bestImage = null;
+
+    if (smartImageData.isRealisticStockPhoto && smartImageData.stockSearchQuery) {
+      const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
+        fetchUnsplashImage(smartImageData.stockSearchQuery),
+        fetchPexelsImage(smartImageData.stockSearchQuery),
+        fetchPixabayImage(smartImageData.stockSearchQuery)
+      ]);
+
+      let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes];
+
+      if (candidates.length > 0) {
+        const preferredSources = ['Unsplash', 'Pexels', 'Pixabay'];
+        const preferredSource = preferredSources[imageSlotNumber % 3];
+
+        candidates = candidates
+          .map(c => {
             let finalScore = calculateRelevanceScore(c.alt, smartImageData.stockSearchQuery, coreTopic);
             if (c.source === preferredSource) finalScore += 1.0;
             return { ...c, score: finalScore };
-          }).filter(c => c.score >= 2.0 && !usedImageUrls.includes(c.url));
+          })
+          .filter(c => c.score >= 2.0 && !usedImageUrls.includes(c.url));
 
-          if (candidates.length > 0) {
-            candidates.sort((a, b) => b.score - a.score);
-            bestImage = candidates[0];
-            selectedMediaUrl = bestImage.url;
-          }
+        if (candidates.length > 0) {
+          candidates.sort((a, b) => b.score - a.score);
+          bestImage = candidates[0];
+          selectedMediaUrl = bestImage.url;
         }
       }
-
-      if (!bestImage) {
-        const generatedImg = await generateFallbackImage(smartImageData.aiGenerationPrompt);
-        bestImage = generatedImg || {
-          url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
-          alt: heading,
-          source: 'Hardcoded Fallback'
-        };
-        selectedMediaUrl = bestImage.url;
-      }
-
-      const imageTitle = heading || coreTopic;
-      const imageAlt = `${targetKeyword || coreTopic} ${heading || ''}`.trim();
-
-      assignedMediaElement = `\n\n<img src="${bestImage.url}" alt="${imageAlt}" title="${imageTitle}" class="cheetah-img" />\n\n`;
     }
+
+    if (!bestImage) {
+      const generatedImg = await generateFallbackImage(smartImageData.aiGenerationPrompt);
+      bestImage = generatedImg || {
+        url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
+        alt: heading,
+        source: 'Hardcoded Fallback'
+      };
+      selectedMediaUrl = bestImage.url;
+    }
+
+    const imageTitle = heading || coreTopic;
+    const imageAlt = `${targetKeyword || coreTopic} ${heading || ''}`.trim();
+
+    assignedMediaElement = `\n\n<img src="${bestImage.url}" alt="${imageAlt}" title="${imageTitle}" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;" />\n\n`;
   }
 
-  else {
-    const limitValue = parseInt(settings.numberOfYoutubeVideos);
-    const hasLimit = !isNaN(limitValue) && settings.numberOfYoutubeVideos?.toString().trim() !== '';
-    const currentYtCount = usedImageUrls.filter(url => !url.startsWith('http')).length;
+  else if (canHaveVideo) {
+    const smartYtQuery = await getSmartVideoQuery(articleTitle || targetKeyword, heading, genAI);
+    const ytVideos = await fetchYouTubeVideo(smartYtQuery);
 
-    if (!hasLimit || currentYtCount < limitValue) {
-      const smartYtQuery = await getSmartVideoQuery(articleTitle || targetKeyword, heading, genAI);
-      const ytVideos = await fetchYouTubeVideo(smartYtQuery);
+    if (ytVideos && ytVideos.length > 0) {
+      const availableVideos = ytVideos.filter(video => !usedImageUrls.includes(video.id));
 
-      if (ytVideos) {
-        const availableVideos = ytVideos.filter(video => !usedImageUrls.includes(video.id));
+      for (const ytVideo of availableVideos) {
+        const videoUrl = `https://www.youtube.com/watch?v=${ytVideo.id}`;
+        const isAvailable = await isYouTubeVideoAvailable(videoUrl);
 
-        for (const ytVideo of availableVideos) {
-          const videoUrl = `https://www.youtube.com/watch?v=${ytVideo.id}`;
-          const isAvailable = await isYouTubeVideoAvailable(videoUrl);
-
-          if (isAvailable) {
-            selectedMediaUrl = ytVideo.id;
-            assignedMediaElement = `\n\n<div data-youtube-video style="margin: 32px 0;"><iframe src="https://www.youtube.com/embed/${ytVideo.id}" title="${ytVideo.title}" style="width: 100%; aspect-ratio: 16/9; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: none; display: block; max-width: 100%;"></iframe></div>\n\n`;
-            break;
-          }
+        if (isAvailable) {
+          selectedMediaUrl = ytVideo.id;
+          assignedMediaElement = `\n\n<div data-youtube-video style="margin: 32px 0;"><iframe src="https://www.youtube.com/embed/${ytVideo.id}" title="${ytVideo.title}" style="width: 100%; aspect-ratio: 16/9; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: none; display: block; max-width: 100%;"></iframe></div>\n\n`;
+          break;
         }
       }
     }

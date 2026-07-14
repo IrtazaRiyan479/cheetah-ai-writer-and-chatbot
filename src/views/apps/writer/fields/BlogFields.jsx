@@ -70,7 +70,6 @@ const BlogFields = ({ settings, updateSetting }) => (
     <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>SEO Optimization</Typography>
 
-      {/* We add a bottom margin dynamically if the text box is about to appear below it */}
       <FormControl fullWidth size='small' className={settings.seoOptimization === 'manual' ? 'mbe-3' : ''}>
         <Select
           value={settings.seoOptimization}
@@ -148,7 +147,7 @@ const BlogFields = ({ settings, updateSetting }) => (
          <MediaUploader uploadType={settings.aiImagesAndVideos} onFilesUpdate={(files) => updateSetting('uploadedMedia', files)} />
       </Grid>
     )}
-   <Grid size={{ xs: 12, sm: 6 }}>
+   <Grid size={{ xs: 12, sm: settings.aiImagesAndVideos === 'auto' ? 4 : 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Article Length</Typography>
       <FormControl fullWidth size='small' className={settings.articleLength === 'custom' ? 'mbe-3' : ''}>
         <Select value={settings.articleLength} onChange={(e) => updateSetting('articleLength', e.target.value)}>
