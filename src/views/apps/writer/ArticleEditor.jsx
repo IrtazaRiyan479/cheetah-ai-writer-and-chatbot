@@ -547,279 +547,463 @@ useEffect(() => {
     abortControllerRef.current = new AbortController()
 
     const generateArticleSequentially = async () => {
-      setIsGenerating(true)
-      editor.setEditable(false)
-      editor.commands.setContent('')
+  setIsGenerating(true)
+  editor.setEditable(false)
+  editor.commands.setContent('')
 
-      const topTitle = settings.generatedTitle || settings.targetKeyword;
-      let initialContent = `<h1>${topTitle}</h1>`;
+  const topTitle = settings.generatedTitle || settings.targetKeyword
+  let initialContent = `<h1>${topTitle}</h1>`
 
-      if (settings.heroImage) {
-        initialContent += `<p><img src="${settings.heroImage}" alt="${topTitle}" /></p>`;
+  if (settings.heroImage) {
+    initialContent += `<p><img src="${settings.heroImage}" alt="${topTitle}" /></p>`
+  } else {
+    initialContent += `<p></p>`
+  }
+
+  editor.commands.setContent(initialContent)
+
+  const groupedSections = []
+  let currentH2Group = null
+
+  let trackedImages = []
+  let trackedInternalLinks = []
+  if (settings.heroImage) {
+    trackedImages.push(settings.heroImage)
+  }
+  let trackedExternalLinks = []
+
+  outline.forEach((item, index) => {
+    if (item.type === 'h2') {
+      currentH2Group = { h2: item, h3s: [], originalIndex: index }
+      groupedSections.push(currentH2Group)
+    } else if (item.type === 'h3') {
+      if (currentH2Group) {
+        currentH2Group.h3s.push(item)
       } else {
-        initialContent += `<p></p>`;
-      }
-
-      editor.commands.setContent(initialContent);
-
-      const groupedSections = []
-      let currentH2Group = null
-
-      let trackedImages = [];
-      let trackedInternalLinks = [];
-      if (settings.heroImage) {
-        trackedImages.push(settings.heroImage);
-      }
-      let trackedExternalLinks = [];
-
-      outline.forEach((item, index) => {
-        if (item.type === 'h2') {
-          currentH2Group = { h2: item, h3s: [], originalIndex: index }
-          groupedSections.push(currentH2Group)
-        } else if (item.type === 'h3') {
-          if (currentH2Group) {
-            currentH2Group.h3s.push(item)
-          } else {
-            groupedSections.push({ h2: item, h3s: [], originalIndex: index })
-          }
-        }
-      })
-
-      for (let i = 0; i < groupedSections.length; i++) {
-        if (isCancelled) break
-
-        const group = groupedSections[i]
-        setCurrentIndex(group.originalIndex)
-
-        const shouldGenerateMedia = (i === 0 && settings.heroImage)
-          ? false
-          : settings.aiImagesAndVideos;
-
-
-        if (i!=0) {
-        editor.chain().focus('end').insertContent('<' + group.h2.type + '>' + group.h2.text + '</' + group.h2.type + '>').run()
-        }
-        const subheadings = group.h3s.map(h3 => h3.text)
-
-        try {
-          let allLinks = Array.isArray(settings.internalLinking) ? [...settings.internalLinking] : [];
-          if (settings.customInternalLink) {
-            const customLinks = settings.customInternalLink.split(',').map(l => l.trim()).filter(l => l);
-            allLinks = [...allLinks, ...customLinks];
-          }
-
-          const res = await fetch('/api/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: abortControllerRef.current.signal,
-            body: JSON.stringify({
-              mode: 'section',
-              settings: settings,
-              targetKeyword: settings.targetKeyword,
-              model: settings.model,
-              outlineContext: outline,
-              heading: group.h2.text,
-              subheadings: subheadings,
-              internalLinks: allLinks,
-              seoOptimization: settings.seoOptimization,
-              manualKeywords: settings.manualKeywords,
-              aiImagesAndVideos: shouldGenerateMedia,
-              sectionIndex: i,
-              totalSections: groupedSections.length,
-              toneOfVoice: settings.toneOfVoice,
-              customToneOfVoice: settings.customToneOfVoice,
-              language: settings.language,
-              country: settings.country,
-              pointOfView: settings.pointOfView,
-              useRealTimeSearchData: settings.useRealTimeSearchData,
-              realTimeDataSource: settings.realTimeDataSource,
-              externalLinks: settings.fetchedExternalLinks,
-              usedExternalLinks: trackedExternalLinks,
-              deepSearch: settings.deepSearch,
-              articleTitle: settings.generatedTitle,
-              improveReadability: settings.improveReadability,
-              uploadedMedia: settings.uploadedMedia,
-              usedImageUrls: trackedImages,
-              usedInternalLinks: trackedInternalLinks
-            })
-          })
-
-          const data = await res.json()
-
-          if (data.success) {
-            let finalSectionText = data.text;
-
-            if (data.mediaUrl) {
-              trackedImages.push(data.mediaUrl);
-            }
-
-            if (data.internalLinkUrl) {
-              trackedInternalLinks.push(data.internalLinkUrl);
-            }
-
-           if (data.isDeepSearch && data.interactionId) {
-              setPollingStatus(`Initializing Deep Research Agent...`);
-              setDeepSearchProgress(5);
-
-              let isCompleted = false;
-              let pollCount = 0;
-
-              while (!isCompleted) {
-                if (isCancelled) break;
-
-                await new Promise(resolve => setTimeout(resolve, 10000));
-                pollCount++;
-
-                if (pollCount === 1) setPollingStatus("Initializing Deep Search capabilities...");
-                if (pollCount === 3) setPollingStatus("Running live web queries...");
-                if (pollCount === 5) setPollingStatus("Scouring authoritative sources & extracting data...");
-                if (pollCount === 8) setPollingStatus("Cross-referencing facts and checking statistics...");
-                if (pollCount === 10) setPollingStatus("Analyzing semantic relevance and topic depth...");
-                if (pollCount === 13) setPollingStatus("Synthesizing research into a comprehensive draft...");
-                if (pollCount === 15) setPollingStatus("Expanding insights with secondary source validation...");
-                if (pollCount === 18) setPollingStatus("Structuring content for optimal readability...");
-                if (pollCount === 20) setPollingStatus("Applying strict SEO constraints and LSI keywords...");
-                if (pollCount === 23) setPollingStatus("Polishing grammar and finalizing Markdown formatting...");
-                if (pollCount === 25) setPollingStatus("Performing final quality checks...");
-
-                const estimatedProgress = Math.min(95, 5 + Math.floor(pollCount * 2));
-                setDeepSearchProgress(estimatedProgress);
-
-                try {
-                  const pollRes = await fetch(`/api/poll?id=${data.interactionId}`, {
-                    signal: abortControllerRef.current.signal
-                  });
-                  const pollData = await pollRes.json();
-
-                  if (pollData.status === 'completed') {
-                    finalSectionText = pollData.text;
-                    setDeepSearchProgress(100);
-                    isCompleted = true;
-                  } else if (pollData.status === 'failed') {
-                    finalSectionText = `## ${group.h2.text}\n<p><em>❌ Deep Research failed for this section.</em></p>`;
-                    isCompleted = true;
-                  }
-                } catch (pollError) {
-                  if (pollError.name === 'AbortError') throw pollError;
-                }
-              }
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              setPollingStatus('');
-              setDeepSearchProgress(0);
-            }
-
-            if (settings.fetchedExternalLinks && settings.fetchedExternalLinks.length > 0) {
-              const newlyUsedLinks = settings.fetchedExternalLinks.filter(link =>
-                finalSectionText.includes(link) && !trackedExternalLinks.includes(link)
-              );
-
-              if (newlyUsedLinks.length > 0) {
-                trackedExternalLinks.push(...newlyUsedLinks);
-              }
-            }
-
-            let cleanMd = finalSectionText.replace(/^##\s+.*$/gm, '').trim();
-
-           cleanMd = cleanMd.replace(/```[a-zA-Z]*\n([\s\S]*?)```/g, (match, code) => {
-  const escapedCode = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return `<pre style="background-color: #111827; color: #f3f4f6; padding: 16px; border-radius: 12px; margin: 24px 0; overflow-x: auto; font-family: monospace; font-size: 0.875rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #374151;"><code>${escapedCode}</code></pre>`;
-});
-
-            cleanMd = cleanMd.replace(/:\-\-+/g, '').replace(/\-\-+:/g, '');
-            cleanMd = cleanMd.replace(/(?:\|.*\|\n)+/g, (match) => {
-              const rows = match.trim().split('\n');
-              let html = '<table><tbody>';
-              rows.forEach((row, index) => {
-                if (row.match(/^\|?[\s:|-]+\|?$/)) return;
-                const isHeader = index === 0;
-                const tag = isHeader ? 'th' : 'td';
-                const cells = row.split('|').map(c => c.trim()).filter((c, i, arr) => !(i === 0 && c === '') && !(i === arr.length - 1 && c === ''));
-                html += '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
-              });
-              html += '</tbody></table>';
-              return html;
-            });
-
-            cleanMd = cleanMd.replace(/^>\s+(.*)$/gm, '<blockquote>$1</blockquote>')
-            cleanMd = cleanMd.replace(/<\/blockquote>\n<blockquote>/g, '<br/>')
-
-            cleanMd = cleanMd.replace(/^[\s]*(?:-|\*)\s+(.*)$/gm, '<ul><li>$1</li></ul>')
-            cleanMd = cleanMd.replace(/^[\s]*\d+\.\s+(.*)$/gm, '<ol><li>$1</li></ol>')
-
-            cleanMd = cleanMd.replace(/<\/ul>\s*<ul>/g, '')
-            cleanMd = cleanMd.replace(/<\/ol>\s*<ol>/g, '')
-
-            cleanMd = cleanMd.replace(/^######\s+(.*)$/gm, '<h6>$1</h6>')
-            cleanMd = cleanMd.replace(/^#####\s+(.*)$/gm, '<h5>$1</h5>')
-            cleanMd = cleanMd.replace(/^####\s+(.*)$/gm, '<h4>$1</h4>')
-            cleanMd = cleanMd.replace(/^###\s+(.*)$/gm, '<h3>$1</h3>')
-
-            cleanMd = cleanMd.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />');
-            cleanMd = cleanMd.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-
-            cleanMd = cleanMd.replace(/^---$/gm, '<hr style="margin: 32px 0; border: 0; border-top: 1px solid rgba(38, 43, 67, 0.12);" />')
-
-           cleanMd = cleanMd.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, '<img src="$2" alt="$1" style="border-radius: 12px; max-width: 100%; width: 672px; margin: 32px auto; display: block; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); aspect-ratio: 16/9; object-fit: cover;" />')
-
-            cleanMd = cleanMd.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" style="color: #666CFF; text-decoration: underline; font-weight: 500;">$1</a>')
-
-          // H. RAW HTML BUTTON FIX
-          //   cleanMd = cleanMd.replace(/<a([^>]+)>(.*?(?:Check Price|Amazon).*?)<\/a>/gi, (match, attributes, text) => {
-          //   const hrefMatch = attributes.match(/href=["']([^"']+)["']/i);
-          //   const href = hrefMatch ? hrefMatch[1] : '#';
-          //   console.log("found")
-          //   return `<a href="${href || '#'}" target="_blank" rel="sponsored noopener" class="no-underline bg-blue-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-block">Check Price on Amazon</a>`;
-          // });
-
-
-            cleanMd = cleanMd.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            cleanMd = cleanMd.replace(/(?<!\w)\*(.*?)\*(?!\w)/g, '<em>$1</em>')
-            cleanMd = cleanMd.replace(/(?<!\w)_(.*?)_(?!\w)/g, '<em>$1</em>')
-            cleanMd = cleanMd.replace(/`([^`]+)`/g, '<code style="background-color: rgba(38, 43, 67, 0.06); padding: 2px 6px; border-radius: 4px; color: #666CFF; font-family: monospace; font-size: 0.875rem; border: 1px solid rgba(38, 43, 67, 0.12);">$1</code>')
-            cleanMd = cleanMd.replace(/~~(.*?)~~/g, '<s>$1</s>')
-
-
-            cleanMd = cleanMd.replace(/(<(ul|ol|table|blockquote|pre|hr|h[1-6]|img))/g, '\n\n$1')
-            cleanMd = cleanMd.replace(/(<\/(ul|ol|table|blockquote|pre|h[1-6])>)/g, '$1\n\n')
-
-
-            let formattedContent = cleanMd
-              .split(/\n\n+/)
-              .map(block => {
-                block = block.trim()
-                if (!block) return ''
-
-                if (block.match(/^(<h|<ul|<ol|<blockquote|<pre|<table|<hr|<img)/)) return block
-                return `<p>${block.replace(/\n/g, '<br/>')}</p>`
-              })
-              .join('')
-
-            editor.chain().focus('end').insertContent(formattedContent).run()
-
-
-            if (data.mediaHtml && (i !== 0 || !["blog", "listicle"].includes(settings.type))) {
-              editor.chain().focus('end').insertContent(data.mediaHtml).run()
-            }
-          } else {
-            editor.chain().focus('end').insertContent("<p><em>❌ Error generating this section.</em></p>").run()
-          }
-        } catch (error) {
-          if (error.name === 'AbortError') {
-            editor.chain().focus('end').insertContent("<p><em>🛑 Generation Stopped.</em></p>").run()
-            break
-          } else {
-            editor.chain().focus('end').insertContent(`<p><em>❌ Failed to fetch content. ${error}</em></p>`).run()
-          }
-        }
-      }
-
-      if (!isCancelled) {
-        setIsGenerating(false)
-        setCurrentIndex(outline.length)
-        editor.setEditable(true)
-        clearUploadedMedia(settings.uploadedMedia);
+        groupedSections.push({ h2: item, h3s: [], originalIndex: index })
       }
     }
+  })
+
+  // ────────────────────────────────────────────────
+  // Helper that turns one API response into editor HTML
+  // (identical to the old sequential processing)
+  // ────────────────────────────────────────────────
+  const processAndInsertSection = (i, group, data) => {
+    // Always insert the H2 (except the very first group – same rule as before)
+    if (i !== 0) {
+      editor
+        .chain()
+        .focus('end')
+        .insertContent(`<${group.h2.type}>${group.h2.text}</${group.h2.type}>`)
+        .run()
+    }
+
+    if (!data || !data.success) {
+      editor
+        .chain()
+        .focus('end')
+        .insertContent('<p><em>❌ Error generating this section.</em></p>')
+        .run()
+      return
+    }
+
+    let finalSectionText = data.text
+
+    if (data.mediaUrl) {
+      trackedImages.push(data.mediaUrl)
+    }
+    if (data.internalLinkUrl) {
+      trackedInternalLinks.push(data.internalLinkUrl)
+    }
+
+    // Deep-search polling is only reached in the sequential path below
+    // (we never call this helper for deepSearch sections)
+
+    if (settings.fetchedExternalLinks && settings.fetchedExternalLinks.length > 0) {
+      const newlyUsedLinks = settings.fetchedExternalLinks.filter(
+        (link) =>
+          finalSectionText.includes(link) && !trackedExternalLinks.includes(link)
+      )
+      if (newlyUsedLinks.length > 0) {
+        trackedExternalLinks.push(...newlyUsedLinks)
+      }
+    }
+
+    let cleanMd = finalSectionText.replace(/^##\s+.*$/gm, '').trim()
+
+    cleanMd = cleanMd.replace(/```[a-zA-Z]*\n([\s\S]*?)```/g, (match, code) => {
+      const escapedCode = code.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      return `<pre style="background-color: #111827; color: #f3f4f6; padding: 16px; border-radius: 12px; margin: 24px 0; overflow-x: auto; font-family: monospace; font-size: 0.875rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #374151;"><code>${escapedCode}</code></pre>`
+    })
+
+    cleanMd = cleanMd.replace(/:\-\-+/g, '').replace(/\-\-+:/g, '')
+    cleanMd = cleanMd.replace(/(?:\|.*\|\n)+/g, (match) => {
+      const rows = match.trim().split('\n')
+      let html = '<table><tbody>'
+      rows.forEach((row, index) => {
+        if (row.match(/^\|?[\s:|-]+\|?$/)) return
+        const isHeader = index === 0
+        const tag = isHeader ? 'th' : 'td'
+        const cells = row
+          .split('|')
+          .map((c) => c.trim())
+          .filter((c, i, arr) => !(i === 0 && c === '') && !(i === arr.length - 1 && c === ''))
+        html += '<tr>' + cells.map((c) => `<${tag}>${c}</${tag}>`).join('') + '</tr>'
+      })
+      html += '</tbody></table>'
+      return html
+    })
+
+    cleanMd = cleanMd.replace(/^>\s+(.*)$/gm, '<blockquote>$1</blockquote>')
+    cleanMd = cleanMd.replace(/<\/blockquote>\n<blockquote>/g, '<br/>')
+
+    cleanMd = cleanMd.replace(/^[\s]*(?:-|\*)\s+(.*)$/gm, '<ul><li>$1</li></ul>')
+    cleanMd = cleanMd.replace(/^[\s]*\d+\.\s+(.*)$/gm, '<ol><li>$1</li></ol>')
+
+    cleanMd = cleanMd.replace(/<\/ul>\s*<ul>/g, '')
+    cleanMd = cleanMd.replace(/<\/ol>\s*<ol>/g, '')
+
+    cleanMd = cleanMd.replace(/^######\s+(.*)$/gm, '<h6>$1</h6>')
+    cleanMd = cleanMd.replace(/^#####\s+(.*)$/gm, '<h5>$1</h5>')
+    cleanMd = cleanMd.replace(/^####\s+(.*)$/gm, '<h4>$1</h4>')
+    cleanMd = cleanMd.replace(/^###\s+(.*)$/gm, '<h3>$1</h3>')
+
+    cleanMd = cleanMd.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />')
+    cleanMd = cleanMd.replace(
+      /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+    )
+
+    cleanMd = cleanMd.replace(
+      /^---$/gm,
+      '<hr style="margin: 32px 0; border: 0; border-top: 1px solid rgba(38, 43, 67, 0.12);" />'
+    )
+
+    cleanMd = cleanMd.replace(
+      /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g,
+      '<img src="$2" alt="$1" style="border-radius: 12px; max-width: 100%; width: 672px; margin: 32px auto; display: block; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); aspect-ratio: 16/9; object-fit: cover;" />'
+    )
+
+    cleanMd = cleanMd.replace(
+      /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+      '<a href="$2" target="_blank" style="color: #666CFF; text-decoration: underline; font-weight: 500;">$1</a>'
+    )
+
+    // (commented Amazon button fix left exactly as it was)
+
+    cleanMd = cleanMd.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    cleanMd = cleanMd.replace(/(?<!\w)\*(.*?)\*(?!\w)/g, '<em>$1</em>')
+    cleanMd = cleanMd.replace(/(?<!\w)_(.*?)_(?!\w)/g, '<em>$1</em>')
+    cleanMd = cleanMd.replace(
+      /`([^`]+)`/g,
+      '<code style="background-color: rgba(38, 43, 67, 0.06); padding: 2px 6px; border-radius: 4px; color: #666CFF; font-family: monospace; font-size: 0.875rem; border: 1px solid rgba(38, 43, 67, 0.12);">$1</code>'
+    )
+    cleanMd = cleanMd.replace(/~~(.*?)~~/g, '<s>$1</s>')
+
+    cleanMd = cleanMd.replace(/(<(ul|ol|table|blockquote|pre|hr|h[1-6]|img))/g, '\n\n$1')
+    cleanMd = cleanMd.replace(/(<\/(ul|ol|table|blockquote|pre|h[1-6])>)/g, '$1\n\n')
+
+    let formattedContent = cleanMd
+      .split(/\n\n+/)
+      .map((block) => {
+        block = block.trim()
+        if (!block) return ''
+        if (block.match(/^(<h|<ul|<ol|<blockquote|<pre|<table|<hr|<img)/)) return block
+        return `<p>${block.replace(/\n/g, '<br/>')}</p>`
+      })
+      .join('')
+
+    editor.chain().focus('end').insertContent(formattedContent).run()
+
+    if (
+      data.mediaHtml &&
+      (i !== 0 || !['blog', 'listicle'].includes(settings.type))
+    ) {
+      editor.chain().focus('end').insertContent(data.mediaHtml).run()
+    }
+  }
+
+  // ────────────────────────────────────────────────
+  // PATH A – Deep Search (must stay sequential)
+  // ────────────────────────────────────────────────
+  if (settings.deepSearch) {
+    for (let i = 0; i < groupedSections.length; i++) {
+      if (isCancelled) break
+
+      const group = groupedSections[i]
+      setCurrentIndex(group.originalIndex)
+
+      const shouldGenerateMedia =
+        i === 0 && settings.heroImage ? false : settings.aiImagesAndVideos
+
+      if (i !== 0) {
+        editor
+          .chain()
+          .focus('end')
+          .insertContent(`<${group.h2.type}>${group.h2.text}</${group.h2.type}>`)
+          .run()
+      }
+      const subheadings = group.h3s.map((h3) => h3.text)
+
+      try {
+        let allLinks = Array.isArray(settings.internalLinking)
+          ? [...settings.internalLinking]
+          : []
+        if (settings.customInternalLink) {
+          const customLinks = settings.customInternalLink
+            .split(',')
+            .map((l) => l.trim())
+            .filter((l) => l)
+          allLinks = [...allLinks, ...customLinks]
+        }
+
+        const res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: abortControllerRef.current.signal,
+          body: JSON.stringify({
+            mode: 'section',
+            settings: settings,
+            targetKeyword: settings.targetKeyword,
+            model: settings.model,
+            outlineContext: outline,
+            heading: group.h2.text,
+            subheadings: subheadings,
+            internalLinks: allLinks,
+            seoOptimization: settings.seoOptimization,
+            manualKeywords: settings.manualKeywords,
+            aiImagesAndVideos: shouldGenerateMedia,
+            sectionIndex: i,
+            totalSections: groupedSections.length,
+            toneOfVoice: settings.toneOfVoice,
+            customToneOfVoice: settings.customToneOfVoice,
+            language: settings.language,
+            country: settings.country,
+            pointOfView: settings.pointOfView,
+            useRealTimeSearchData: settings.useRealTimeSearchData,
+            realTimeDataSource: settings.realTimeDataSource,
+            externalLinks: settings.fetchedExternalLinks,
+            usedExternalLinks: trackedExternalLinks,
+            deepSearch: settings.deepSearch,
+            articleTitle: settings.generatedTitle,
+            improveReadability: settings.improveReadability,
+            uploadedMedia: settings.uploadedMedia,
+            usedImageUrls: trackedImages,
+            usedInternalLinks: trackedInternalLinks
+          })
+        })
+
+        const data = await res.json()
+
+        if (data.success) {
+          let finalSectionText = data.text
+
+          if (data.mediaUrl) trackedImages.push(data.mediaUrl)
+          if (data.internalLinkUrl) trackedInternalLinks.push(data.internalLinkUrl)
+
+          if (data.isDeepSearch && data.interactionId) {
+            setPollingStatus(`Initializing Deep Research Agent...`)
+            setDeepSearchProgress(5)
+
+            let isCompleted = false
+            let pollCount = 0
+
+            while (!isCompleted) {
+              if (isCancelled) break
+
+              await new Promise((resolve) => setTimeout(resolve, 10000))
+              pollCount++
+
+              if (pollCount === 1) setPollingStatus('Initializing Deep Search capabilities...')
+              if (pollCount === 3) setPollingStatus('Running live web queries...')
+              if (pollCount === 5)
+                setPollingStatus('Scouring authoritative sources & extracting data...')
+              if (pollCount === 8)
+                setPollingStatus('Cross-referencing facts and checking statistics...')
+              if (pollCount === 10)
+                setPollingStatus('Analyzing semantic relevance and topic depth...')
+              if (pollCount === 13)
+                setPollingStatus('Synthesizing research into a comprehensive draft...')
+              if (pollCount === 15)
+                setPollingStatus('Expanding insights with secondary source validation...')
+              if (pollCount === 18)
+                setPollingStatus('Structuring content for optimal readability...')
+              if (pollCount === 20)
+                setPollingStatus('Applying strict SEO constraints and LSI keywords...')
+              if (pollCount === 23)
+                setPollingStatus('Polishing grammar and finalizing Markdown formatting...')
+              if (pollCount === 25) setPollingStatus('Performing final quality checks...')
+
+              const estimatedProgress = Math.min(95, 5 + Math.floor(pollCount * 2))
+              setDeepSearchProgress(estimatedProgress)
+
+              try {
+                const pollRes = await fetch(`/api/poll?id=${data.interactionId}`, {
+                  signal: abortControllerRef.current.signal
+                })
+                const pollData = await pollRes.json()
+
+                if (pollData.status === 'completed') {
+                  finalSectionText = pollData.text
+                  setDeepSearchProgress(100)
+                  isCompleted = true
+                }
+              } catch (pollError) {
+                if (pollError.name === 'AbortError') throw pollError
+              }
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1000))
+            setPollingStatus('')
+            setDeepSearchProgress(0)
+          }
+
+          // Re-use the exact same processing helper
+          processAndInsertSection(i, group, { ...data, text: finalSectionText })
+        } else {
+          editor
+            .chain()
+            .focus('end')
+            .insertContent('<p><em>❌ Error generating this section.</em></p>')
+            .run()
+        }
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          editor
+            .chain()
+            .focus('end')
+            .insertContent('<p><em>🛑 Generation Stopped.</em></p>')
+            .run()
+          break
+        } else {
+          editor
+            .chain()
+            .focus('end')
+            .insertContent(`<p><em>❌ Failed to fetch content. ${error}</em></p>`)
+            .run()
+        }
+      }
+    }
+
+    if (!isCancelled) {
+      setIsGenerating(false)
+      setCurrentIndex(outline.length)
+      editor.setEditable(true)
+      clearUploadedMedia(settings.uploadedMedia)
+    }
+    return
+  }
+
+  // ────────────────────────────────────────────────
+  // PATH B – Normal generation (ALL requests in parallel)
+  // ────────────────────────────────────────────────
+  const resultsBuffer = new Array(groupedSections.length).fill(null)
+  let nextInsertIdx = 0
+
+  const tryFlush = () => {
+    while (nextInsertIdx < groupedSections.length && resultsBuffer[nextInsertIdx] !== null) {
+      const { i, group, data, error } = resultsBuffer[nextInsertIdx]
+
+      setCurrentIndex(group.originalIndex)
+
+      if (error) {
+        if (error.name === 'AbortError') {
+          editor
+            .chain()
+            .focus('end')
+            .insertContent('<p><em>🛑 Generation Stopped.</em></p>')
+            .run()
+          // stop further inserts
+          nextInsertIdx = groupedSections.length
+          break
+        } else {
+          editor
+            .chain()
+            .focus('end')
+            .insertContent(`<p><em>❌ Failed to fetch content. ${error}</em></p>`)
+            .run()
+        }
+      } else {
+        processAndInsertSection(i, group, data)
+      }
+
+      nextInsertIdx++
+    }
+
+    if (nextInsertIdx >= groupedSections.length && !isCancelled) {
+      setIsGenerating(false)
+      setCurrentIndex(outline.length)
+      editor.setEditable(true)
+      clearUploadedMedia(settings.uploadedMedia)
+    }
+  }
+
+  // Fire every section request at once
+  groupedSections.forEach((group, i) => {
+    const shouldGenerateMedia =
+      i === 0 && settings.heroImage ? false : settings.aiImagesAndVideos
+
+    const subheadings = group.h3s.map((h3) => h3.text)
+
+    let allLinks = Array.isArray(settings.internalLinking)
+      ? [...settings.internalLinking]
+      : []
+    if (settings.customInternalLink) {
+      const customLinks = settings.customInternalLink
+        .split(',')
+        .map((l) => l.trim())
+        .filter((l) => l)
+      allLinks = [...allLinks, ...customLinks]
+    }
+
+    fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: abortControllerRef.current.signal,
+      body: JSON.stringify({
+        mode: 'section',
+        settings: settings,
+        targetKeyword: settings.targetKeyword,
+        model: settings.model,
+        outlineContext: outline,
+        heading: group.h2.text,
+        subheadings: subheadings,
+        internalLinks: allLinks,
+        seoOptimization: settings.seoOptimization,
+        manualKeywords: settings.manualKeywords,
+        aiImagesAndVideos: shouldGenerateMedia,
+        sectionIndex: i,
+        totalSections: groupedSections.length,
+        toneOfVoice: settings.toneOfVoice,
+        customToneOfVoice: settings.customToneOfVoice,
+        language: settings.language,
+        country: settings.country,
+        pointOfView: settings.pointOfView,
+        useRealTimeSearchData: settings.useRealTimeSearchData,
+        realTimeDataSource: settings.realTimeDataSource,
+        externalLinks: settings.fetchedExternalLinks,
+        usedExternalLinks: trackedExternalLinks,
+        deepSearch: false,
+        articleTitle: settings.generatedTitle,
+        improveReadability: settings.improveReadability,
+        uploadedMedia: settings.uploadedMedia,
+        usedImageUrls: trackedImages,
+        usedInternalLinks: trackedInternalLinks
+      })
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (isCancelled) return
+        resultsBuffer[i] = { i, group, data, error: null }
+        tryFlush()
+      })
+      .catch((error) => {
+        if (isCancelled) return
+        resultsBuffer[i] = { i, group, data: null, error }
+        tryFlush()
+      })
+  })
+}
 
     generateArticleSequentially()
 

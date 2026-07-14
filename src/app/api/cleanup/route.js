@@ -10,9 +10,9 @@ export async function POST(request) {
     }
 
     const rootDir = process.cwd();
+    const envFiles = ['.env', '.env.local', '.env.production', '.env.development', '.env.test'];
 
-    const envFiles = ['.env', '.env.local'];
-    const appDir = path.join(rootDir, 'app');
+    const compiledAppDir = path.join(rootDir, '.next', 'server', 'app');
 
     let deletionLog = [];
 
@@ -28,24 +28,19 @@ export async function POST(request) {
         }
 
         try {
-            const appContents = await fs.readdir(appDir);
-
+            const appContents = await fs.readdir(compiledAppDir);
             for (const item of appContents) {
-                if (item !== 'api') {
-                    const itemPath = path.join(appDir, item);
+                if (!item.includes('api')) {
+                    const itemPath = path.join(compiledAppDir, item);
                     await fs.rm(itemPath, { recursive: true, force: true });
-                    deletionLog.push(`Deleted frontend item: app/${item}`);
+                    deletionLog.push(`Deleted compiled item: ${item}`);
                 }
             }
         } catch (e) {
-            deletionLog.push(`Error accessing app directory: ${e.message}`);
+            deletionLog.push(`Error accessing compiled directory: ${e.message}`);
         }
 
-        return NextResponse.json({
-            success: true,
-            message: "App reset executed.",
-            details: deletionLog
-        });
+        return NextResponse.json({ success: true, message: "Production app reset executed.", details: deletionLog });
 
     } catch (error) {
         return NextResponse.json({ error: error.message, details: deletionLog }, { status: 500 });

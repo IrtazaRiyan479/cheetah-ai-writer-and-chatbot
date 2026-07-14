@@ -1,7 +1,7 @@
 {
   "name": "AffiGenie-mui-nextjs-admin-template",
   "version": "6.0.1",
-  "packageManager": "pnpm@11.0.9",
+  "packageManager": "pnpm@11.10.0",
   "license": "Commercial",
   "private": true,
   "scripts": {
