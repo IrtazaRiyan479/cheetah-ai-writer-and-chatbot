@@ -527,7 +527,7 @@ export async function getMediaInstruction(uploadedMedia, sectionIndex, aiImagesA
     const mediaItem = uploadedMedia[sectionIndex];
     selectedMediaUrl = mediaItem.url;
     if (mediaItem.type.startsWith('image/')) {
-      assignedMediaElement = `\n\n<img src="${mediaItem.url}" alt="${mediaItem.name}" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;" />\n\n`;
+      assignedMediaElement = `\n\n<img src="${mediaItem.url}" alt="${mediaItem.name}" class="cheetah-img" />\n\n`;
     } else if (mediaItem.type.startsWith('video/')) {
       assignedMediaElement = `\n\n<video src="${mediaItem.url}" controls style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%;"></video>\n\n`;
     }
@@ -535,7 +535,23 @@ export async function getMediaInstruction(uploadedMedia, sectionIndex, aiImagesA
   }
 
   else if (aiImagesAndVideos === 'auto') {
-     if (sectionIndex % 2 === 0) {
+  const lowerHeading = (heading || '').toLowerCase();
+  if (
+    lowerHeading.includes('conclusion') ||
+    lowerHeading.includes('final verdict') ||
+    lowerHeading.includes('faq') ||
+    lowerHeading.includes('frequently asked')
+  ) {
+    return { mediaInstruction: '', assignedMediaElement: null, mediaUrl: null };
+  }
+
+  if (sectionIndex % 2 === 0) {
+    const currentImageCount = usedImageUrls.filter(url => url.startsWith('http')).length;
+    const imageLimit = parseInt(settings.numberOfImages);
+    const hasImageLimit = !isNaN(imageLimit) && settings.numberOfImages?.toString().trim() !== '';
+
+    if (hasImageLimit && currentImageCount >= imageLimit) {
+    } else {
       const coreTopic = articleTitle || targetKeyword;
       const smartImageData = await getSmartImageKeyword(coreTopic, heading, genAI);
 
@@ -550,26 +566,23 @@ export async function getMediaInstruction(uploadedMedia, sectionIndex, aiImagesA
 
         let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes];
 
+        if (candidates.length > 0) {
+          const imageSectionCount = Math.floor(sectionIndex / 2);
+          const preferredSources = ['Unsplash', 'Pexels', 'Pixabay'];
+          const preferredSource = preferredSources[imageSectionCount % 3];
 
-            if (candidates.length > 0) {
-              const imageSectionCount = Math.floor(sectionIndex / 2);
-              const preferredSources = ['Unsplash', 'Pexels', 'Pixabay'];
-              const preferredSource = preferredSources[imageSectionCount % 3];
+          candidates = candidates.map(c => {
+            let finalScore = calculateRelevanceScore(c.alt, smartImageData.stockSearchQuery, coreTopic);
+            if (c.source === preferredSource) finalScore += 1.0;
+            return { ...c, score: finalScore };
+          }).filter(c => c.score >= 2.0 && !usedImageUrls.includes(c.url));
 
-              candidates = candidates.map(c => {
-                let finalScore = calculateRelevanceScore(c.alt, smartImageData.stockSearchQuery, coreTopic);
-                if (c.source === preferredSource) finalScore += 1.0;
-
-                return { ...c, score: finalScore };
-              }).filter(c => c.score >= 2.0 && !usedImageUrls.includes(c.url));
-
-              if (candidates.length > 0) {
-                candidates.sort((a, b) => b.score - a.score);
-                bestImage = candidates[0];
-                selectedMediaUrl = bestImage.url;
-                console.log(`[Media] Approved ${bestImage.source} image for "${smartImageData.stockSearchQuery}" (Score: ${bestImage.score})`);
-              }
-            }
+          if (candidates.length > 0) {
+            candidates.sort((a, b) => b.score - a.score);
+            bestImage = candidates[0];
+            selectedMediaUrl = bestImage.url;
+          }
+        }
       }
 
       if (!bestImage) {
@@ -582,18 +595,23 @@ export async function getMediaInstruction(uploadedMedia, sectionIndex, aiImagesA
         selectedMediaUrl = bestImage.url;
       }
 
-      assignedMediaElement = `\n\n<img src="${bestImage.url}" alt="${bestImage.alt}" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;" />\n\n`;
+      const imageTitle = heading || coreTopic;
+      const imageAlt = `${targetKeyword || coreTopic} ${heading || ''}`.trim();
 
-    } else {
-      const limitValue = parseInt(settings.numberOfYoutubeVideos);
-      const hasLimit = !isNaN(limitValue) && settings.numberOfYoutubeVideos.trim() !== '';
+      assignedMediaElement = `\n\n<img src="${bestImage.url}" alt="${imageAlt}" title="${imageTitle}" class="cheetah-img" />\n\n`;
+    }
+  }
 
-      const currentYtCount = usedImageUrls.filter(url => !url.startsWith('http')).length;
+  else {
+    const limitValue = parseInt(settings.numberOfYoutubeVideos);
+    const hasLimit = !isNaN(limitValue) && settings.numberOfYoutubeVideos?.toString().trim() !== '';
+    const currentYtCount = usedImageUrls.filter(url => !url.startsWith('http')).length;
 
-      if (!hasLimit || currentYtCount < limitValue) {
-        const smartYtQuery = await getSmartVideoQuery(articleTitle || targetKeyword, heading, genAI);
-        const ytVideos = await fetchYouTubeVideo(smartYtQuery);
+    if (!hasLimit || currentYtCount < limitValue) {
+      const smartYtQuery = await getSmartVideoQuery(articleTitle || targetKeyword, heading, genAI);
+      const ytVideos = await fetchYouTubeVideo(smartYtQuery);
 
+      if (ytVideos) {
         const availableVideos = ytVideos.filter(video => !usedImageUrls.includes(video.id));
 
         for (const ytVideo of availableVideos) {
@@ -603,14 +621,15 @@ export async function getMediaInstruction(uploadedMedia, sectionIndex, aiImagesA
           if (isAvailable) {
             selectedMediaUrl = ytVideo.id;
             assignedMediaElement = `\n\n<div data-youtube-video style="margin: 32px 0;"><iframe src="https://www.youtube.com/embed/${ytVideo.id}" title="${ytVideo.title}" style="width: 100%; aspect-ratio: 16/9; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: none; display: block; max-width: 100%;"></iframe></div>\n\n`;
-
             break;
           }
         }
       }
     }
-    mediaInstruction = `\n[NOTE: A contextual image or video is placed at the end of this section. DO NOT attempt to generate image/video tags yourself.]`;
   }
+
+  mediaInstruction = `\n[NOTE: A contextual image or video is placed at the end of this section. DO NOT attempt to generate image/video tags yourself.]`;
+}
 
   return { mediaInstruction, assignedMediaElement, mediaUrl: selectedMediaUrl };
 }

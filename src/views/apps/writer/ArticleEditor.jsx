@@ -306,7 +306,7 @@ const convertHtmlToMarkdown = (html) => {
 
 const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) => {
   const router = useRouter()
-  const searchParams = useSearchParams()       // ADD THIS
+  const searchParams = useSearchParams()
   const draftId = searchParams.get('draftId')
   const [isGenerating, setIsGenerating] = useState(true)
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -555,8 +555,8 @@ useEffect(() => {
   let initialContent = `<h1>${topTitle}</h1>`
 
   if (settings.heroImage) {
-    initialContent += `<p><img src="${settings.heroImage}" alt="${topTitle}" /></p>`
-  } else {
+  initialContent += `<p><img src="${settings.heroImage}" alt="${topTitle}" title="${topTitle}" /></p>`
+} else {
     initialContent += `<p></p>`
   }
 
@@ -585,12 +585,7 @@ useEffect(() => {
     }
   })
 
-  // ────────────────────────────────────────────────
-  // Helper that turns one API response into editor HTML
-  // (identical to the old sequential processing)
-  // ────────────────────────────────────────────────
   const processAndInsertSection = (i, group, data) => {
-    // Always insert the H2 (except the very first group – same rule as before)
     if (i !== 0) {
       editor
         .chain()
@@ -608,6 +603,13 @@ useEffect(() => {
       return
     }
 
+    if (!data?.text || data.text.trim().length < 30) {
+        editor.chain().focus('end').insertContent(
+          `<p><em>⚠️ Section "${group.h2.text}" could not be generated. Please regenerate this part.</em></p>`
+        ).run()
+        return
+      }
+
     let finalSectionText = data.text
 
     if (data.mediaUrl) {
@@ -617,8 +619,6 @@ useEffect(() => {
       trackedInternalLinks.push(data.internalLinkUrl)
     }
 
-    // Deep-search polling is only reached in the sequential path below
-    // (we never call this helper for deepSearch sections)
 
     if (settings.fetchedExternalLinks && settings.fetchedExternalLinks.length > 0) {
       const newlyUsedLinks = settings.fetchedExternalLinks.filter(
@@ -690,7 +690,6 @@ useEffect(() => {
       '<a href="$2" target="_blank" style="color: #666CFF; text-decoration: underline; font-weight: 500;">$1</a>'
     )
 
-    // (commented Amazon button fix left exactly as it was)
 
     cleanMd = cleanMd.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     cleanMd = cleanMd.replace(/(?<!\w)\*(.*?)\*(?!\w)/g, '<em>$1</em>')
@@ -724,9 +723,6 @@ useEffect(() => {
     }
   }
 
-  // ────────────────────────────────────────────────
-  // PATH A – Deep Search (must stay sequential)
-  // ────────────────────────────────────────────────
   if (settings.deepSearch) {
     for (let i = 0; i < groupedSections.length; i++) {
       if (isCancelled) break
@@ -794,7 +790,17 @@ useEffect(() => {
           })
         })
 
-        const data = await res.json()
+        let data;
+          try {
+            data = await res.json();
+          } catch (parseError) {
+            const text = await res.text().catch(() => 'Unknown server error');
+            throw new Error(`Server returned invalid response: ${text.slice(0, 120)}`);
+          }
+
+          if (!res.ok || !data?.success) {
+            throw new Error(data?.error || `HTTP ${res.status}`);
+          }
 
         if (data.success) {
           let finalSectionText = data.text
@@ -858,7 +864,6 @@ useEffect(() => {
             setDeepSearchProgress(0)
           }
 
-          // Re-use the exact same processing helper
           processAndInsertSection(i, group, { ...data, text: finalSectionText })
         } else {
           editor
@@ -894,9 +899,6 @@ useEffect(() => {
     return
   }
 
-  // ────────────────────────────────────────────────
-  // PATH B – Normal generation (ALL requests in parallel)
-  // ────────────────────────────────────────────────
   const resultsBuffer = new Array(groupedSections.length).fill(null)
   let nextInsertIdx = 0
 
@@ -913,7 +915,6 @@ useEffect(() => {
             .focus('end')
             .insertContent('<p><em>🛑 Generation Stopped.</em></p>')
             .run()
-          // stop further inserts
           nextInsertIdx = groupedSections.length
           break
         } else {
@@ -938,7 +939,6 @@ useEffect(() => {
     }
   }
 
-  // Fire every section request at once
   groupedSections.forEach((group, i) => {
     const shouldGenerateMedia =
       i === 0 && settings.heroImage ? false : settings.aiImagesAndVideos
@@ -1288,7 +1288,6 @@ useEffect(() => {
       </div>
     ) : (
 
-      /* NORMAL PUBLISHING FORM */
       <>
         <TextField
           label="Article Title"
@@ -1322,7 +1321,6 @@ useEffect(() => {
             <MenuItem value="riderequips">Rider Equips</MenuItem>
             <MenuItem value="handfultool">Handful Tool</MenuItem>
 
-            {/* Render sites fetched from the database */}
             {userSavedSites.length > 0 && <Divider />}
             {userSavedSites.map(site => (
               <MenuItem key={site.id} value={`db_${site.id}`}>
@@ -1343,7 +1341,6 @@ useEffect(() => {
                 <strong>How to get an App Password:</strong> Go to your WordPress Admin Dashboard ➔ <strong>Users</strong> ➔ <strong>Profile</strong>. Scroll down to <strong>Application Passwords</strong>, create a new one, and paste it below.
               </Alert>
 
-              {/* You need a Name field so you can identify it in the DB */}
               <TextField
                 label="Site Name (e.g., My Personal Blog)"
                 size="small"

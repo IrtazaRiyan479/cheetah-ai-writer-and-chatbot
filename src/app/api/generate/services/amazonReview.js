@@ -324,7 +324,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
       STRICT LAYOUT REQUIREMENT (Image & CTA):
       Immediately following your introductory text, you MUST insert this EXACT HTML block to display link:
       <div align="center" style="margin: 25px 0;">
-        <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 8px 16px; border-radius: 4px; display: inline-block;" class="cta-button">Check Price on Amazon</a>
+        <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" class="cheetah-cta">Check Price on Amazon</a>
       </div>
     `;
   }
@@ -341,7 +341,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
       At the very end of your conclusion, insert this EXACT HTML block:
 
       <div align="center" style="margin: 25px 0;">
-       <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 8px 16px; border-radius: 4px; display: inline-block;" class="cta-button">Check Price on Amazon</a>
+       <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" class="cheetah-cta">Check Price on Amazon</a>
       </div>
     `;
   }
@@ -360,37 +360,50 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
   }
 
   let result;
-  let retries = 5;
-  let delay = 2000;
+ let retries = 5;
+ const delay = 5000;
 
-  for (let i = 0; i < retries; i++) {
-    try {
-      result = await sectionModel.generateContent(sectionPrompt);
-      break;
-    } catch (error) {
-      if (i === retries - 1) {
-        throw error;
-      }
+for (let i = 0; i < retries; i++) {
+  try {
+    result = await sectionModel.generateContent(sectionPrompt);
+    break;
+  } catch (error) {
+    const errorMessage = (error?.message || String(error) || '').toLowerCase();
+    const status = error?.status || error?.statusCode || error?.code;
 
-      const errorMessage = error.message ? error.message.toLowerCase() : '';
+    const isRetryable =
+      status === 429 || status === 500 || status === 503 ||
+      errorMessage.includes('429') ||
+      errorMessage.includes('503') ||
+      errorMessage.includes('500') ||
+      errorMessage.includes('rate limit') ||
+      errorMessage.includes('quota') ||
+      errorMessage.includes('overloaded') ||
+      errorMessage.includes('resource exhausted') ||
+      errorMessage.includes('fetch failed') ||
+      errorMessage.includes('econnreset') ||
+      errorMessage.includes('etimedout') ||
+      errorMessage.includes('network') ||
+      errorMessage.includes('timeout') ||
+      errorMessage.includes('socket hang up') ||
+      error.name === 'TypeError' ||
+      errorMessage.includes('typeerror');
 
-      const isTypeError = error.name === 'TypeError' || errorMessage.includes('typeerror');
-
-      const is503 = error.status === 503 || errorMessage.includes('503');
-
-      const isFetchFailed = errorMessage.includes('fetch failed') ||
-                            errorMessage.includes('econnreset') ||
-                            errorMessage.includes('etimedout');
-
-      if (is503 || isFetchFailed || isTypeError) {
-        console.warn(`[Gemini API] Transient Error (${is503 ? '503' : 'Fetch Failed'}). Retrying in ${delay / 1000} seconds... (Attempt ${i + 1} of ${retries})`);
-        await new Promise(res => setTimeout(res, delay));
-        delay *= 2;
-      } else {
-        throw error;
-      }
+    if (i === retries - 1 || !isRetryable) {
+      console.error(`[Gemini API] Final failure after ${i + 1} attempts:`, error);
+      throw new Error(
+        error?.message ||
+        (typeof error === 'string' ? error : 'Gemini generation failed after retries')
+      );
     }
+
+    console.warn(
+      `[Gemini API] Transient error (status: ${status || 'n/a'}). ` +
+      `Retrying in ${delay / 1000}s... (Attempt ${i + 1}/${retries})`
+    );
+    await new Promise(res => setTimeout(res, delay));
   }
+}
 
   return {
     success: true,

@@ -184,20 +184,36 @@ const RewriteFields = ({ settings, updateSetting }) => {
           </FormControl>
         </Grid>
 
-        {settings.aiImagesAndVideos === 'auto' && (
-  <Grid size={{ xs: 12, sm: 2 }}>
-    <Typography variant='subtitle2' className='font-medium mbe-1'>
-      YT Video Limit
-    </Typography>
-    <TextField
-      fullWidth
-      type="number"
-      size='small'
-      placeholder="No limit"
-      value={settings.numberOfYoutubeVideos || ''}
-      onChange={(e) => updateSetting('numberOfYoutubeVideos', e.target.value)}
-    />
-  </Grid>
+       {settings.aiImagesAndVideos === 'auto' && (
+  <>
+    <Grid size={{ xs: 12, sm: 2 }}>
+      <Typography variant='subtitle2' className='font-medium mbe-1'>
+        Image Limit
+      </Typography>
+      <TextField
+        fullWidth
+        type="number"
+        size='small'
+        placeholder="No limit"
+        value={settings.numberOfImages || ''}
+        onChange={(e) => updateSetting('numberOfImages', e.target.value)}
+      />
+    </Grid>
+
+    <Grid size={{ xs: 12, sm: 2 }}>
+      <Typography variant='subtitle2' className='font-medium mbe-1'>
+        YT Video Limit
+      </Typography>
+      <TextField
+        fullWidth
+        type="number"
+        size='small'
+        placeholder="No limit"
+        value={settings.numberOfYoutubeVideos || ''}
+        onChange={(e) => updateSetting('numberOfYoutubeVideos', e.target.value)}
+      />
+    </Grid>
+  </>
 )}
 
    <Grid size={{ xs: 12, sm: 6 }}>

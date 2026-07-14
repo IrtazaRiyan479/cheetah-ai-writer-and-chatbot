@@ -224,37 +224,50 @@ let sectionStructureRequirements = `
       `;
 
   let result;
-  let retries = 5;
-  let delay = 2000;
+ let retries = 5;
+ const delay = 5000;
 
-  for (let i = 0; i < retries; i++) {
-    try {
-      result = await sectionModel.generateContent(sectionPrompt);
-      break;
-    } catch (error) {
-      if (i === retries - 1) {
-        throw error;
-      }
+for (let i = 0; i < retries; i++) {
+  try {
+    result = await sectionModel.generateContent(sectionPrompt);
+    break;
+  } catch (error) {
+    const errorMessage = (error?.message || String(error) || '').toLowerCase();
+    const status = error?.status || error?.statusCode || error?.code;
 
-      const errorMessage = error.message ? error.message.toLowerCase() : '';
+    const isRetryable =
+      status === 429 || status === 500 || status === 503 ||
+      errorMessage.includes('429') ||
+      errorMessage.includes('503') ||
+      errorMessage.includes('500') ||
+      errorMessage.includes('rate limit') ||
+      errorMessage.includes('quota') ||
+      errorMessage.includes('overloaded') ||
+      errorMessage.includes('resource exhausted') ||
+      errorMessage.includes('fetch failed') ||
+      errorMessage.includes('econnreset') ||
+      errorMessage.includes('etimedout') ||
+      errorMessage.includes('network') ||
+      errorMessage.includes('timeout') ||
+      errorMessage.includes('socket hang up') ||
+      error.name === 'TypeError' ||
+      errorMessage.includes('typeerror');
 
-const isTypeError = error.name === 'TypeError' || errorMessage.includes('typeerror');
-
-      const is503 = error.status === 503 || errorMessage.includes('503');
-
-      const isFetchFailed = errorMessage.includes('fetch failed') ||
-                            errorMessage.includes('econnreset') ||
-                            errorMessage.includes('etimedout');
-
-      if (is503 || isFetchFailed || isTypeError) {
-        console.warn(`[Gemini API] Transient Error (${is503 ? '503' : 'Fetch Failed'}). Retrying in ${delay / 1000} seconds... (Attempt ${i + 1} of ${retries})`);
-        await new Promise(res => setTimeout(res, delay));
-        delay *= 2;
-      } else {
-        throw error;
-      }
+    if (i === retries - 1 || !isRetryable) {
+      console.error(`[Gemini API] Final failure after ${i + 1} attempts:`, error);
+      throw new Error(
+        error?.message ||
+        (typeof error === 'string' ? error : 'Gemini generation failed after retries')
+      );
     }
+
+    console.warn(
+      `[Gemini API] Transient error (status: ${status || 'n/a'}). ` +
+      `Retrying in ${delay / 1000}s... (Attempt ${i + 1}/${retries})`
+    );
+    await new Promise(res => setTimeout(res, delay));
   }
+}
 
   return { success: true, text: result.response.text(), internalLinkUrl: internalLinkUrl};
 }

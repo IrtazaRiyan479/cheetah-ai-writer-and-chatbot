@@ -234,10 +234,9 @@ export async function generateAmazonRoundupSection(body, genAI) {
   const readabilityInstruction = getReadabilityInstruction(improveReadability);
   const seoInstruction = await getSeoInstruction(targetKeyword);
 
-  let { instruction: linkInstruction, selectedUrl: internalLinkUrl }= '';
+  let { instruction: linkInstruction, selectedUrl: internalLinkUrl } = await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
   let extLinkInstruction = '';
   if (activeSectionType === 'intro' || activeSectionType === 'buying_guide') {
-    linkInstruction = await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
     extLinkInstruction = settings.automaticExternalLinks ? getExternalLinkInstruction(externalLinks, usedExternalLinks) : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.';
   }
 
@@ -280,20 +279,24 @@ export async function generateAmazonRoundupSection(body, genAI) {
     const top3 = formattedProducts.slice(0, 3);
 
     const top3HTML = top3.map(p => {
-      const safeTitle = p.productName.replace(/[\r\n]+/g, ' ').replace(/\|/g, '-');
-      const safeImageUrl = p.imageUrl ? p.imageUrl.replace(/_/g, '%5F') : '';
-      return `<tr>
-  <td style="padding: 16px; border-bottom: 1px solid rgba(38, 43, 67, 0.08); vertical-align: middle; text-align: center;">
-    <img src="${safeImageUrl}" width="100" style="max-width: 100%; height: auto; border-radius: 8px; display: inline-block;"/>
+  const safeTitle = p.productName.replace(/[\r\n]+/g, ' ').replace(/\|/g, '-')
+  const shortName = safeTitle.length > 55 ? safeTitle.substring(0, 52) + '…' : safeTitle
+  const safeImageUrl = p.imageUrl ? p.imageUrl.replace(/_/g, '%5F') : ''
+  const altText = `${targetKeyword} ${shortName}`
+
+  return `<tr>
+  <td style="padding: 12px; border-bottom: 1px solid rgba(38, 43, 67, 0.08); vertical-align: middle; text-align: center; width: 120px;">
+    <img src="${safeImageUrl}" width="110" alt="${altText}" title="${shortName}" style="max-width: 100%; height: auto; border-radius: 8px; display: inline-block;"/>
   </td>
-  <td style="padding: 16px; border-bottom: 1px solid rgba(38, 43, 67, 0.08); vertical-align: middle; color: rgba(38, 43, 67, 0.9);">
-    <strong>${safeTitle}</strong>
+  <td style="padding: 12px; border-bottom: 1px solid rgba(38, 43, 67, 0.08); vertical-align: middle; color: rgba(38, 43, 67, 0.9);">
+    <strong class="product-name-desktop">${safeTitle}</strong>
+    <strong class="product-name-mobile" style="display:none;">${shortName}</strong>
   </td>
-  <td style="padding: 16px; border-bottom: 1px solid rgba(38, 43, 67, 0.08); vertical-align: middle; text-align: center;">
-    <a href="${p.amazonUrl}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 10px 24px; border-radius: 9999px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); border: 1px solid #4f46e5; letter-spacing: 0.025em; white-space: nowrap;" class="cta-button">Check Price</a>
+  <td style="padding: 12px; border-bottom: 1px solid rgba(38, 43, 67, 0.08); vertical-align: middle; text-align: center;">
+    <a href="${p.amazonUrl}" target="_blank" rel="sponsored noopener" class="cheetah-cta">Check Price</a>
   </td>
-</tr>`;
-    }).join('');
+</tr>`
+}).join('')
 
 
     sectionPrompt += `
@@ -329,14 +332,14 @@ export async function generateAmazonRoundupSection(body, genAI) {
       1. **Review:** 2-3 engaging paragraphs reviewing the product.
       2. **HTML Image:** Insert this EXACT HTML centered:
          <div align="center" style="margin: 25px 0;">
-            <img src="${product.imageUrl}" alt="${product.title}" style="max-width:100%; height:auto; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.05);" />
+            <img src="${product.imageUrl}" alt="${targetKeyword} ${product.productName}" title="${product.productName}" style="max-width:100%; height:auto; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.05);" />
           </div>
       3. **Features:** A bulleted list of 3-4 key features.
       4. **Pros & Cons Table:** A strictly formatted Markdown table with "Pros" and "Cons" columns.
       5. **Real Buyer Opinions:** A brief summary of what real buyers think. CRITICAL: You must synthesize this summary directly from the "Official Features" provided above. Frame the feedback around how buyers react to those specific attributes (e.g., if a feature highlights 'lightweight design', mention how users praise its portability).
       6. **CTA Button:** Insert this EXACT HTML for the affiliate button:
                 <div style="display: block; width: 100%; text-align: center; margin: 25px 0;">
-  <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 12px 28px; border-radius: 9999px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); border: 1px solid #4f46e5; letter-spacing: 0.025em; text-align: center; vertical-align: middle;" class="cta-button">Check Price</a>
+  <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" class="cheetah-cta">Check Price</a>
 </div>
     `;
   }
@@ -357,37 +360,50 @@ export async function generateAmazonRoundupSection(body, genAI) {
   }
 
   let result;
-  let retries = 5;
-  let delay = 2000;
+ let retries = 5;
+ const delay = 5000;
 
-  for (let i = 0; i < retries; i++) {
-    try {
-      result = await sectionModel.generateContent(sectionPrompt);
-      break;
-    } catch (error) {
-      if (i === retries - 1) {
-        throw error;
-      }
+for (let i = 0; i < retries; i++) {
+  try {
+    result = await sectionModel.generateContent(sectionPrompt);
+    break;
+  } catch (error) {
+    const errorMessage = (error?.message || String(error) || '').toLowerCase();
+    const status = error?.status || error?.statusCode || error?.code;
 
-      const errorMessage = error.message ? error.message.toLowerCase() : '';
+    const isRetryable =
+      status === 429 || status === 500 || status === 503 ||
+      errorMessage.includes('429') ||
+      errorMessage.includes('503') ||
+      errorMessage.includes('500') ||
+      errorMessage.includes('rate limit') ||
+      errorMessage.includes('quota') ||
+      errorMessage.includes('overloaded') ||
+      errorMessage.includes('resource exhausted') ||
+      errorMessage.includes('fetch failed') ||
+      errorMessage.includes('econnreset') ||
+      errorMessage.includes('etimedout') ||
+      errorMessage.includes('network') ||
+      errorMessage.includes('timeout') ||
+      errorMessage.includes('socket hang up') ||
+      error.name === 'TypeError' ||
+      errorMessage.includes('typeerror');
 
-const isTypeError = error.name === 'TypeError' || errorMessage.includes('typeerror');
-
-      const is503 = error.status === 503 || errorMessage.includes('503');
-
-      const isFetchFailed = errorMessage.includes('fetch failed') ||
-                            errorMessage.includes('econnreset') ||
-                            errorMessage.includes('etimedout');
-
-      if (is503 || isFetchFailed || isTypeError) {
-        console.warn(`[Gemini API] Transient Error (${is503 ? '503' : 'Fetch Failed'}). Retrying in ${delay / 1000} seconds... (Attempt ${i + 1} of ${retries})`);
-        await new Promise(res => setTimeout(res, delay));
-        delay *= 2;
-      } else {
-        throw error;
-      }
+    if (i === retries - 1 || !isRetryable) {
+      console.error(`[Gemini API] Final failure after ${i + 1} attempts:`, error);
+      throw new Error(
+        error?.message ||
+        (typeof error === 'string' ? error : 'Gemini generation failed after retries')
+      );
     }
+
+    console.warn(
+      `[Gemini API] Transient error (status: ${status || 'n/a'}). ` +
+      `Retrying in ${delay / 1000}s... (Attempt ${i + 1}/${retries})`
+    );
+    await new Promise(res => setTimeout(res, delay));
   }
+}
 
 
   return { success: true, text: result.response.text(), mediaHtml: null, internalLinkUrl: internalLinkUrl };

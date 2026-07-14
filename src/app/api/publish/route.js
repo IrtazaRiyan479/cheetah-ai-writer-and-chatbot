@@ -1,18 +1,14 @@
 import { NextResponse } from 'next/server'
 
-async function uploadImageToWP(imageUrl, siteUrl, credentials) {
+async function uploadImageToWP(imageUrl, siteUrl, credentials, articleTitle) {
   try {
-
     const imageResponse = await fetch(imageUrl)
     if (!imageResponse.ok) throw new Error('Could not fetch the image URL')
 
     const imageBuffer = Buffer.from(await imageResponse.arrayBuffer())
-
-
     const mimeType = imageResponse.headers.get('content-type') || 'image/jpeg'
     const extension = mimeType.split('/')[1] || 'jpg'
     const filename = `hero-image-${Date.now()}.${extension}`
-
 
     const wpMediaResponse = await fetch(`${siteUrl}/wp-json/wp/v2/media`, {
       method: 'POST',
@@ -25,8 +21,22 @@ async function uploadImageToWP(imageUrl, siteUrl, credentials) {
     })
 
     const mediaData = await wpMediaResponse.json()
-    return mediaData.id ? mediaData.id : null
+    if (!mediaData.id) return null
 
+    await fetch(`${siteUrl}/wp-json/wp/v2/media/${mediaData.id}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${credentials}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        title: articleTitle || 'Featured Image',
+        alt_text: articleTitle || 'Featured Image',
+        caption: ''
+      })
+    })
+
+    return mediaData.id
   } catch (error) {
     console.error("WP Media Upload Error:", error)
     return null
@@ -63,25 +73,78 @@ export async function POST(request) {
 
     let featuredMediaId = null;
     if (featuredImageUrl) {
-      featuredMediaId = await uploadImageToWP(featuredImageUrl, cleanSiteUrl, credentials)
+      featuredMediaId = await uploadImageToWP(featuredImageUrl, cleanSiteUrl, credentials, title)
     }
 
-    const masterStyles = `
+   const masterStyles = `
 <style id="cheetah-master-styles">
-  #cheetah-article-wrapper { line-height: 1.6; font-family: 'Inter', sans-serif; }
+  #cheetah-article-wrapper {
+    line-height: 1.7;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
 
-  /* Force Table Styles */
-  #cheetah-article-wrapper tbody {border: none !important;}
-  #cheetah-article-wrapper table { width: 100% !important; border-collapse: separate !important; border-spacing: 0 !important; margin: 32px 0 !important; border-radius: 12px !important; border: 1px solid rgba(38, 43, 67, 0.12) !important; overflow: hidden !important; }
-  #cheetah-article-wrapper th, #cheetah-article-wrapper td { padding: 16px !important; vertical-align: middle !important; border-bottom: 1px solid rgba(38, 43, 67, 0.12) !important; color: rgba(38, 43, 67, 0.7) !important; border:none !important; }
-  #cheetah-article-wrapper th { background-color: rgba(38, 43, 67, 0.04) !important; font-weight: 700 !important; color: rgba(38, 43, 67, 0.9) !important; text-align: left !important; border: none !important; }
+  /* ========== Images ========== */
+  #cheetah-article-wrapper .cheetah-img {
+    border-radius: 12px !important;
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1) !important;
+    max-width: 100% !important;
+    height: auto !important;
+    display: block !important;
+    margin: 32px auto !important;
+  }
 
-  /* Force Button Styles */
-  #cheetah-article-wrapper a.cta-button { text-decoration: none !important; background-color: #6366f1 !important; color: #ffffff !important; font-weight: 700 !important; padding: 12px 28px !important; border-radius: 9999px !important; display: inline-block !important; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1) !important; border: 1px solid #4f46e5 !important; text-align: center !important; }
-  #cheetah-article-wrapper .button-container { text-align: center !important; margin: 25px 0 !important; width: 100% !important; }
+  /* ========== CTA Buttons ========== */
+  #cheetah-article-wrapper .cheetah-cta {
+    text-decoration: none !important;
+    background-color: #6366f1 !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    padding: 12px 28px !important;
+    border-radius: 9999px !important;
+    display: inline-block !important;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1) !important;
+    border: 1px solid #4f46e5 !important;
+    text-align: center !important;
+  }
 
-  /* Force Image/Media Styles */
-  #cheetah-article-wrapper img { border-radius: 12px !important; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1) !important; }
+  #cheetah-article-wrapper .cheetah-cta-wrapper {
+    text-align: center !important;
+    margin: 28px 0 !important;
+    width: 100% !important;
+  }
+
+  /* ========== Tables ========== */
+  #cheetah-article-wrapper table {
+    width: 100% !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+    margin: 32px 0 !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(38,43,67,0.12) !important;
+    overflow: hidden !important;
+  }
+
+  #cheetah-article-wrapper th,
+  #cheetah-article-wrapper td {
+    padding: 14px 12px !important;
+    vertical-align: middle !important;
+    border-bottom: 1px solid rgba(38,43,67,0.1) !important;
+  }
+
+  #cheetah-article-wrapper th {
+    background: rgba(38,43,67,0.04) !important;
+    font-weight: 700 !important;
+    font-size: 13px !important;
+  }
+
+  /* ========== Mobile fixes for Top-3 table ========== */
+  @media (max-width: 640px) {
+    #cheetah-article-wrapper .product-name-desktop { display: none !important; }
+    #cheetah-article-wrapper .product-name-mobile { display: inline !important; font-size: 14px !important; }
+    #cheetah-article-wrapper table td:first-child { width: 100px !important; }
+    #cheetah-article-wrapper table img { width: 90px !important; }
+    #cheetah-article-wrapper .cheetah-cta { padding: 10px 16px !important; font-size: 13px !important; }
+  }
 </style>
 `;
 
