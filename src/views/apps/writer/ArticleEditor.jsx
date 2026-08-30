@@ -1488,7 +1488,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                     onChange={e => setCustomWPData({ ...customWPData, url: e.target.value })}
                   />
                   <TextField
-                    label='Application Password Name'
+                    label='WP Username'
                     size='small'
                     value={customWPData.username}
                     onChange={e => setCustomWPData({ ...customWPData, username: e.target.value })}
