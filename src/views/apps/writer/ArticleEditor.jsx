@@ -527,7 +527,15 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         }
       }
 
-      const stripTitleSites = ['handfultool', 'riderequips', 'cheekypetpark', 'specialfootgear', 'webmarketics']
+      const stripTitleSites = [
+        'handfultool',
+        'riderequips',
+        'cheekypetpark',
+        'specialfootgear',
+        'webmarketics',
+        'babiescarrier'
+      ]
+
       const stripImageSites = ['specialfootgear', 'webmarketics']
 
       if (!isCustom && !isDbSaved) {
