@@ -571,7 +571,13 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       const result = await res.json()
 
       if (result.success) {
-        setPublishSuccessData({ link: result.link, id: result.wpPostId })
+        setPublishSuccessData({
+          link: result.link,
+          editLink: result.editLink,
+          id: result.wpPostId,
+          status: result.status,
+          type: result.status === 'draft' ? 'wp-draft-success' : 'wp-publish-success'
+        })
       } else {
         alert(`Error: ${result.error}`)
       }
@@ -1382,9 +1388,11 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
             ? 'Authentication Required'
             : publishSuccessData?.type === 'draft-success'
               ? '🎉 Draft Saved!'
-              : publishSuccessData
-                ? '🎉 Successfully Published!'
-                : 'Publish to WordPress'}
+              : publishSuccessData?.type === 'wp-draft-success'
+                ? '📝 Sent to WordPress Drafts'
+                : publishSuccessData
+                  ? '🎉 Successfully Published!'
+                  : 'Publish to WordPress'}
         </DialogTitle>
         <DialogContent className='flex flex-col gap-4 mt-2'>
           {publishSuccessData?.type === 'unauthenticated' ? (
@@ -1407,12 +1415,33 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                 View My Drafts
               </Button>
             </div>
+          ) : publishSuccessData?.type === 'wp-draft-success' ? (
+            <div className='flex flex-col items-center justify-center p-6 text-center gap-4'>
+              <div className='text-orange-500 text-6xl'>
+                <i className='ri-draft-line' />
+              </div>
+              <Typography variant='h6'>Saved as a WordPress draft</Typography>
+              <Typography variant='body2' color='text.secondary'>
+                It will appear under Posts → Drafts. Your writer can open it and click Schedule.
+              </Typography>
+              {publishSuccessData.editLink && (
+                <Button
+                  variant='contained'
+                  color='warning'
+                  href={publishSuccessData.editLink}
+                  target='_blank'
+                  rel='noopener noreferrer'
+                >
+                  Open Draft in WP Admin
+                </Button>
+              )}
+            </div>
           ) : publishSuccessData ? (
             <div className='flex flex-col items-center justify-center p-6 text-center gap-4'>
               <div className='text-green-500 text-6xl'>
                 <i className='ri-check-line' />
               </div>
-              <Typography variant='h6'>Your article is live (or saved as draft)!</Typography>
+              <Typography variant='h6'>Your article is live!</Typography>
               <Button
                 variant='contained'
                 color='primary'
@@ -1519,7 +1548,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           )}
         </DialogContent>
         {!publishSuccessData && (
-          <DialogActions className='p-4'>
+          <DialogActions className='p-4' sx={{ flexWrap: 'wrap', gap: 1 }}>
             <Button onClick={() => setPublishDialogOpen(false)} disabled={isPublishing}>
               Cancel
             </Button>
@@ -1529,7 +1558,15 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
               onClick={handleSaveDraftToDB}
               disabled={isPublishing || !publishTitle.trim()}
             >
-              Save as Draft
+              Save in App
+            </Button>
+            <Button
+              variant='outlined'
+              color='warning'
+              onClick={() => handlePublishToWP('draft', settings.metaTitle, settings.metaDescription)}
+              disabled={isPublishing || !publishTitle.trim()}
+            >
+              {isPublishing ? <CircularProgress size={24} /> : 'Send to WP Draft'}
             </Button>
             <Button
               variant='contained'

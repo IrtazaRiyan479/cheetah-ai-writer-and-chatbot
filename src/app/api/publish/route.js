@@ -122,7 +122,15 @@ export async function POST(request) {
     const data = await response.json()
 
     if (data.id) {
-      return NextResponse.json({ success: true, wpPostId: data.id, link: data.link })
+      const editLink = `${cleanSiteUrl}/wp-admin/post.php?post=${data.id}&action=edit`
+
+      return NextResponse.json({
+        success: true,
+        wpPostId: data.id,
+        link: data.link,
+        editLink,
+        status: postPayload.status
+      })
     } else {
       throw new Error(data.message || 'Failed to publish to WordPress')
     }
