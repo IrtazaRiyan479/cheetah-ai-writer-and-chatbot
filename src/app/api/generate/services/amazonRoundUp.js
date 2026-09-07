@@ -13,12 +13,14 @@ import {
   fetchPeopleAlsoSearchFor,
   generateFallbackImage,
   fetchSerperOutlineData
-} from '../utils/helpers';
-import { languages } from '@/configs/languages';
-import { countries } from '@/configs/countries';
+} from '../utils/helpers'
+import { languages } from '@/configs/languages'
+import { countries } from '@/configs/countries'
 
 async function fetchInternalAmazonData(keyword, settings) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+  const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
 
   const response = await fetch(`${baseUrl}/api/amazon`, {
     method: 'POST',
@@ -28,37 +30,43 @@ async function fetchInternalAmazonData(keyword, settings) {
       domain: settings.amazonDomain || 'www.amazon.com',
       partnerTag: process.env.AMAZON_PARTNER_TAG
     })
-  });
-
-
+  })
 
   if (!response.ok) {
-    const errorText = await response.text();
-    let errorDetails = errorText;
-    try {
-        const parsed = JSON.parse(errorText);
-        errorDetails = parsed.details ? JSON.stringify(parsed.details) : errorText;
-    } catch(e) {}
+    const errorText = await response.text()
+    let errorDetails = errorText
 
-    console.error("Amazon Route Failed:", errorDetails);
-    throw new Error(`Amazon API 400: ${errorDetails}`);
+    try {
+      const parsed = JSON.parse(errorText)
+
+      errorDetails = parsed.details ? JSON.stringify(parsed.details) : errorText
+    } catch (e) {}
+
+    console.error('Amazon Route Failed:', errorDetails)
+    throw new Error(`Amazon API 400: ${errorDetails}`)
   }
-  return await response.json();
+
+  return await response.json()
 }
 
 function formatAmazonProducts(apiData, settings) {
-  const rawData = apiData?.data?.searchResult?.items || [];
-  const numberOfProducts = settings.numberOfProducts || 5;
-  const limitedProducts = rawData.slice(0, numberOfProducts);
+  const rawData = apiData?.data?.searchResult?.items || []
+  const numberOfProducts = settings.numberOfProducts || 5
+  const limitedProducts = rawData.slice(0, numberOfProducts)
 
   return limitedProducts.map(item => {
-    const title = item?.itemInfo?.title?.displayValue || 'Amazon Product';
-    let affiliateUrl = new URL(item?.detailPageURL || `https://${settings.amazonDomain || 'www.amazon.com'}/dp/${item.asin}?tag=${process.env.AMAZON_PARTNER_TAG}`);
-    if (settings.amazonTrackingId) affiliateUrl.searchParams.set('tag', settings.amazonTrackingId);
-    let imageUrl = item?.images?.primary?.large?.url || '';
-    imageUrl = imageUrl.replace(/\._[A-Za-z0-9_]+_\./, '.');
-    const price = item?.offersV2?.listings?.[0]?.price?.money?.displayAmount || 'Check Price on Amazon';
-    const features = item?.itemInfo?.features?.displayValues || [];
+    const title = item?.itemInfo?.title?.displayValue || 'Amazon Product'
+    let affiliateUrl = new URL(
+      item?.detailPageURL ||
+        `https://${settings.amazonDomain || 'www.amazon.com'}/dp/${item.asin}?tag=${process.env.AMAZON_PARTNER_TAG}`
+    )
+
+    if (settings.amazonTrackingId) affiliateUrl.searchParams.set('tag', settings.amazonTrackingId)
+    let imageUrl = item?.images?.primary?.large?.url || ''
+
+    imageUrl = imageUrl.replace(/\._[A-Za-z0-9_]+_\./, '.')
+    const price = item?.offersV2?.listings?.[0]?.price?.money?.displayAmount || 'Check Price on Amazon'
+    const features = item?.itemInfo?.features?.displayValues || []
 
     return {
       productName: title,
@@ -66,62 +74,67 @@ function formatAmazonProducts(apiData, settings) {
       imageUrl: imageUrl,
       price: price,
       features: features
-    };
-  });
+    }
+  })
 }
 
 export async function generateAmazonRoundupOutline(body, genAI) {
-  const { settings, targetKeyword } = body;
-  const { model, language, country, includeFaq, automaticExternalLinks } = settings;
+  const { settings, targetKeyword } = body
+  const { model, language, country, includeFaq, automaticExternalLinks } = settings
 
-  const amazonApiData = await fetchInternalAmazonData(targetKeyword, settings);
-  const formattedProducts = formatAmazonProducts(amazonApiData, settings);
+  const amazonApiData = await fetchInternalAmazonData(targetKeyword, settings)
+  const formattedProducts = formatAmazonProducts(amazonApiData, settings)
 
   if (formattedProducts.length === 0) {
-    throw new Error('No Amazon products found for this keyword. Please check the keyword or Amazon API limit.');
+    throw new Error('No Amazon products found for this keyword. Please check the keyword or Amazon API limit.')
   }
 
-  const langObj = languages ? languages[language] : null;
-  const langName = langObj ? langObj.name : (language || 'English');
-  const countryObj = countries ? countries.find(c => c.code === country) : null;
-  const countryName = countryObj ? countryObj.name : (country || 'United States');
+  const langObj = languages ? languages[language] : null
+  const langName = langObj ? langObj.name : language || 'English'
+  const countryObj = countries ? countries.find(c => c.code === country) : null
+  const countryName = countryObj ? countryObj.name : country || 'United States'
 
-  const baseSystemInstruction = getBaseSystemInstruction(langName, countryName);
-  const productListString = formattedProducts.map((p, index) =>
-    `${index + 1}. ${p.productName}\n   URL: ${p.amazonUrl}\n   Image: ${p.imageUrl}\n   Price: ${p.price}`
-  ).join('\n\n');
+  const baseSystemInstruction = getBaseSystemInstruction(langName, countryName)
 
-  let fetchedExternalLinks = [];
-  let faqInstruction = '';
-  let relatedInstruction = '';
+  const productListString = formattedProducts
+    .map(
+      (p, index) =>
+        `${index + 1}. ${p.productName}\n   URL: ${p.amazonUrl}\n   Image: ${p.imageUrl}\n   Price: ${p.price}`
+    )
+    .join('\n\n')
+
+  let fetchedExternalLinks = []
+  let faqInstruction = ''
+  let relatedInstruction = ''
 
   if (automaticExternalLinks || includeFaq) {
-      const outlineData = await fetchSerperOutlineData(targetKeyword);
+    const outlineData = await fetchSerperOutlineData(targetKeyword)
 
-      if (automaticExternalLinks) {
-        fetchedExternalLinks = outlineData.authorityLinks;
-      }
+    if (automaticExternalLinks) {
+      fetchedExternalLinks = outlineData.authorityLinks
+    }
 
-      if (includeFaq) {
-          if (outlineData.faqs.length > 0) {
-            faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled exactly "Frequently Asked Questions". Under this H2, you MUST nest exactly these questions directly from Google as H3 subheadings:\n${outlineData.faqs.slice(0, 5).map(q => `- ${q}`).join('\n')}`;
-          } else {
-            faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled "Frequently Asked Questions" and nest 3-5 highly relevant questions as H3 subheadings.`;
-          }
-      }
-
-
-      if (outlineData.related.length > 0) {
-          relatedInstruction = `\nSEO OPTIMIZATION: Naturally incorporate topics from these related Google searches into your H2 and H3 headings where relevant: ${outlineData.related.slice(0, 5).join(', ')}.`;
+    if (includeFaq) {
+      if (outlineData.faqs.length > 0) {
+        faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled exactly "Frequently Asked Questions". Under this H2, you MUST nest exactly these questions directly from Google as H3 subheadings:\n${outlineData.faqs
+          .slice(0, 5)
+          .map(q => `- ${q}`)
+          .join('\n')}`
+      } else {
+        faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled "Frequently Asked Questions" and nest 3-5 highly relevant questions as H3 subheadings.`
       }
     }
+
+    if (outlineData.related.length > 0) {
+      relatedInstruction = `\nSEO OPTIMIZATION: Naturally incorporate topics from these related Google searches into your H2 and H3 headings where relevant: ${outlineData.related.slice(0, 5).join(', ')}.`
+    }
+  }
 
   const outlineModel = genAI.getGenerativeModel({
     model: model || 'gemini-3.1-flash-lite',
     generationConfig: { responseMimeType: 'application/json' },
-   systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging Amazon Roundup article outline for the keyword: "${targetKeyword}". You MUST return a JSON object with four keys: "metaTitle" (SEO title, max 60 chars), "metaDescription" (SEO desc, max 160 chars), "title" (A catchy H1 Title) and "outline" (A flat JSON array of objects).\n\nFor standard sections (intro, buying_guide, faq), use this schema:\n{ "type": "h2", "text": "Section Title", "sectionType": "intro" }\n\nFor "product" sections, you MUST include the rich product data provided to you using this schema:\n{\n  "type": "h2",\n  "text": "[Product Name]",\n  "sectionType": "product",\n  "productData": {\n    "productName": "Exact Amazon Title",\n    "amazonUrl": "https://amazon.com/dp/...",\n    "imageUrl": "https://m.media-amazon.com/images/...",\n    "price": "$19.99"\n  }\n}\n\nCRITICAL OUTLINE RULES:\n- The "title" MUST contain the exact target keyword: "${targetKeyword}".\n- The VERY FIRST "h2" object (intro) MUST contain the exact target keyword: "${targetKeyword}" in its "text" field.\n- The VERY LAST "h2" object (conclusion or faq) MUST contain the exact target keyword: "${targetKeyword}" in its "text" field.`
-  });
-
+    systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging Amazon Roundup article outline for the keyword: "${targetKeyword}". You MUST return a JSON object with four keys: "metaTitle" (SEO title, max 60 chars), "metaDescription" (SEO desc, max 160 chars), "title" (A catchy H1 Title) and "outline" (A flat JSON array of objects).\n\nFor standard sections (intro, buying_guide, faq), use this schema:\n{ "type": "h2", "text": "Section Title", "sectionType": "intro" }\n\nFor "product" sections, you MUST include the rich product data provided to you using this schema:\n{\n  "type": "h2",\n  "text": "[Product Name]",\n  "sectionType": "product",\n  "productData": {\n    "productName": "Exact Amazon Title",\n    "amazonUrl": "https://amazon.com/dp/...",\n    "imageUrl": "https://m.media-amazon.com/images/...",\n    "price": "$19.99"\n  }\n}\n\nCRITICAL OUTLINE RULES:\n- The "title" MUST contain the exact target keyword: "${targetKeyword}".\n- The VERY FIRST "h2" object (intro) MUST contain the exact target keyword: "${targetKeyword}" in its "text" field.\n- The VERY LAST "h2" object (conclusion or faq) MUST contain the exact target keyword: "${targetKeyword}" in its "text" field.`
+  })
 
   const outlinePrompt = `
     CRITICAL STRUCTURE & SCHEMA REQUIREMENTS:
@@ -140,113 +153,132 @@ export async function generateAmazonRoundupOutline(body, genAI) {
     4. Include a "conclusion" (type: h2).
     5. ${faqInstruction}
     6. ${relatedInstruction}
-  `;
+  `
 
-  const result = await outlineModel.generateContent(outlinePrompt);
-  const parsedData = JSON.parse(result.response.text());
+  const result = await outlineModel.generateContent(outlinePrompt)
+  const parsedData = JSON.parse(result.response.text())
 
   const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
     fetchUnsplashImage(targetKeyword),
     fetchPexelsImage(targetKeyword),
     fetchPixabayImage(targetKeyword)
-  ]);
+  ])
 
-  let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
-  let heroImageUrl = '';
-  let fallbackToAiImageTag = false;
-  let scoredCandidates;
+  let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url)
+  let heroImageUrl = ''
+  let fallbackToAiImageTag = false
+  let scoredCandidates
 
   if (candidates.length > 0) {
     scoredCandidates = candidates.map(c => ({
       ...c,
       score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
-    }));
+    }))
 
-    scoredCandidates.sort((a, b) => b.score - a.score);
+    scoredCandidates.sort((a, b) => b.score - a.score)
 
     if (scoredCandidates[0].score >= 2.0) {
-      heroImageUrl = scoredCandidates[0].url;
-      console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`);
+      heroImageUrl = scoredCandidates[0].url
+      console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`)
     } else {
-      console.log(`[Hero Image] Top image score (${scoredCandidates[0].score}) below 2.0. Invoking AI generation logic.`);
-      fallbackToAiImageTag = true;
+      console.log(
+        `[Hero Image] Top image score (${scoredCandidates[0].score}) below 2.0. Invoking AI generation logic.`
+      )
+      fallbackToAiImageTag = true
     }
   } else {
-    fallbackToAiImageTag = true;
+    fallbackToAiImageTag = true
   }
 
   if (fallbackToAiImageTag) {
-    const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : '';
-    try { const fallbackImage =  await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
-        if (fallbackImage && fallbackImage.url) {
-          heroImageUrl = fallbackImage.url;
+    const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : ''
 
-        } } catch(error) {
-          heroImageUrl = safetyBackup;
-          console.log(`[Hero Image] AI Fallback failed to generate a URL.`);
-        }
+    try {
+      const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`)
 
-    console.log(`[Hero Image] AI Generation Result: ${heroImageUrl ? 'Success' : 'Failed - Using Safety Backup'}`);
+      if (fallbackImage && fallbackImage.url) {
+        heroImageUrl = fallbackImage.url
+      }
+    } catch (error) {
+      heroImageUrl = safetyBackup
+      console.log(`[Hero Image] AI Fallback failed to generate a URL.`)
+    }
+
+    console.log(`[Hero Image] AI Generation Result: ${heroImageUrl ? 'Success' : 'Failed - Using Safety Backup'}`)
   }
 
-
   return {
-  success: true,
-  title: parsedData.title,
-  outline: parsedData.outline,
-  metaTitle: parsedData.metaTitle,
-  metaDescription: parsedData.metaDescription,
-  externalLinks: fetchedExternalLinks,
-  heroImage: heroImageUrl
-};
+    success: true,
+    title: parsedData.title,
+    outline: parsedData.outline,
+    metaTitle: parsedData.metaTitle,
+    metaDescription: parsedData.metaDescription,
+    externalLinks: fetchedExternalLinks,
+    heroImage: heroImageUrl
+  }
 }
 
 export async function generateAmazonRoundupSection(body, genAI) {
-  const { heading, text, section = {}, articleTitle, outlineContext, settings = {}, targetKeyword, internalLinks, externalLinks, usedExternalLinks = [], usedInternalLinks = [] } = body;
-
   const {
-    model,
-    enableFirstHandExperience,
-    improveReadability,
-    pointOfView,
-    toneOfVoice
-  } = settings;
+    heading,
+    text,
+    section = {},
+    articleTitle,
+    outlineContext,
+    settings = {},
+    targetKeyword,
+    internalLinks,
+    externalLinks,
+    usedExternalLinks = [],
+    usedInternalLinks = []
+  } = body
 
-  const amazonApiData = await fetchInternalAmazonData(targetKeyword || articleTitle, settings);
-  const formattedProducts = formatAmazonProducts(amazonApiData, settings);
+  const { model, enableFirstHandExperience, improveReadability, pointOfView, toneOfVoice } = settings
 
-  const activeHeadingText = heading || text || section.text || section.heading || 'Section';
-  let activeSectionType = section.sectionType || section.type;
+  const amazonApiData = await fetchInternalAmazonData(targetKeyword || articleTitle, settings)
+  const formattedProducts = formatAmazonProducts(amazonApiData, settings)
+
+  const activeHeadingText = heading || text || section.text || section.heading || 'Section'
+  let activeSectionType = section.sectionType || section.type
+
   if (!activeSectionType && Array.isArray(outlineContext)) {
-    const matchedSection = outlineContext.find(s =>
-      s.text === activeHeadingText || activeHeadingText.includes(s.text)
-    );
+    const matchedSection = outlineContext.find(s => s.text === activeHeadingText || activeHeadingText.includes(s.text))
+
     if (matchedSection) {
-      activeSectionType = matchedSection.sectionType;
+      activeSectionType = matchedSection.sectionType
     }
   }
-  activeSectionType = activeSectionType || 'standard';
 
-  const sectionModel = genAI.getGenerativeModel({ model: model || 'gemini-3.1-flash-lite' });
+  activeSectionType = activeSectionType || 'standard'
 
-  const toneInstruction = getToneInstruction(toneOfVoice);
-  const povInstruction = getPovInstruction(pointOfView);
-  const readabilityInstruction = getReadabilityInstruction(improveReadability);
-  const seoInstruction = await getSeoInstruction(targetKeyword);
+  const sectionModel = genAI.getGenerativeModel({ model: model || 'gemini-3.1-flash-lite' })
 
-  let { instruction: linkInstruction, selectedUrl: internalLinkUrl } = await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
-  let extLinkInstruction = '';
+  const toneInstruction = getToneInstruction(toneOfVoice)
+  const povInstruction = getPovInstruction(pointOfView)
+  const readabilityInstruction = getReadabilityInstruction(improveReadability)
+  const seoInstruction = await getSeoInstruction(targetKeyword)
+
+  let { instruction: linkInstruction, selectedUrl: internalLinkUrl } = await getLinkInstruction(
+    internalLinks,
+    heading,
+    genAI,
+    usedInternalLinks
+  )
+  let extLinkInstruction = ''
+
   if (activeSectionType === 'intro' || activeSectionType === 'buying_guide') {
-    extLinkInstruction = settings.automaticExternalLinks ? getExternalLinkInstruction(externalLinks, usedExternalLinks) : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.';
+    extLinkInstruction = settings.automaticExternalLinks
+      ? getExternalLinkInstruction(externalLinks, usedExternalLinks)
+      : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.'
   }
 
   const experienceInstruction = enableFirstHandExperience
     ? "CRITICAL: Write this review using strong first-hand experience. Use phrases like 'When I tested this...', 'In my hands-on experience...', and 'What I noticed right away...'. Speak as an expert who has physically unboxed and used the item."
-    : "Write this review from an objective, expert standpoint based on specifications, features, and market consensus.";
+    : 'Write this review from an objective, expert standpoint based on specifications, features, and market consensus.'
 
-  const activeSEOKeyword = targetKeyword || articleTitle || heading;
-  const lsiData = await fetchPeopleAlsoSearchFor(activeSEOKeyword);
-  const lsiString = `Google Keywords: [${lsiData.google.join(', ')}]. Bing Keywords: [${lsiData.bing.join(', ')}].`;
+  const activeSEOKeyword = targetKeyword || articleTitle || heading
+  const lsiData = await fetchPeopleAlsoSearchFor(activeSEOKeyword)
+  const lsiString = `Google Keywords: [${lsiData.google.join(', ')}]. Bing Keywords: [${lsiData.bing.join(', ')}].`
 
   const keywordSEOInstructions = `
     CRITICAL SEO & FORMATTING REQUIREMENTS:
@@ -257,9 +289,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
     2. LSI INTEGRATION: You MUST naturally integrate 1 to 2 of the provided LSI keywords into the paragraphs or subheadings of this section. CRITICAL: Use each LSI keyword a MAXIMUM of 1 or 2 times to avoid keyword stuffing. Ensure the main Target Keyword is used more frequently than any single LSI keyword.
     3. LSI BOLDING: Every time you use an LSI keyword, you MUST format it in bold (e.g., **LSI keyword**).
     4. LIST FORMATTING: If you use bullet points or ordered list items anywhere in this section, each individual list item MUST be 2 to 3 sentences long to provide detailed value. Do NOT write single-sentence or one-liner list items.
-  `;
-
-
+  `
 
   let sectionPrompt = `
     Article Title Context: ${articleTitle || targetKeyword}
@@ -273,18 +303,19 @@ export async function generateAmazonRoundupSection(body, genAI) {
     ${linkInstruction}
     ${extLinkInstruction}
     ${keywordSEOInstructions}
-  `;
+  `
 
   if (activeSectionType === 'intro') {
-    const top3 = formattedProducts.slice(0, 3);
+    const top3 = formattedProducts.slice(0, 3)
 
-   const top3HTML = top3.map(p => {
-  const safeTitle = p.productName.replace(/[\r\n]+/g, ' ').replace(/\|/g, '-');
-  const shortName = safeTitle.length > 42 ? safeTitle.substring(0, 40) + '…' : safeTitle;
-  const safeImageUrl = p.imageUrl ? p.imageUrl.replace(/_/g, '%5F') : '';
-  const altText = `${targetKeyword} ${shortName}`;
+    const top3HTML = top3
+      .map(p => {
+        const safeTitle = p.productName.replace(/[\r\n]+/g, ' ').replace(/\|/g, '-')
+        const shortName = safeTitle.length > 42 ? safeTitle.substring(0, 40) + '…' : safeTitle
+        const safeImageUrl = p.imageUrl ? p.imageUrl.replace(/_/g, '%5F') : ''
+        const altText = `${targetKeyword} ${shortName}`
 
-  return `<tr>
+        return `<tr>
   <td style="padding: 10px; border-bottom: 1px solid rgba(38,43,67,0.08); vertical-align: middle; text-align: center; width: 90px;">
     <img src="${safeImageUrl}" width="80" height="80" alt="${altText}" title="${shortName}" style="width:80px!important;height:80px!important;max-width:80px!important;object-fit:contain;border-radius:8px;display:inline-block;" />
   </td>
@@ -295,9 +326,9 @@ export async function generateAmazonRoundupSection(body, genAI) {
   <td style="padding: 10px; border-bottom: 1px solid rgba(38,43,67,0.08); vertical-align: middle; text-align: center;">
     <a href="${p.amazonUrl}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 10px 24px; border-radius: 9999px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); border: 1px solid #4f46e5; letter-spacing: 0.025em; white-space: nowrap;" class="check-price-btn">Check Price</a>
   </td>
-</tr>`;
-}).join('');
-
+</tr>`
+      })
+      .join('')
 
     sectionPrompt += `
         TASK: Write a strong, engaging introduction for the keyword "${targetKeyword}".
@@ -307,16 +338,19 @@ export async function generateAmazonRoundupSection(body, genAI) {
 
         ### Our Top 3 Picks
         <table><tbody><tr><th>Image</th><th>Product</th><th>Link</th></tr>${top3HTML}</tbody></table>
-        `;
-  }
+        `
+  } else if (activeSectionType === 'product') {
+    const cleanHeading = activeHeadingText
+      .replace(/^\d+\.\s*/, '')
+      .toLowerCase()
+      .trim()
 
-  else if (activeSectionType === 'product') {
-    const cleanHeading = activeHeadingText.replace(/^\d+\.\s*/, '').toLowerCase().trim();
+    const product =
+      formattedProducts.find(p => {
+        const pName = p.productName.toLowerCase()
 
-    const product = formattedProducts.find(p => {
-      const pName = p.productName.toLowerCase();
-      return cleanHeading.includes(pName) || pName.includes(cleanHeading);
-    }) || formattedProducts[0];
+        return cleanHeading.includes(pName) || pName.includes(cleanHeading)
+      }) || formattedProducts[0]
 
     sectionPrompt += `
       TASK: Write a comprehensive product review for "${product.productName}".
@@ -339,72 +373,68 @@ export async function generateAmazonRoundupSection(body, genAI) {
       5. **Real Buyer Opinions:** A brief summary of what real buyers think. CRITICAL: You must synthesize this summary directly from the "Official Features" provided above. Frame the feedback around how buyers react to those specific attributes (e.g., if a feature highlights 'lightweight design', mention how users praise its portability).
       6. **CTA Button:** Insert this EXACT HTML for the affiliate button:
                 <div style="display: block; width: 100%; text-align: center; margin: 25px 0;">
-  <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" class="no-underline bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-block" class="check-price-btn">Check Price</a>
+  <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" class="no-underline bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-block check-price-btn" >Check Price</a>
 </div>
-    `;
-  }
-
-  else if (activeSectionType === 'faq') {
+    `
+  } else if (activeSectionType === 'faq') {
     sectionPrompt += `
       TASK: Write a comprehensive FAQ section containing 4 to 6 commonly asked questions regarding "${targetKeyword}".
 
       STRICT REQUIREMENT (Schema Markup):
       You MUST wrap the questions and answers in valid JSON-LD FAQPage schema markup. Place the schema inside a <script type="application/ld+json"> tag at the very end of the section. Do NOT use markdown code blocks around the script tag.
-    `;
-  }
-
-  else {
+    `
+  } else {
     sectionPrompt += `
       TASK: Write a comprehensive section for "${activeHeadingText}". Ensure the formatting is clean, engaging, and directly answers the user's intent.
-    `;
+    `
   }
 
-  let result;
- let retries = 5;
- const delay = 5000;
+  let result
+  let retries = 5
+  const delay = 5000
 
-for (let i = 0; i < retries; i++) {
-  try {
-    result = await sectionModel.generateContent(sectionPrompt);
-    break;
-  } catch (error) {
-    const errorMessage = (error?.message || String(error) || '').toLowerCase();
-    const status = error?.status || error?.statusCode || error?.code;
+  for (let i = 0; i < retries; i++) {
+    try {
+      result = await sectionModel.generateContent(sectionPrompt)
+      break
+    } catch (error) {
+      const errorMessage = (error?.message || String(error) || '').toLowerCase()
+      const status = error?.status || error?.statusCode || error?.code
 
-    const isRetryable =
-      status === 429 || status === 500 || status === 503 ||
-      errorMessage.includes('429') ||
-      errorMessage.includes('503') ||
-      errorMessage.includes('500') ||
-      errorMessage.includes('rate limit') ||
-      errorMessage.includes('quota') ||
-      errorMessage.includes('overloaded') ||
-      errorMessage.includes('resource exhausted') ||
-      errorMessage.includes('fetch failed') ||
-      errorMessage.includes('econnreset') ||
-      errorMessage.includes('etimedout') ||
-      errorMessage.includes('network') ||
-      errorMessage.includes('timeout') ||
-      errorMessage.includes('socket hang up') ||
-      error.name === 'TypeError' ||
-      errorMessage.includes('typeerror');
+      const isRetryable =
+        status === 429 ||
+        status === 500 ||
+        status === 503 ||
+        errorMessage.includes('429') ||
+        errorMessage.includes('503') ||
+        errorMessage.includes('500') ||
+        errorMessage.includes('rate limit') ||
+        errorMessage.includes('quota') ||
+        errorMessage.includes('overloaded') ||
+        errorMessage.includes('resource exhausted') ||
+        errorMessage.includes('fetch failed') ||
+        errorMessage.includes('econnreset') ||
+        errorMessage.includes('etimedout') ||
+        errorMessage.includes('network') ||
+        errorMessage.includes('timeout') ||
+        errorMessage.includes('socket hang up') ||
+        error.name === 'TypeError' ||
+        errorMessage.includes('typeerror')
 
-    if (i === retries - 1 || !isRetryable) {
-      console.error(`[Gemini API] Final failure after ${i + 1} attempts:`, error);
-      throw new Error(
-        error?.message ||
-        (typeof error === 'string' ? error : 'Gemini generation failed after retries')
-      );
+      if (i === retries - 1 || !isRetryable) {
+        console.error(`[Gemini API] Final failure after ${i + 1} attempts:`, error)
+        throw new Error(
+          error?.message || (typeof error === 'string' ? error : 'Gemini generation failed after retries')
+        )
+      }
+
+      console.warn(
+        `[Gemini API] Transient error (status: ${status || 'n/a'}). ` +
+          `Retrying in ${delay / 1000}s... (Attempt ${i + 1}/${retries})`
+      )
+      await new Promise(res => setTimeout(res, delay))
     }
-
-    console.warn(
-      `[Gemini API] Transient error (status: ${status || 'n/a'}). ` +
-      `Retrying in ${delay / 1000}s... (Attempt ${i + 1}/${retries})`
-    );
-    await new Promise(res => setTimeout(res, delay));
   }
-}
 
-
-  return { success: true, text: result.response.text(), mediaHtml: null, internalLinkUrl: internalLinkUrl };
+  return { success: true, text: result.response.text(), mediaHtml: null, internalLinkUrl: internalLinkUrl }
 }
