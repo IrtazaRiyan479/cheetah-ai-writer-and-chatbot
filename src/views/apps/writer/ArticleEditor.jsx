@@ -933,9 +933,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
             if (data.success) {
               let finalSectionText = data.text
 
-              if (data.mediaUrl) trackedImages.push(data.mediaUrl)
-              if (data.internalLinkUrl) trackedInternalLinks.push(data.internalLinkUrl)
-
               if (data.isDeepSearch && data.interactionId) {
                 setPollingStatus(`Initializing Deep Research Agent...`)
                 setDeepSearchProgress(5)
@@ -1014,6 +1011,11 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       const resultsBuffer = new Array(groupedSections.length).fill(null)
       let nextInsertIdx = 0
 
+      // Shared live set — updated as each section finishes so later slots avoid repeats
+      const liveUsedMedia = new Set(trackedImages)
+
+      const CONCURRENCY = 2 // keep at 2 to stay under Gemini free/paid RPM; raise to 3 only if you have high quota
+
       const tryFlush = () => {
         while (nextInsertIdx < groupedSections.length && resultsBuffer[nextInsertIdx] !== null) {
           const { i, group, data, error } = resultsBuffer[nextInsertIdx]
@@ -1026,10 +1028,21 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
               nextInsertIdx = groupedSections.length
               break
             } else {
-              editor.chain().focus('end').insertContent(`<p><em>❌ Failed to fetch content. ${error}</em></p>`).run()
+              editor
+                .chain()
+                .focus('end')
+                .insertContent(`<p><em>❌ Failed to fetch content. ${error?.message || error}</em></p>`)
+                .run()
             }
           } else {
             processAndInsertSection(i, group, data)
+
+            if (data?.mediaUrl) {
+              liveUsedMedia.add(data.mediaUrl)
+              trackedImages.push(data.mediaUrl)
+            }
+
+            if (data?.internalLinkUrl) trackedInternalLinks.push(data.internalLinkUrl)
           }
 
           nextInsertIdx++
@@ -1043,91 +1056,117 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         }
       }
 
-      groupedSections.forEach((group, i) => {
-        const shouldGenerateMedia = i === 0 && settings.heroImage ? false : settings.aiImagesAndVideos
+      const fetchWithRetry = async (url, options, retries = 4, baseDelay = 1200) => {
+        let delay = baseDelay
 
-        const subheadings = group.h3s.map(h3 => h3.text)
+        for (let attempt = 0; attempt < retries; attempt++) {
+          try {
+            const res = await fetch(url, options)
 
-        let allLinks = Array.isArray(settings.internalLinking) ? [...settings.internalLinking] : []
+            if (!res.ok) {
+              const errText = await res.text().catch(() => '')
 
-        if (settings.customInternalLink) {
-          const customLinks = settings.customInternalLink
-            .split(',')
-            .map(l => l.trim())
-            .filter(l => l)
-
-          allLinks = [...allLinks, ...customLinks]
-        }
-
-        const fetchWithRetry = async (url, options, retries = 4, delay = 2000) => {
-          for (let attempt = 0; attempt < retries; attempt++) {
-            try {
-              const res = await fetch(url, options)
-
-              if (!res.ok) {
-                const errText = await res.text().catch(() => '')
-
+              // Retry only on transient server/rate errors
+              if (res.status === 429 || res.status === 500 || res.status === 503) {
                 throw new Error(`HTTP ${res.status}: ${errText.slice(0, 100)}`)
               }
 
-              return await res.json()
-            } catch (err) {
-              if (attempt === retries - 1 || err.name === 'AbortError') throw err
-              console.warn(
-                `[Client Retry] Section ${i} failed (attempt ${attempt + 1}/${retries}): ${err.message}. Retrying in ${delay}ms...`
-              )
-              await new Promise(r => setTimeout(r, delay))
-              delay *= 1.8
+              // Non-retryable client errors
+              throw Object.assign(new Error(`HTTP ${res.status}: ${errText.slice(0, 100)}`), { nonRetryable: true })
             }
+
+            return await res.json()
+          } catch (err) {
+            if (err.name === 'AbortError' || err.nonRetryable || attempt === retries - 1) throw err
+            const jitter = Math.floor(Math.random() * 400)
+
+            console.warn(
+              `[Client Retry] Section failed (attempt ${attempt + 1}/${retries}): ${err.message}. Retrying in ${delay + jitter}ms...`
+            )
+            await new Promise(r => setTimeout(r, delay + jitter))
+            delay = Math.min(Math.floor(delay * 1.6), 8000)
           }
         }
+      }
 
-        fetchWithRetry('/api/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: abortControllerRef.current.signal,
-          body: JSON.stringify({
-            mode: 'section',
-            settings: settings,
-            targetKeyword: settings.targetKeyword,
-            model: settings.model,
-            outlineContext: outline,
-            heading: group.h2.text,
-            subheadings: subheadings,
-            internalLinks: allLinks,
-            seoOptimization: settings.seoOptimization,
-            manualKeywords: settings.manualKeywords,
-            aiImagesAndVideos: shouldGenerateMedia,
-            sectionIndex: i,
-            totalSections: groupedSections.length,
-            toneOfVoice: settings.toneOfVoice,
-            customToneOfVoice: settings.customToneOfVoice,
-            language: settings.language,
-            country: settings.country,
-            pointOfView: settings.pointOfView,
-            useRealTimeSearchData: settings.useRealTimeSearchData,
-            realTimeDataSource: settings.realTimeDataSource,
-            externalLinks: settings.fetchedExternalLinks,
-            usedExternalLinks: trackedExternalLinks,
-            deepSearch: false,
-            articleTitle: settings.generatedTitle,
-            improveReadability: settings.improveReadability,
-            uploadedMedia: settings.uploadedMedia,
-            usedImageUrls: trackedImages,
-            usedInternalLinks: trackedInternalLinks
-          })
-        })
-          .then(data => {
+      // Worker pool — only CONCURRENCY in flight at once
+      let cursor = 0
+
+      const workers = Array.from({ length: Math.min(CONCURRENCY, groupedSections.length) }, async () => {
+        while (cursor < groupedSections.length) {
+          if (isCancelled) return
+          const i = cursor++
+          const group = groupedSections[i]
+
+          const shouldGenerateMedia = i === 0 && settings.heroImage ? false : settings.aiImagesAndVideos
+          const subheadings = group.h3s.map(h3 => h3.text)
+
+          let allLinks = Array.isArray(settings.internalLinking) ? [...settings.internalLinking] : []
+
+          if (settings.customInternalLink) {
+            const customLinks = settings.customInternalLink
+              .split(',')
+              .map(l => l.trim())
+              .filter(Boolean)
+
+            allLinks = [...allLinks, ...customLinks]
+          }
+
+          // Snapshot of media used so far (updated as earlier workers finish)
+          const usedSnapshot = Array.from(liveUsedMedia)
+
+          try {
+            const data = await fetchWithRetry('/api/generate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: abortControllerRef.current.signal,
+              body: JSON.stringify({
+                mode: 'section',
+                settings: settings,
+                targetKeyword: settings.targetKeyword,
+                model: settings.model,
+                outlineContext: outline,
+                heading: group.h2.text,
+                subheadings: subheadings,
+                internalLinks: allLinks,
+                seoOptimization: settings.seoOptimization,
+                manualKeywords: settings.manualKeywords,
+                aiImagesAndVideos: shouldGenerateMedia,
+                sectionIndex: i,
+                totalSections: groupedSections.length,
+                toneOfVoice: settings.toneOfVoice,
+                customToneOfVoice: settings.customToneOfVoice,
+                language: settings.language,
+                country: settings.country,
+                pointOfView: settings.pointOfView,
+                useRealTimeSearchData: settings.useRealTimeSearchData,
+                realTimeDataSource: settings.realTimeDataSource,
+                externalLinks: settings.fetchedExternalLinks,
+                usedExternalLinks: trackedExternalLinks,
+                deepSearch: false,
+                articleTitle: settings.generatedTitle,
+                improveReadability: settings.improveReadability,
+                uploadedMedia: settings.uploadedMedia,
+                usedImageUrls: usedSnapshot,
+                usedInternalLinks: trackedInternalLinks
+              })
+            })
+
             if (isCancelled) return
+
+            // Reserve media immediately so the other worker doesn't pick the same URL
+            if (data?.mediaUrl) liveUsedMedia.add(data.mediaUrl)
             resultsBuffer[i] = { i, group, data, error: null }
-            tryFlush()
-          })
-          .catch(error => {
+          } catch (error) {
             if (isCancelled) return
             resultsBuffer[i] = { i, group, data: null, error }
-            tryFlush()
-          })
+          }
+
+          tryFlush()
+        }
       })
+
+      await Promise.all(workers)
     }
 
     generateArticleSequentially()

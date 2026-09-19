@@ -134,10 +134,38 @@ async function getSmartImageKeyword(topic, heading, genAI) {
   } catch (e) {
     console.error('Smart Image Keyword Error:', e)
 
+    // Visual-subject fallback: drop filler words, keep the real noun subject
+    const visualStop = new Set([
+      ...STOP_WORDS,
+      'caring',
+      'care',
+      'guide',
+      'tips',
+      'ways',
+      'best',
+      'top',
+      'how',
+      'what',
+      'why',
+      'ultimate',
+      'complete',
+      'introduction',
+      'conclusion',
+      'overview'
+    ])
+
+    const words = (topic || '')
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 2 && !visualStop.has(w))
+
+    const stockQuery = words.slice(0, 4).join(' ') || (topic || 'nature').trim()
+
     return {
       isRealisticStockPhoto: true,
-      stockSearchQuery: topic.split(/\s+/).slice(0, 3).join(' ') || 'business',
-      aiGenerationPrompt: `Photorealistic image of ${topic}`
+      stockSearchQuery: stockQuery,
+      aiGenerationPrompt: `Photorealistic, landscape, highly detailed photograph of ${stockQuery}, no text, no watermark`
     }
   }
 }
@@ -166,35 +194,103 @@ export function calculateRelevanceScore(altText, query, topic) {
     'image',
     'picture',
     'background',
-    'isolated'
+    'isolated',
+    'stock',
+    'closeup',
+    'close',
+    'up',
+    'shot',
+    'view',
+    'horizontal',
+    'vertical',
+    'person',
+    'people',
+    'man',
+    'woman',
+    'guy',
+    'girl',
+    'boy',
+    'old',
+    'young',
+    'senior',
+    'adult'
   ])
 
   const clean = str =>
     (str || '')
       .toLowerCase()
-      .replace(/[^\w\s]/g, '')
+      .replace(/[^\w\s]/g, ' ')
       .split(/\s+/)
       .filter(w => w.length > 2 && !stopWords.has(w))
 
-  const altTokens = new Set(clean(altText))
-  const targetTokens = new Set([...clean(query), ...clean(topic)])
+  const altTokens = clean(altText)
+  const altSet = new Set(altTokens)
+  const queryTokens = clean(query)
+  const topicTokens = clean(topic)
+  const targetTokens = [...new Set([...queryTokens, ...topicTokens])]
+
+  if (targetTokens.length === 0) return 0
 
   let score = 0
+  let matched = 0
 
+  // Exact token matches (strong)
   targetTokens.forEach(token => {
-    if (altTokens.has(token)) {
-      score += 1
+    if (altSet.has(token)) {
+      score += 2.5
+      matched += 1
     } else {
-      for (let alt of altTokens) {
+      for (const alt of altTokens) {
         if (alt.includes(token) || token.includes(alt)) {
-          score += 0.5
+          score += 1.0
+          matched += 0.5
           break
         }
       }
     }
   })
 
-  return score
+  // Phrase / multi-word bonus
+  const queryPhrase = queryTokens.join(' ')
+  const altJoined = altTokens.join(' ')
+
+  if (queryPhrase.length > 4 && altJoined.includes(queryPhrase)) {
+    score += 4
+  }
+
+  // Coverage ratio — prefer images that hit more of the subject
+  const coverage = matched / targetTokens.length
+
+  score += coverage * 3
+
+  // Penalize human-centric alts when topic is clearly animal/object/product
+  const animalObjectHints = [
+    'dog',
+    'cat',
+    'puppy',
+    'kitten',
+    'pet',
+    'breed',
+    'shepherd',
+    'retriever',
+    'product',
+    'device',
+    'tool',
+    'car',
+    'laptop'
+  ]
+
+  const humanHints = ['man', 'woman', 'person', 'people', 'face', 'portrait', 'headache', 'senior', 'elderly']
+  const topicLower = (topic || '').toLowerCase()
+  const isAnimalOrObject = animalObjectHints.some(h => topicLower.includes(h))
+
+  if (isAnimalOrObject) {
+    const humanHits = humanHints.filter(h => altJoined.includes(h)).length
+
+    if (humanHits > 0) score -= humanHits * 3
+  }
+
+  return Math.max(0, score)
 }
 
 export async function generateFallbackImage(prompt) {
@@ -379,21 +475,36 @@ export async function fetchBingTitles(query) {
 export async function fetchYouTubeVideo(query) {
   if (!process.env.YOUTUBE_API_KEY) return null
 
-  try {
-    const res = await fetch(
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=5&key=${process.env.YOUTUBE_API_KEY}`
-    )
+  const maxAttempts = 3
 
-    const data = await res.json()
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetch(
+        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=8&videoEmbeddable=true&key=${process.env.YOUTUBE_API_KEY}`
+      )
 
-    if (data.items && data.items.length > 0) {
-      return data.items.map(item => ({
-        id: item.id.videoId,
-        title: item.snippet.title
-      }))
+      if (!res.ok) {
+        console.error(`YouTube Data API HTTP ${res.status} (attempt ${attempt})`)
+        if (attempt < maxAttempts) await new Promise(r => setTimeout(r, 800 * attempt))
+        continue
+      }
+
+      const data = await res.json()
+
+      if (data.items && data.items.length > 0) {
+        return data.items
+          .filter(item => item?.id?.videoId)
+          .map(item => ({
+            id: item.id.videoId,
+            title: item.snippet?.title || 'YouTube video'
+          }))
+      }
+
+      return null
+    } catch (e) {
+      console.error(`YouTube Data API Error (attempt ${attempt}):`, e?.message || e)
+      if (attempt < maxAttempts) await new Promise(r => setTimeout(r, 800 * attempt))
     }
-  } catch (e) {
-    console.error('YouTube Data API Error:', e)
   }
 
   return null
@@ -401,208 +512,231 @@ export async function fetchYouTubeVideo(query) {
 
 export async function isYouTubeVideoAvailable(url) {
   try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 4000)
     const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`
-    const res = await fetch(oembedUrl)
+    const res = await fetch(oembedUrl, { signal: controller.signal })
+
+    clearTimeout(timer)
 
     return res.ok
   } catch (error) {
-    console.error('Error verifying YouTube URL:', error)
+    // Network blip → assume embeddable rather than killing the section
+    console.warn('YouTube oEmbed check failed, assuming available:', error?.message || error)
 
-    return false
+    return true
   }
 }
+
+const STOP_WORDS = new Set([
+  'a',
+  'about',
+  'above',
+  'after',
+  'again',
+  'against',
+  'all',
+  'am',
+  'an',
+  'and',
+  'any',
+  'are',
+  'arent',
+  'as',
+  'at',
+  'be',
+  'because',
+  'been',
+  'before',
+  'being',
+  'below',
+  'between',
+  'both',
+  'but',
+  'by',
+  'cant',
+  'cannot',
+  'could',
+  'couldnt',
+  'did',
+  'didnt',
+  'do',
+  'does',
+  'doesnt',
+  'doing',
+  'dont',
+  'down',
+  'during',
+  'each',
+  'few',
+  'for',
+  'from',
+  'further',
+  'had',
+  'hadnt',
+  'has',
+  'hasnt',
+  'have',
+  'havent',
+  'having',
+  'he',
+  'hed',
+  'hell',
+  'hes',
+  'her',
+  'here',
+  'heres',
+  'hers',
+  'herself',
+  'him',
+  'himself',
+  'his',
+  'how',
+  'hows',
+  'i',
+  'id',
+  'ill',
+  'im',
+  'ive',
+  'if',
+  'in',
+  'into',
+  'is',
+  'isnt',
+  'it',
+  'its',
+  'itself',
+  'lets',
+  'me',
+  'more',
+  'most',
+  'mustnt',
+  'my',
+  'myself',
+  'no',
+  'nor',
+  'not',
+  'of',
+  'off',
+  'on',
+  'once',
+  'only',
+  'or',
+  'other',
+  'ought',
+  'our',
+  'ours',
+  'ourselves',
+  'out',
+  'over',
+  'own',
+  'same',
+  'shant',
+  'she',
+  'shed',
+  'shell',
+  'shes',
+  'should',
+  'shouldnt',
+  'so',
+  'some',
+  'such',
+  'than',
+  'that',
+  'thats',
+  'the',
+  'their',
+  'theirs',
+  'them',
+  'themselves',
+  'then',
+  'there',
+  'theres',
+  'these',
+  'they',
+  'theyd',
+  'theyll',
+  'theyre',
+  'theyve',
+  'this',
+  'those',
+  'through',
+  'to',
+  'too',
+  'under',
+  'until',
+  'up',
+  'very',
+  'was',
+  'wasnt',
+  'we',
+  'wed',
+  'well',
+  'were',
+  'weve',
+  'werent',
+  'what',
+  'whats',
+  'when',
+  'whens',
+  'where',
+  'wheres',
+  'which',
+  'while',
+  'who',
+  'whos',
+  'whom',
+  'why',
+  'whys',
+  'with',
+  'wont',
+  'would',
+  'wouldnt',
+  'you',
+  'youd',
+  'youll',
+  'youre',
+  'youve',
+  'your',
+  'yours',
+  'yourself',
+  'yourselves',
+  'guide',
+  'best',
+  'top',
+  'vs',
+  'versus',
+  'can',
+  'will',
+  'introduction',
+  'conclusion',
+  'overview',
+  'summary',
+  'tips',
+  'ways',
+  'things',
+  'how',
+  'what',
+  'why',
+  'when',
+  'where',
+  'caring',
+  'care',
+  'old',
+  'new',
+  'ultimate',
+  'complete'
+])
 
 async function getSmartVideoQuery(topic, heading, genAI) {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
 
     const prompt = `Generate a highly specific 3-5 word YouTube search query for an educational video.
-    CRITICAL RULE 1: The query MUST be primarily about the main topic: "${topic}".
-    CRITICAL RULE 2: Integrate context from the section heading "${heading}" but do not lose the main topic.
-    CRITICAL RULE 3: Do NOT use generic words like 'introduction', 'conclusion', 'tutorial', or 'video'.
-    Reply ONLY with the exact search query, no quotes.`
-
-    const STOP_WORDS = new Set([
-      'a',
-      'about',
-      'above',
-      'after',
-      'again',
-      'against',
-      'all',
-      'am',
-      'an',
-      'and',
-      'any',
-      'are',
-      'arent',
-      'as',
-      'at',
-      'be',
-      'because',
-      'been',
-      'before',
-      'being',
-      'below',
-      'between',
-      'both',
-      'but',
-      'by',
-      'cant',
-      'cannot',
-      'could',
-      'couldnt',
-      'did',
-      'didnt',
-      'do',
-      'does',
-      'doesnt',
-      'doing',
-      'dont',
-      'down',
-      'during',
-      'each',
-      'few',
-      'for',
-      'from',
-      'further',
-      'had',
-      'hadnt',
-      'has',
-      'hasnt',
-      'have',
-      'havent',
-      'having',
-      'he',
-      'hed',
-      'hell',
-      'hes',
-      'her',
-      'here',
-      'heres',
-      'hers',
-      'herself',
-      'him',
-      'himself',
-      'his',
-      'how',
-      'hows',
-      'i',
-      'id',
-      'ill',
-      'im',
-      'ive',
-      'if',
-      'in',
-      'into',
-      'is',
-      'isnt',
-      'it',
-      'its',
-      'itself',
-      'lets',
-      'me',
-      'more',
-      'most',
-      'mustnt',
-      'my',
-      'myself',
-      'no',
-      'nor',
-      'not',
-      'of',
-      'off',
-      'on',
-      'once',
-      'only',
-      'or',
-      'other',
-      'ought',
-      'our',
-      'ours',
-      'ourselves',
-      'out',
-      'over',
-      'own',
-      'same',
-      'shant',
-      'she',
-      'shed',
-      'shell',
-      'shes',
-      'should',
-      'shouldnt',
-      'so',
-      'some',
-      'such',
-      'than',
-      'that',
-      'thats',
-      'the',
-      'their',
-      'theirs',
-      'them',
-      'themselves',
-      'then',
-      'there',
-      'theres',
-      'these',
-      'they',
-      'theyd',
-      'theyll',
-      'theyre',
-      'theyve',
-      'this',
-      'those',
-      'through',
-      'to',
-      'too',
-      'under',
-      'until',
-      'up',
-      'very',
-      'was',
-      'wasnt',
-      'we',
-      'wed',
-      'well',
-      'were',
-      'weve',
-      'werent',
-      'what',
-      'whats',
-      'when',
-      'whens',
-      'where',
-      'wheres',
-      'which',
-      'while',
-      'who',
-      'whos',
-      'whom',
-      'why',
-      'whys',
-      'with',
-      'wont',
-      'would',
-      'wouldnt',
-      'you',
-      'youd',
-      'youll',
-      'youre',
-      'youve',
-      'your',
-      'yours',
-      'yourself',
-      'yourselves',
-      'guide',
-      'best',
-      'top',
-      'vs',
-      'versus',
-      'can',
-      'will'
-    ])
+CRITICAL RULE 1: The query MUST be primarily about the main topic: "${topic}".
+CRITICAL RULE 2: Integrate context from the section heading "${heading}" but do not lose the main topic.
+CRITICAL RULE 3: Do NOT use generic words like 'introduction', 'conclusion', 'tutorial', or 'video'.
+Reply ONLY with the exact search query, no quotes.`
 
     const result = await model.generateContent(prompt)
     const keyword = result.response.text().trim().replace(/['"]/g, '')
@@ -611,21 +745,21 @@ async function getSmartVideoQuery(topic, heading, genAI) {
     const cleanKeyword = keyword.toLowerCase().replace(/[^\w\s]|_/g, '')
 
     const topicWords = cleanTopic.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w))
-
     const isRelated = topicWords.some(w => cleanKeyword.includes(w))
 
     if (!isRelated && topicWords.length > 0) {
-      console.log(`[Video Fallback] Query "${keyword}" drifted. Falling back to H1 core words.`)
+      console.log(`[Video Fallback] Query "${keyword}" drifted. Falling back to core topic words.`)
 
       return topicWords.slice(0, 4).join(' ')
     }
 
-    return keyword
+    return keyword || topicWords.slice(0, 4).join(' ') || topic.trim()
   } catch (e) {
-    const cleanTopic = topic.toLowerCase().replace(/[^\w\s]|_/g, '')
+    console.error('getSmartVideoQuery Error:', e?.message || e)
+    const cleanTopic = (topic || '').toLowerCase().replace(/[^\w\s]|_/g, '')
     const fallbackWords = cleanTopic.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w))
 
-    return fallbackWords.slice(0, 4).join(' ') || topic.trim()
+    return fallbackWords.slice(0, 4).join(' ') || (topic || '').trim() || 'tutorial'
   }
 }
 
@@ -854,132 +988,201 @@ export async function getMediaInstruction(
   usedImageUrls = [],
   settings
 ) {
-  let mediaInstruction = ''
-  let assignedMediaElement = null
-  let selectedMediaUrl = null
+  try {
+    let mediaInstruction = ''
+    let assignedMediaElement = null
+    let selectedMediaUrl = null
 
-  if (uploadedMedia && uploadedMedia.length > 0 && sectionIndex < uploadedMedia.length) {
-    const mediaItem = uploadedMedia[sectionIndex]
+    if (uploadedMedia && uploadedMedia.length > 0 && sectionIndex < uploadedMedia.length) {
+      const mediaItem = uploadedMedia[sectionIndex]
 
-    selectedMediaUrl = mediaItem.url
+      selectedMediaUrl = mediaItem.url
 
-    if (mediaItem.type.startsWith('image/')) {
-      assignedMediaElement = `\n\n<img src="${mediaItem.url}" alt="${mediaItem.name}" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;" />\n\n`
-    } else if (mediaItem.type.startsWith('video/')) {
-      assignedMediaElement = `\n\n<video src="${mediaItem.url}" controls style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%;"></video>\n\n`
-    }
+      if (mediaItem.type.startsWith('image/')) {
+        assignedMediaElement = `\n\n<img src="${mediaItem.url}" alt="${mediaItem.name}" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;" />\n\n`
+      } else if (mediaItem.type.startsWith('video/')) {
+        assignedMediaElement = `\n\n<video src="${mediaItem.url}" controls style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%;"></video>\n\n`
+      }
 
-    mediaInstruction = `\n[NOTE: A media file is placed at the end of this section. DO NOT output HTML tags for media.]`
-  } else if (aiImagesAndVideos === 'auto') {
-    const lowerHeading = (heading || '').toLowerCase()
+      mediaInstruction = `\n[NOTE: A media file is placed at the end of this section. DO NOT output HTML tags for media.]`
+    } else if (aiImagesAndVideos === 'auto') {
+      const lowerHeading = (heading || '').toLowerCase()
 
-    if (
-      lowerHeading.includes('conclusion') ||
-      lowerHeading.includes('final verdict') ||
-      lowerHeading.includes('faq') ||
-      lowerHeading.includes('frequently asked')
-    ) {
-      return { mediaInstruction: '', assignedMediaElement: null, mediaUrl: null }
-    }
+      if (
+        lowerHeading.includes('conclusion') ||
+        lowerHeading.includes('final verdict') ||
+        lowerHeading.includes('faq') ||
+        lowerHeading.includes('frequently asked')
+      ) {
+        return { mediaInstruction: '', assignedMediaElement: null, mediaUrl: null }
+      }
 
-    const imageLimit = parseInt(settings?.numberOfImages)
-    const hasImageLimit = !isNaN(imageLimit) && String(settings?.numberOfImages || '').trim() !== ''
+      const imageLimit = parseInt(settings?.numberOfImages)
+      const hasImageLimit = !isNaN(imageLimit) && String(settings?.numberOfImages || '').trim() !== ''
 
-    const videoLimit = parseInt(settings?.numberOfYoutubeVideos)
-    const hasVideoLimit = !isNaN(videoLimit) && String(settings?.numberOfYoutubeVideos || '').trim() !== ''
+      const videoLimit = parseInt(settings?.numberOfYoutubeVideos)
+      const hasVideoLimit = !isNaN(videoLimit) && String(settings?.numberOfYoutubeVideos || '').trim() !== ''
 
-    const maxImageSlots = hasImageLimit ? imageLimit : 999
-    const maxVideoSlots = hasVideoLimit ? videoLimit : 999
+      const maxImageSlots = hasImageLimit ? imageLimit : 999
+      const maxVideoSlots = hasVideoLimit ? videoLimit : 999
 
-    const isImageSlot = sectionIndex % 2 === 0
+      const isImageSlot = sectionIndex % 2 === 0
 
-    const imageSlotNumber = settings?.heroImage ? Math.floor((sectionIndex - 1) / 2) : Math.floor(sectionIndex / 2)
+      const imageSlotNumber = settings?.heroImage ? Math.floor((sectionIndex - 1) / 2) : Math.floor(sectionIndex / 2)
 
-    const videoSlotNumber = Math.floor(sectionIndex / 2)
+      const videoSlotNumber = Math.floor(sectionIndex / 2)
 
-    const canHaveImage = isImageSlot && imageSlotNumber < maxImageSlots
-    const canHaveVideo = !isImageSlot && videoSlotNumber < maxVideoSlots
+      const canHaveImage = isImageSlot && imageSlotNumber < maxImageSlots
+      const canHaveVideo = !isImageSlot && videoSlotNumber < maxVideoSlots
 
-    if (!canHaveImage && !canHaveVideo) {
-      return { mediaInstruction: '', assignedMediaElement: null, mediaUrl: null }
-    }
+      if (!canHaveImage && !canHaveVideo) {
+        return { mediaInstruction: '', assignedMediaElement: null, mediaUrl: null }
+      }
 
-    if (canHaveImage) {
-      const coreTopic = articleTitle || targetKeyword
-      const smartImageData = await getSmartImageKeyword(coreTopic, heading, genAI)
+      if (canHaveImage) {
+        const coreTopic = articleTitle || targetKeyword
 
-      let bestImage = null
+        // Fast path: build a decent stock query without waiting on Gemini when possible
+        let smartImageData
 
-      if (smartImageData.isRealisticStockPhoto && smartImageData.stockSearchQuery) {
-        const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
-          fetchUnsplashImage(smartImageData.stockSearchQuery),
-          fetchPexelsImage(smartImageData.stockSearchQuery),
-          fetchPixabayImage(smartImageData.stockSearchQuery)
-        ])
+        try {
+          // Soft timeout so a slow/rate-limited Gemini doesn't block the whole section
+          const kwPromise = getSmartImageKeyword(coreTopic, heading, genAI)
 
-        let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes]
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('smart-image-timeout')), 3500)
+          )
 
-        if (candidates.length > 0) {
-          const preferredSources = ['Unsplash', 'Pexels', 'Pixabay']
-          const preferredSource = preferredSources[imageSlotNumber % 3]
+          smartImageData = await Promise.race([kwPromise, timeoutPromise])
+        } catch (e) {
+          const visualStop = new Set([
+            ...STOP_WORDS,
+            'caring',
+            'care',
+            'guide',
+            'tips',
+            'ways',
+            'best',
+            'top',
+            'how',
+            'what',
+            'why',
+            'ultimate',
+            'complete',
+            'introduction',
+            'conclusion',
+            'overview'
+          ])
 
-          candidates = candidates
-            .map(c => {
-              let finalScore = calculateRelevanceScore(c.alt, smartImageData.stockSearchQuery, coreTopic)
+          const words = (coreTopic || '')
+            .toLowerCase()
+            .replace(/[^\w\s]/g, ' ')
+            .split(/\s+/)
+            .filter(w => w.length > 2 && !visualStop.has(w))
 
-              if (c.source === preferredSource) finalScore += 1.0
+          const stockQuery = words.slice(0, 4).join(' ') || coreTopic
 
-              return { ...c, score: finalScore }
-            })
-            .filter(c => c.score >= 2.0 && !usedImageUrls.includes(c.url))
+          smartImageData = {
+            isRealisticStockPhoto: true,
+            stockSearchQuery: stockQuery,
+            aiGenerationPrompt: `Photorealistic landscape photo of ${stockQuery}, no text, no watermark`
+          }
+        }
+
+        let bestImage = null
+
+        if (smartImageData.isRealisticStockPhoto && smartImageData.stockSearchQuery) {
+          const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
+            fetchUnsplashImage(smartImageData.stockSearchQuery),
+            fetchPexelsImage(smartImageData.stockSearchQuery),
+            fetchPixabayImage(smartImageData.stockSearchQuery)
+          ])
+
+          let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes]
 
           if (candidates.length > 0) {
-            candidates.sort((a, b) => b.score - a.score)
-            bestImage = candidates[0]
-            selectedMediaUrl = bestImage.url
+            const preferredSources = ['Unsplash', 'Pexels', 'Pixabay']
+            const preferredSource = preferredSources[imageSlotNumber % 3]
+
+            const scored = candidates
+              .map(c => {
+                let finalScore = calculateRelevanceScore(c.alt || '', smartImageData.stockSearchQuery, coreTopic)
+
+                // Small source preference only as a tie-breaker, never override relevance
+                if (c.source === preferredSource) finalScore += 0.35
+
+                return { ...c, score: finalScore }
+              })
+              .filter(c => !usedImageUrls.includes(c.url))
+
+            // Sort by score DESC. Only accept if best score is meaningful.
+            scored.sort((a, b) => b.score - a.score)
+
+            const MIN_ACCEPT = 3.5
+
+            if (scored.length > 0 && scored[0].score >= MIN_ACCEPT) {
+              bestImage = scored[0]
+              selectedMediaUrl = bestImage.url
+              console.log(
+                `[Section Image] Picked ${bestImage.source} score=${bestImage.score.toFixed(2)} alt="${(bestImage.alt || '').slice(0, 60)}"`
+              )
+            } else if (scored.length > 0) {
+              // Still prefer highest score over random first item, but log low confidence
+              console.log(`[Section Image] Low confidence (best=${scored[0].score.toFixed(2)}). Will try AI fallback.`)
+            }
           }
         }
-      }
 
-      if (!bestImage) {
-        const generatedImg = await generateFallbackImage(smartImageData.aiGenerationPrompt)
+        if (!bestImage) {
+          const generatedImg = await generateFallbackImage(smartImageData.aiGenerationPrompt)
 
-        bestImage = generatedImg || {
-          url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
-          alt: heading,
-          source: 'Hardcoded Fallback'
-        }
-        selectedMediaUrl = bestImage.url
-      }
-
-      const imageTitle = heading || coreTopic
-      const imageAlt = `${targetKeyword || coreTopic} ${heading || ''}`.trim()
-
-      assignedMediaElement = `\n\n<img src="${bestImage.url}" alt="${imageAlt}" title="${imageTitle}" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;" />\n\n`
-    } else if (canHaveVideo) {
-      const smartYtQuery = await getSmartVideoQuery(articleTitle || targetKeyword, heading, genAI)
-      const ytVideos = await fetchYouTubeVideo(smartYtQuery)
-
-      if (ytVideos && ytVideos.length > 0) {
-        const availableVideos = ytVideos.filter(video => !usedImageUrls.includes(video.id))
-
-        for (const ytVideo of availableVideos) {
-          const videoUrl = `https://www.youtube.com/watch?v=${ytVideo.id}`
-          const isAvailable = await isYouTubeVideoAvailable(videoUrl)
-
-          if (isAvailable) {
-            selectedMediaUrl = ytVideo.id
-            assignedMediaElement = `\n\n<div data-youtube-video style="margin: 32px 0;"><iframe src="https://www.youtube.com/embed/${ytVideo.id}" title="${ytVideo.title}" style="width: 100%; aspect-ratio: 16/9; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: none; display: block; max-width: 100%;"></iframe></div>\n\n`
-            break
+          bestImage = generatedImg || {
+            url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
+            alt: heading,
+            source: 'Hardcoded Fallback'
           }
+          selectedMediaUrl = bestImage.url
+        }
+
+        const imageTitle = heading || coreTopic
+        const imageAlt = `${targetKeyword || coreTopic} ${heading || ''}`.trim()
+
+        assignedMediaElement = `\n\n<img src="${bestImage.url}" alt="${imageAlt}" title="${imageTitle}" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;" />\n\n`
+      } else if (canHaveVideo) {
+        try {
+          const smartYtQuery = await getSmartVideoQuery(articleTitle || targetKeyword, heading, genAI)
+          const ytVideos = await fetchYouTubeVideo(smartYtQuery)
+
+          if (ytVideos && ytVideos.length > 0) {
+            const availableVideos = ytVideos.filter(video => !usedImageUrls.includes(video.id))
+
+            for (const ytVideo of availableVideos) {
+              const videoUrl = `https://www.youtube.com/watch?v=${ytVideo.id}`
+              const isAvailable = await isYouTubeVideoAvailable(videoUrl)
+
+              if (isAvailable) {
+                selectedMediaUrl = ytVideo.id
+                assignedMediaElement = `\n\n<div data-youtube-video style="margin: 32px 0;"><iframe src="https://www.youtube.com/embed/${ytVideo.id}" title="${(ytVideo.title || '').replace(/"/g, '&quot;')}" style="width: 100%; aspect-ratio: 16/9; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: none; display: block; max-width: 100%;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>\n\n`
+                break
+              }
+            }
+          }
+        } catch (videoErr) {
+          console.error('[Media] YouTube path failed (section continues without video):', videoErr?.message || videoErr)
+
+          // Do not rethrow — section text must still generate
         }
       }
+
+      mediaInstruction = `\n[NOTE: A contextual image or video is placed at the end of this section. DO NOT attempt to generate image/video tags yourself.]`
     }
 
-    mediaInstruction = `\n[NOTE: A contextual image or video is placed at the end of this section. DO NOT attempt to generate image/video tags yourself.]`
-  }
+    return { mediaInstruction, assignedMediaElement, mediaUrl: selectedMediaUrl }
+  } catch (err) {
+    console.error('[getMediaInstruction] Non-fatal media failure:', err?.message || err)
 
-  return { mediaInstruction, assignedMediaElement, mediaUrl: selectedMediaUrl }
+    return { mediaInstruction: '', assignedMediaElement: null, mediaUrl: null }
+  }
 }
 
 export function getReadabilityInstruction(improveReadability) {

@@ -124,13 +124,16 @@ export async function generateStandardBlogOutline(body, genAI) {
 
     scoredCandidates.sort((a, b) => b.score - a.score)
 
-    if (scoredCandidates[0].score >= 2.0) {
-      heroImageUrl = scoredCandidates[0].url
-      console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`)
-    } else {
+    const best = scoredCandidates[0]
+    const MIN_HERO = 3.5
+
+    if (best && best.score >= MIN_HERO) {
+      heroImageUrl = best.url
       console.log(
-        `[Hero Image] Top image score (${scoredCandidates[0].score}) below 2.0. Invoking AI generation logic.`
+        `[Hero Image] Selected ${best.source} score=${best.score.toFixed(2)} alt="${(best.alt || '').slice(0, 60)}"`
       )
+    } else {
+      console.log(`[Hero Image] Best score ${best ? best.score.toFixed(2) : 0} < ${MIN_HERO}. Using AI fallback.`)
       fallbackToAiImageTag = true
     }
   } else {
@@ -141,7 +144,9 @@ export async function generateStandardBlogOutline(body, genAI) {
     const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : ''
 
     try {
-      const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`)
+      const fallbackImage = await generateFallbackImage(
+        `High quality photorealistic landscape photograph of ${targetKeyword}, subject clearly visible, no text, no watermark`
+      )
 
       if (fallbackImage && fallbackImage.url) {
         heroImageUrl = fallbackImage.url

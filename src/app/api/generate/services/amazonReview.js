@@ -15,13 +15,16 @@ import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 
 function extractASIN(url) {
-  if (!url) return null;
-  const match = url.match(/(?:dp|o|v|item|ASIN|product)\/([a-zA-Z0-9]{10})/i) || url.match(/\/([a-zA-Z0-9]{10})(?:[/?]|$)/i);
-  return match ? match[1] : null;
+  if (!url) return null
+  const match =
+    url.match(/(?:dp|o|v|item|ASIN|product)\/([a-zA-Z0-9]{10})/i) || url.match(/\/([a-zA-Z0-9]{10})(?:[/?]|$)/i)
+  return match ? match[1] : null
 }
 
 async function fetchInternalAmazonData(keyword, settings) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+  const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
   const response = await fetch(`${baseUrl}/api/amazon`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -30,32 +33,35 @@ async function fetchInternalAmazonData(keyword, settings) {
       domain: settings.amazonDomain || 'www.amazon.com',
       partnerTag: settings.partnerTag || 'babiescarrier-20'
     })
-  });
+  })
 
-  if (!response.ok) throw new Error(`Failed to fetch Amazon data. Status: ${response.status}`);
-  return await response.json();
+  if (!response.ok) throw new Error(`Failed to fetch Amazon data. Status: ${response.status}`)
+  return await response.json()
 }
 
 function formatAmazonProducts(apiData, settings) {
-  const rawData = apiData?.data?.searchResult?.items || [];
-  if (!rawData.length) return [];
+  const rawData = apiData?.data?.searchResult?.items || []
+  if (!rawData.length) return []
 
   return rawData.map(item => {
-    const ASIN = item.asin || '';
-    let affiliateUrl =  new URL(item.detailPageURL || `https://${settings.amazonDomain || 'www.amazon.com'}/dp/${ASIN}?tag='babiescarrier-20'}&linkCode=osi&th=1&psc=1`);
-    if (settings.amazonTrackingId) affiliateUrl.searchParams.set('tag', settings.amazonTrackingId);
+    const ASIN = item.asin || ''
+    let affiliateUrl = new URL(
+      item.detailPageURL ||
+        `https://${settings.amazonDomain || 'www.amazon.com'}/dp/${ASIN}?tag='babiescarrier-20'}&linkCode=osi&th=1&psc=1`
+    )
+    if (settings.amazonTrackingId) affiliateUrl.searchParams.set('tag', settings.amazonTrackingId)
     return {
       productName: item.itemInfo?.title?.displayValue || 'Amazon Product',
       amazonUrl: affiliateUrl.toString(),
       imageUrl: item.images?.primary?.large?.url || '',
       price: item.offersV2?.listings?.[0]?.price?.displayAmount || 'Check Amazon',
       features: item.itemInfo?.features?.displayValues || []
-    };
-  });
+    }
+  })
 }
 
 export async function generateAmazonReviewOutline(body, genAI) {
-  const { prompt, settings } = body;
+  const { prompt, settings } = body
   const {
     model,
     targetKeyword,
@@ -65,81 +71,82 @@ export async function generateAmazonReviewOutline(body, genAI) {
     condensedMode,
     enableFirstHandExperience,
     includeFaq,
-    automaticExternalLinks,
-  } = settings;
+    automaticExternalLinks
+  } = settings
 
-  const langObj = languages ? languages[language] : null;
-  const langName = langObj ? langObj.name : (language || 'English');
-  const countryObj = countries ? countries.find(c => c.code === country) : null;
-  const countryName = countryObj ? countryObj.name : (country || 'United States');
+  const langObj = languages ? languages[language] : null
+  const langName = langObj ? langObj.name : language || 'English'
+  const countryObj = countries ? countries.find(c => c.code === country) : null
+  const countryName = countryObj ? countryObj.name : country || 'United States'
 
-  const baseSystemInstruction = getBaseSystemInstruction(langName, countryName);
+  const baseSystemInstruction = getBaseSystemInstruction(langName, countryName)
 
-  const asin = extractASIN(amazonProductUrl);
-  const searchStr = asin || targetKeyword || 'amazon product';
+  const asin = extractASIN(amazonProductUrl)
+  const searchStr = asin || targetKeyword || 'amazon product'
 
-  const apiData = await fetchInternalAmazonData(searchStr, settings);
-  const formattedProducts = formatAmazonProducts(apiData, settings);
-  const product = formattedProducts[0];
+  const apiData = await fetchInternalAmazonData(searchStr, settings)
+  const formattedProducts = formatAmazonProducts(apiData, settings)
+  const product = formattedProducts[0]
 
   if (!product) {
-    throw new Error("Could not fetch product details from Amazon. Please check the URL.");
+    throw new Error('Could not fetch product details from Amazon. Please check the URL.')
   }
 
-  const activeKeyword = targetKeyword || product.productName;
+  const activeKeyword = targetKeyword || product.productName
 
-  let fetchedExternalLinks = [];
-  let faqInstruction = '';
-  let relatedInstruction = '';
+  let fetchedExternalLinks = []
+  let faqInstruction = ''
+  let relatedInstruction = ''
 
   if (automaticExternalLinks || includeFaq) {
-      const outlineData = await fetchSerperOutlineData(targetKeyword);
+    const outlineData = await fetchSerperOutlineData(targetKeyword)
 
-      if (automaticExternalLinks) {
-        fetchedExternalLinks = outlineData.authorityLinks;
-      }
+    if (automaticExternalLinks) {
+      fetchedExternalLinks = outlineData.authorityLinks
+    }
 
-      if (includeFaq) {
-          if (outlineData.faqs.length > 0) {
-            faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled exactly "Frequently Asked Questions". Under this H2, you MUST nest exactly these questions directly from Google as H3 subheadings:\n${outlineData.faqs.slice(0, 5).map(q => `- ${q}`).join('\n')}`;
-          } else {
-            faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled "Frequently Asked Questions" and nest 3-5 highly relevant questions as H3 subheadings.`;
-          }
-      }
-
-
-      if (outlineData.related.length > 0) {
-          relatedInstruction = `\nSEO OPTIMIZATION: Naturally incorporate topics from these related Google searches into your H2 and H3 headings where relevant: ${outlineData.related.slice(0, 5).join(', ')}.`;
+    if (includeFaq) {
+      if (outlineData.faqs.length > 0) {
+        faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled exactly "Frequently Asked Questions". Under this H2, you MUST nest exactly these questions directly from Google as H3 subheadings:\n${outlineData.faqs
+          .slice(0, 5)
+          .map(q => `- ${q}`)
+          .join('\n')}`
+      } else {
+        faqInstruction = `\nCRITICAL REQUIREMENT - FAQ SECTION: You MUST include an H2 heading titled "Frequently Asked Questions" and nest 3-5 highly relevant questions as H3 subheadings.`
       }
     }
 
+    if (outlineData.related.length > 0) {
+      relatedInstruction = `\nSEO OPTIMIZATION: Naturally incorporate topics from these related Google searches into your H2 and H3 headings where relevant: ${outlineData.related.slice(0, 5).join(', ')}.`
+    }
+  }
+
   const outlineModel = genAI.getGenerativeModel({
     model: model || 'gemini-3.1-flash-lite',
-    generationConfig: { responseMimeType: "application/json" },
+    generationConfig: { responseMimeType: 'application/json' },
     systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline. You MUST return a JSON object with four keys: "metaTitle" (SEO title, max 60 chars), "metaDescription" (SEO desc, max 160 chars), "title" (A catchy, click-worthy, viral H1 Title based on the keyword) and "outline" (A flat JSON array of objects). Schema: { "metaTitle": "...", "metaDescription": "...", "title": "Catchy Title Here", "outline": [{ "type": "h2", "text": "Introduction" }, { "type": "h3", "text": "Subheading" }] }\n\nCRITICAL OUTLINE RULES:\n- The "title" MUST contain the exact target keyword: "${activeKeyword}".\n- The VERY FIRST "h2" object in the outline array MUST contain the exact target keyword: "${activeKeyword}" in its "text" field.\n- The VERY LAST "h2" object in the outline array MUST be a concluding heading and MUST also contain the exact target keyword: "${activeKeyword}" in its "text" field.`
+  })
 
-  });
-
-  let outlineStructure = ``;
+  let outlineStructure = ``
 
   if (condensedMode) {
     outlineStructure += `
       - CONDENSED MODE IS ENABLED: Create a highly concise, punchy outline.
       - Limit the structure to essential H2s only.
       - Do NOT use H3 subheadings unless absolutely critical.
-    `;
+    `
   } else {
     outlineStructure += `
       - FULL REVIEW MODE: Create a comprehensive, deep-dive outline.
       - Include logical H2s (e.g., Overview, Unboxing, Performance, Pros & Cons, Alternatives).
       - Use highly descriptive H3 subheadings under the main H2 sections to break up the text.
-    `;
+    `
   }
 
   if (enableFirstHandExperience) {
     outlineStructure += `
       - FIRST-HAND EXPERIENCE IS ENABLED: The headings MUST reflect personal testing and usage (e.g., "My Experience With...", "How I Tested It").
-    `;
+    `
   }
 
   const outlinePrompt = `Create an Amazon Single-Product Review Outline for: ${prompt || targetKeyword}\n\nIMPORTANT STRUCTURE RULES:\n${outlineStructure}
@@ -164,13 +171,13 @@ export async function generateAmazonReviewOutline(body, genAI) {
     3. Include a "pros_cons" section (type: h2).
     4. Include a "conclusion" (type: h2).
     5. ${faqInstruction}}
-    6- ${relatedInstruction}`;
+    6- ${relatedInstruction}`
 
-  const result = await outlineModel.generateContent(outlinePrompt);
-  const parsedData = JSON.parse(result.response.text());
+  const result = await outlineModel.generateContent(outlinePrompt)
+  const parsedData = JSON.parse(result.response.text())
 
   if (parsedData.outline && parsedData.outline.length > 0) {
-    parsedData.outline[0].productData = product;
+    parsedData.outline[0].productData = product
   }
 
   return {
@@ -180,8 +187,8 @@ export async function generateAmazonReviewOutline(body, genAI) {
     metaTitle: parsedData.metaTitle,
     metaDescription: parsedData.metaDescription,
     heroImage: product?.imageUrl || '',
-    externalLinks: fetchedExternalLinks,
-  };
+    externalLinks: fetchedExternalLinks
+  }
 }
 
 export async function generateAmazonReviewSection(sectionData, genAI) {
@@ -196,8 +203,8 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     externalLinks,
     internalLinks,
     usedInternalLinks = [],
-    usedExternalLinks = [],
-  } = sectionData;
+    usedExternalLinks = []
+  } = sectionData
 
   const {
     model,
@@ -209,54 +216,66 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     customToneOfVoice,
     pointOfView,
     improveReadability
-  } = settings;
+  } = settings
 
   const sectionModel = genAI.getGenerativeModel({
-    model: model || 'gemini-3.1-flash-lite',
-  });
+    model: model || 'gemini-3.1-flash-lite'
+  })
 
-  let realTimeInstruction = await getRealTimeInstruction(settings.realTimeDataSource, articleTitle, heading, targetKeyword);
-  let extLinkInstruction = settings.automaticExternalLinks ? getExternalLinkInstruction(externalLinks, usedExternalLinks) : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.';
-  let { instruction: linkInstruction, selectedUrl: internalLinkUrl }= await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
-  let seoInstruction = await getSeoInstruction(targetKeyword);
-  let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
+  let realTimeInstruction = await getRealTimeInstruction(
+    settings.realTimeDataSource,
+    articleTitle,
+    heading,
+    targetKeyword
+  )
+  let extLinkInstruction = settings.automaticExternalLinks
+    ? getExternalLinkInstruction(externalLinks, usedExternalLinks)
+    : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.'
+  let { instruction: linkInstruction, selectedUrl: internalLinkUrl } = await getLinkInstruction(
+    internalLinks,
+    heading,
+    genAI,
+    usedInternalLinks
+  )
+  let seoInstruction = await getSeoInstruction(targetKeyword)
+  let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice)
 
-  const introSection = outlineContext.find(s => s.productData);
-  const product = introSection ? introSection.productData : null;
+  const introSection = outlineContext.find(s => s.productData)
+  const product = introSection ? introSection.productData : null
 
-  const activeHeadingText = heading || section?.text || 'Section';
-  let activeSectionType = section?.sectionType || section?.type;
+  const activeHeadingText = heading || section?.text || 'Section'
+  let activeSectionType = section?.sectionType || section?.type
 
   if (!activeSectionType && Array.isArray(outlineContext)) {
-    const matched = outlineContext.find(s => s.text === activeHeadingText || activeHeadingText.includes(s.text));
-    if (matched) activeSectionType = matched.sectionType;
+    const matched = outlineContext.find(s => s.text === activeHeadingText || activeHeadingText.includes(s.text))
+    if (matched) activeSectionType = matched.sectionType
   }
-  activeSectionType = activeSectionType || 'standard';
+  activeSectionType = activeSectionType || 'standard'
 
-  const activeKeyword = targetKeyword || (product ? product.productName : 'this product');
+  const activeKeyword = targetKeyword || (product ? product.productName : 'this product')
 
   const condensedInstruction = condensedMode
-    ? "CRITICAL REQUIREMENT (CONDENSED MODE): This article must be highly concise. Keep all paragraphs extremely short (1 to 3 sentences maximum). Eliminate all fluff, repetitive filler words, and long-winded introductions. Get straight to the point immediately."
-    : "Write detailed, comprehensive paragraphs to fully explore the topic.";
+    ? 'CRITICAL REQUIREMENT (CONDENSED MODE): This article must be highly concise. Keep all paragraphs extremely short (1 to 3 sentences maximum). Eliminate all fluff, repetitive filler words, and long-winded introductions. Get straight to the point immediately.'
+    : 'Write detailed, comprehensive paragraphs to fully explore the topic.'
 
   const experienceInstruction = enableFirstHandExperience
-    ? "PERSPECTIVE: Write as if you personally own, use, and have extensively tested this exact product. Share hands-on observations."
-    : "PERSPECTIVE: Write objectively as an expert product reviewer relying on factual data.";
+    ? 'PERSPECTIVE: Write as if you personally own, use, and have extensively tested this exact product. Share hands-on observations.'
+    : 'PERSPECTIVE: Write objectively as an expert product reviewer relying on factual data.'
 
   let povInstruction = enableFirstHandExperience
     ? `POINT OF VIEW: You MUST write in the First-Person ("I", "me", "my"). Speak directly to the reader as someone who currently owns, uses, and has rigorously tested this product.`
-    : getPovInstruction(pointOfView);
+    : getPovInstruction(pointOfView)
 
-  let readabilityInstruction = getReadabilityInstruction(improveReadability);
+  let readabilityInstruction = getReadabilityInstruction(improveReadability)
 
-  let amazonContext = '';
+  let amazonContext = ''
   if (amazonProductData) {
     amazonContext = `
       REAL PRODUCT DATA CONTEXT:
       Title: ${amazonProductData.title}
       Price: ${amazonProductData.price}
       Include these exact factual details naturally in the text where relevant.
-    `;
+    `
   }
 
   let sectionStructureRequirements = `
@@ -269,11 +288,11 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     ${condensedMode ? '3. Keep paragraphs extremely short (2-3 sentences max). Get straight to the point. No fluff.' : ''}
     ${subheadings && subheadings.length > 0 ? `4. You MUST cover the following subheadings exactly as H3s (### [Title]):\n${subheadings.join('\n')}` : ''}
     ${enableFirstHandExperience ? '5. Write as if you are sharing your personal, hands-on experience. Detail specific things you noticed while "testing" or "using" it.' : '5. Write as an objective, highly knowledgeable product reviewer.'}
-  `;
+  `
 
-  const activeSEOKeyword = targetKeyword || articleTitle || heading;
-  const lsiData = await fetchPeopleAlsoSearchFor(activeSEOKeyword);
-  const lsiString = `Google Keywords: [${lsiData.google.join(', ')}]. Bing Keywords: [${lsiData.bing.join(', ')}].`;
+  const activeSEOKeyword = targetKeyword || articleTitle || heading
+  const lsiData = await fetchPeopleAlsoSearchFor(activeSEOKeyword)
+  const lsiString = `Google Keywords: [${lsiData.google.join(', ')}]. Bing Keywords: [${lsiData.bing.join(', ')}].`
 
   const keywordSEOInstructions = `
     CRITICAL SEO & FORMATTING REQUIREMENTS:
@@ -284,7 +303,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     2. LSI INTEGRATION: You MUST naturally integrate 1 Google Keyword and 1 Bing Keyword from the provided lists into the paragraphs or subheadings of this section. CRITICAL: Use each LSI keyword a MAXIMUM of 1 or 2 times to avoid keyword stuffing. Ensure the main Target Keyword is used more frequently than any single LSI keyword.
     3. LSI BOLDING: Every time you use an LSI keyword, you MUST format it in bold (e.g., **LSI keyword**).
     4. LIST FORMATTING: If you use bullet points or ordered list items anywhere in this section, each individual list item MUST be 2 to 3 sentences long to provide detailed value. Do NOT write single-sentence or one-liner list items.
-  `;
+  `
 
   let sectionPrompt = `
     Article Topic: Single Product Review for "${activeKeyword}"
@@ -305,7 +324,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     ${toneInstruction}
     ${povInstruction}
     ${readabilityInstruction}
-  `;
+  `
 
   if (product) {
     sectionPrompt += `
@@ -313,9 +332,8 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
       - Product Name: ${product.productName}
       - Price: ${product.price}
       - Core Technical Features: ${product.features && product.features.length ? product.features.join(' | ') : 'N/A'}
-    `;
+    `
   }
-
 
   if (activeSectionType === 'intro') {
     sectionPrompt += `
@@ -326,15 +344,13 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
       <div align="center" style="margin: 25px 0;">
         <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 8px 16px; border-radius: 4px; display: inline-block;" class="check-price-btn">Check Price on Amazon</a>
       </div>
-    `;
-  }
-  else if (activeSectionType === 'pros_cons') {
+    `
+  } else if (activeSectionType === 'pros_cons') {
     sectionPrompt += `
       TASK: Write a Pros and Cons section for this product.
       STRICT REQUIREMENT: Use a strictly formatted Markdown table with "Pros" and "Cons" columns.
-    `;
-  }
-  else if (activeSectionType === 'conclusion') {
+    `
+  } else if (activeSectionType === 'conclusion') {
     sectionPrompt += `
       TASK: Write a compelling conclusion and final verdict.
       STRICT LAYOUT REQUIREMENT (Final CTA):
@@ -343,72 +359,74 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
       <div align="center" style="margin: 25px 0;">
        <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 8px 16px; border-radius: 4px; display: inline-block;" class="check-price-btn">Check Price on Amazon</a>
       </div>
-    `;
-  }
-  else if (activeSectionType === 'faq') {
+    `
+  } else if (activeSectionType === 'faq') {
     sectionPrompt += `
       TASK: Write a comprehensive FAQ section containing 3 to 5 commonly asked questions regarding this product.
 
       STRICT REQUIREMENT (Schema Markup):
       You MUST wrap the questions and answers in valid JSON-LD FAQPage schema markup. Place the schema inside a <script type="application/ld+json"> tag at the very end of the section. Do NOT use markdown code blocks around the script tag.
-    `;
-  }
-  else {
+    `
+  } else {
     sectionPrompt += `
       TASK: Write a comprehensive section analyzing this specific aspect of the product.
-    `;
+    `
   }
 
-  let result;
- let retries = 5;
- const delay = 5000;
+  let result
+  const retries = 5
+  let delay = 800 // start fast; grow with jitter
 
-for (let i = 0; i < retries; i++) {
-  try {
-    result = await sectionModel.generateContent(sectionPrompt);
-    break;
-  } catch (error) {
-    const errorMessage = (error?.message || String(error) || '').toLowerCase();
-    const status = error?.status || error?.statusCode || error?.code;
+  for (let i = 0; i < retries; i++) {
+    try {
+      result = await sectionModel.generateContent(sectionPrompt)
+      break
+    } catch (error) {
+      const errorMessage = (error?.message || String(error) || '').toLowerCase()
+      const status = error?.status || error?.statusCode || error?.code
 
-    const isRetryable =
-      status === 429 || status === 500 || status === 503 ||
-      errorMessage.includes('429') ||
-      errorMessage.includes('503') ||
-      errorMessage.includes('500') ||
-      errorMessage.includes('rate limit') ||
-      errorMessage.includes('quota') ||
-      errorMessage.includes('overloaded') ||
-      errorMessage.includes('resource exhausted') ||
-      errorMessage.includes('fetch failed') ||
-      errorMessage.includes('econnreset') ||
-      errorMessage.includes('etimedout') ||
-      errorMessage.includes('network') ||
-      errorMessage.includes('timeout') ||
-      errorMessage.includes('socket hang up') ||
-      error.name === 'TypeError' ||
-      errorMessage.includes('typeerror');
+      const isRetryable =
+        status === 429 ||
+        status === 500 ||
+        status === 503 ||
+        errorMessage.includes('429') ||
+        errorMessage.includes('503') ||
+        errorMessage.includes('500') ||
+        errorMessage.includes('rate limit') ||
+        errorMessage.includes('quota') ||
+        errorMessage.includes('overloaded') ||
+        errorMessage.includes('resource exhausted') ||
+        errorMessage.includes('fetch failed') ||
+        errorMessage.includes('econnreset') ||
+        errorMessage.includes('etimedout') ||
+        errorMessage.includes('network') ||
+        errorMessage.includes('timeout') ||
+        errorMessage.includes('socket hang up') ||
+        error.name === 'TypeError' ||
+        errorMessage.includes('typeerror')
 
-    if (i === retries - 1 || !isRetryable) {
-      console.error(`[Gemini API] Final failure after ${i + 1} attempts:`, error);
-      throw new Error(
-        error?.message ||
-        (typeof error === 'string' ? error : 'Gemini generation failed after retries')
-      );
+      if (i === retries - 1 || !isRetryable) {
+        console.error(`[Gemini API] Final failure after ${i + 1} attempts:`, error)
+        throw new Error(
+          error?.message || (typeof error === 'string' ? error : 'Gemini generation failed after retries')
+        )
+      }
+
+      const jitter = Math.floor(Math.random() * 500)
+      const wait = Math.min(delay + jitter, 10000)
+      console.warn(
+        `[Gemini API] Transient error (status: ${status || 'n/a'}). ` +
+          `Retrying in ${(wait / 1000).toFixed(1)}s... (Attempt ${i + 1}/${retries})`
+      )
+      await new Promise(res => setTimeout(res, wait))
+      delay = Math.min(Math.floor(delay * 1.7), 10000)
     }
-
-    console.warn(
-      `[Gemini API] Transient error (status: ${status || 'n/a'}). ` +
-      `Retrying in ${delay / 1000}s... (Attempt ${i + 1}/${retries})`
-    );
-    await new Promise(res => setTimeout(res, delay));
   }
-}
 
   return {
     success: true,
     text: result.response.text(),
     mediaHtml: null,
     internalLinkUrl: internalLinkUrl
-  };
+  }
 }

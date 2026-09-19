@@ -6,41 +6,44 @@ import {
   getToneInstruction,
   getBaseSystemInstruction,
   fetchYoutubeVideoData,
-  fetchUnsplashImage, fetchPexelsImage, fetchPixabayImage, calculateRelevanceScore
- ,fetchPeopleAlsoSearchFor, generateFallbackImage } from '../utils/helpers'
+  fetchUnsplashImage,
+  fetchPexelsImage,
+  fetchPixabayImage,
+  calculateRelevanceScore,
+  fetchPeopleAlsoSearchFor,
+  generateFallbackImage
+} from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 
 export async function generateYoutubeBlogOutline(body, genAI) {
-  const { prompt, settings } = body;
-  const {
-    model, targetKeyword, language, country, youtubeUrl, enableCaptionRewriting } = settings;
+  const { prompt, settings } = body
+  const { model, targetKeyword, language, country, youtubeUrl, enableCaptionRewriting } = settings
 
-  const videoData = await fetchYoutubeVideoData(youtubeUrl);
+  const videoData = await fetchYoutubeVideoData(youtubeUrl)
   if (!videoData.success) {
-    throw new Error('Failed to fetch YouTube transcript. The video might be private or lacking captions.');
+    throw new Error('Failed to fetch YouTube transcript. The video might be private or lacking captions.')
   }
 
-  const transcript = videoData.transcript || videoData.text || '';
-  const videoTitle = videoData.title || 'YouTube Video';
+  const transcript = videoData.transcript || videoData.text || ''
+  const videoTitle = videoData.title || 'YouTube Video'
 
-  const langObj = languages ? languages[language] : null;
-  const langName = langObj ? langObj.name : (language || 'English');
-  const countryObj = countries ? countries.find(c => c.code === country) : null;
-  const countryName = countryObj ? countryObj.name : (country || 'United States');
+  const langObj = languages ? languages[language] : null
+  const langName = langObj ? langObj.name : language || 'English'
+  const countryObj = countries ? countries.find(c => c.code === country) : null
+  const countryName = countryObj ? countryObj.name : country || 'United States'
 
-  const baseSystemInstruction = getBaseSystemInstruction(langName, countryName);
+  const baseSystemInstruction = getBaseSystemInstruction(langName, countryName)
 
   const outlineModel = genAI.getGenerativeModel({
     model: model || 'gemini-3.1-flash-lite',
-    generationConfig: { responseMimeType: "application/json" },
-  systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline. You MUST return a JSON object with four keys: "metaTitle" (SEO title, max 60 chars), "metaDescription" (SEO desc, max 160 chars), "title" (A catchy, click-worthy, viral H1 Title based on the keyword) and "outline" (A flat JSON array of objects). Schema: { "metaTitle": "...", "metaDescription": "...", "title": "Catchy Title Here", "outline": [{ "type": "h2", "text": "Introduction" }, { "type": "h3", "text": "Subheading" }] }\n\nCRITICAL OUTLINE RULES:\n- The "title" MUST contain the exact target keyword: "${targetKeyword}".\n- The VERY FIRST "h2" object in the outline array MUST contain the exact target keyword: "${targetKeyword}" in its "text" field.\n- The VERY LAST "h2" object in the outline array MUST be a concluding heading and MUST also contain the exact target keyword: "${targetKeyword}" in its "text" field.`
-  });
-
+    generationConfig: { responseMimeType: 'application/json' },
+    systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline. You MUST return a JSON object with four keys: "metaTitle" (SEO title, max 60 chars), "metaDescription" (SEO desc, max 160 chars), "title" (A catchy, click-worthy, viral H1 Title based on the keyword) and "outline" (A flat JSON array of objects). Schema: { "metaTitle": "...", "metaDescription": "...", "title": "Catchy Title Here", "outline": [{ "type": "h2", "text": "Introduction" }, { "type": "h3", "text": "Subheading" }] }\n\nCRITICAL OUTLINE RULES:\n- The "title" MUST contain the exact target keyword: "${targetKeyword}".\n- The VERY FIRST "h2" object in the outline array MUST contain the exact target keyword: "${targetKeyword}" in its "text" field.\n- The VERY LAST "h2" object in the outline array MUST be a concluding heading and MUST also contain the exact target keyword: "${targetKeyword}" in its "text" field.`
+  })
 
   const rewriteInstruction = enableCaptionRewriting
     ? `REWRITING ENABLED: Use the video transcript as your core inspiration, but creatively restructure it into a standalone, highly engaging blog post. You do not need to follow the video's exact chronological order. Add logical headings that make it a better reading experience.`
-    : `STRICT ADHERENCE: Closely follow the chronological flow, exact arguments, and structure of the video. Your outline should act as a direct text adaptation of the video's timeline.`;
+    : `STRICT ADHERENCE: Closely follow the chronological flow, exact arguments, and structure of the video. Your outline should act as a direct text adaptation of the video's timeline.`
 
   const outlinePrompt = `
     Target Keyword/Topic: ${targetKeyword || prompt}
@@ -60,54 +63,57 @@ export async function generateYoutubeBlogOutline(body, genAI) {
     1. Length: You MUST generate between 8 and 12 main H2 sections.
     2. Depth: For every H2, you MUST include 2 to 3 related H3 subheadings in the array to provide depth.
     3. Flatness: Keep the JSON array flat (no nesting).
-  `;
+  `
 
-  const result = await outlineModel.generateContent(outlinePrompt);
-  const parsedData = JSON.parse(result.response.text());
+  const result = await outlineModel.generateContent(outlinePrompt)
+  const parsedData = JSON.parse(result.response.text())
 
   const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
-      fetchUnsplashImage(targetKeyword),
-      fetchPexelsImage(targetKeyword),
-      fetchPixabayImage(targetKeyword)
-    ]);
+    fetchUnsplashImage(targetKeyword),
+    fetchPexelsImage(targetKeyword),
+    fetchPixabayImage(targetKeyword)
+  ])
 
-    let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url);
-    let heroImageUrl = '';
-    let fallbackToAiImageTag = false;
-    let scoredCandidates = [];
+  let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url)
+  let heroImageUrl = ''
+  let fallbackToAiImageTag = false
+  let scoredCandidates = []
 
-    if (candidates.length > 0) {
-      scoredCandidates = candidates.map(c => ({
-        ...c,
-        score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
-      }));
+  if (candidates.length > 0) {
+    scoredCandidates = candidates.map(c => ({
+      ...c,
+      score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
+    }))
 
-      scoredCandidates.sort((a, b) => b.score - a.score);
+    scoredCandidates.sort((a, b) => b.score - a.score)
 
-      if (scoredCandidates[0].score >= 0.1) {
-        heroImageUrl = scoredCandidates[0].url;
-        console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`);
-      } else {
-        console.log(`[Hero Image] Top image score (${scoredCandidates[0].score}) below 2.0. Invoking AI generation logic.`);
-        fallbackToAiImageTag = true;
-      }
+    if (scoredCandidates[0].score >= 0.1) {
+      heroImageUrl = scoredCandidates[0].url
+      console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`)
     } else {
-      fallbackToAiImageTag = true;
+      console.log(
+        `[Hero Image] Top image score (${scoredCandidates[0].score}) below 2.0. Invoking AI generation logic.`
+      )
+      fallbackToAiImageTag = true
+    }
+  } else {
+    fallbackToAiImageTag = true
+  }
+
+  if (fallbackToAiImageTag) {
+    const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : ''
+    try {
+      const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`)
+      if (fallbackImage && fallbackImage.url) {
+        heroImageUrl = fallbackImage.url
+      }
+    } catch (error) {
+      heroImageUrl = safetyBackup
+      console.log(`[Hero Image] AI Fallback failed to generate a URL.`)
     }
 
-    if (fallbackToAiImageTag) {
-      const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : '';
-      try { const fallbackImage =  await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`);
-    if (fallbackImage && fallbackImage.url) {
-      heroImageUrl = fallbackImage.url;
-
-    } } catch(error) {
-      heroImageUrl = safetyBackup;
-      console.log(`[Hero Image] AI Fallback failed to generate a URL.`);
-    }
-
-      console.log(`[Hero Image] AI Generation Result: ${heroImageUrl ? 'Success' : 'Failed - Using Safety Backup'}`);
-    }
+    console.log(`[Hero Image] AI Generation Result: ${heroImageUrl ? 'Success' : 'Failed - Using Safety Backup'}`)
+  }
 
   return {
     success: true,
@@ -118,9 +124,8 @@ export async function generateYoutubeBlogOutline(body, genAI) {
     heroImage: heroImageUrl,
     metaTitle: parsedData.metaTitle,
     metaDescription: parsedData.metaDescription
-  };
+  }
 }
-
 
 export async function generateYoutubeBlogSection(body, genAI) {
   const {
@@ -131,60 +136,77 @@ export async function generateYoutubeBlogSection(body, genAI) {
     fetchedVideoTitle,
     settings = {},
     externalLinks,
-    internalLinks,
-  } = body;
+    internalLinks
+  } = body
 
-  let transcriptText = fetchedTranscript || '';
+  let transcriptText = fetchedTranscript || ''
 
   const {
-    model, targetKeyword, toneOfVoice, customToneOfVoice,
-    pointOfView, useRealTimeSearchData, realTimeDataSource,
-    seoOptimization, manualKeywords, improveReadability, enableCaptionRewriting, deepSearch, language, country
-  } = settings;
+    model,
+    targetKeyword,
+    toneOfVoice,
+    customToneOfVoice,
+    pointOfView,
+    useRealTimeSearchData,
+    realTimeDataSource,
+    seoOptimization,
+    manualKeywords,
+    improveReadability,
+    enableCaptionRewriting,
+    deepSearch,
+    language,
+    country
+  } = settings
 
+  const langObj = languages ? languages[language] : null
+  const langName = langObj ? langObj.name : language || 'English'
+  const countryObj = countries ? countries.find(c => c.code === country) : null
+  const countryName = countryObj ? countryObj.name : country || 'United States'
 
-  const langObj = languages ? languages[language] : null;
-  const langName = langObj ? langObj.name : (language || 'English');
-  const countryObj = countries ? countries.find(c => c.code === country) : null;
-  const countryName = countryObj ? countryObj.name : (country || 'United States');
-
-  const baseSystemInstruction = getBaseSystemInstruction(langName, countryName);
+  const baseSystemInstruction = getBaseSystemInstruction(langName, countryName)
 
   const modelConfig = {
-    model: deepSearch ? 'deep-research-preview-04-2026' : (model || 'gemini-2.5-pro'),
+    model: deepSearch ? 'deep-research-preview-04-2026' : model || 'gemini-2.5-pro',
     systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: You are an expert copywriter. Write highly engaging, SEO-optimized content.`
   }
 
-  const isWebSearch = !realTimeDataSource || realTimeDataSource === 'search';
+  const isWebSearch = !realTimeDataSource || realTimeDataSource === 'search'
   if (useRealTimeSearchData && isWebSearch) {
-    modelConfig.tools = [{
-      googleSearchRetrieval: { dynamicRetrievalConfig: { mode: "MODE_DYNAMIC", dynamicThreshold: 0.3 } }
-    }];
+    modelConfig.tools = [
+      {
+        googleSearchRetrieval: { dynamicRetrievalConfig: { mode: 'MODE_DYNAMIC', dynamicThreshold: 0.3 } }
+      }
+    ]
   }
 
-  const sectionModel = genAI.getGenerativeModel(modelConfig);
+  const sectionModel = genAI.getGenerativeModel(modelConfig)
 
-  let { instruction: linkInstruction, selectedUrl: internalLinkUrl }= await getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks)
-  let seoInstruction = await getSeoInstruction(seoOptimization, manualKeywords, targetKeyword);
+  let { instruction: linkInstruction, selectedUrl: internalLinkUrl } = await getLinkInstruction(
+    internalLinks,
+    heading,
+    genAI,
+    usedInternalLinks
+  )
+  let seoInstruction = await getSeoInstruction(seoOptimization, manualKeywords, targetKeyword)
 
-  let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice);
-  let povInstruction = getPovInstruction(pointOfView);
-  let readabilityInstruction = getReadabilityInstruction(improveReadability);
+  let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice)
+  let povInstruction = getPovInstruction(pointOfView)
+  let readabilityInstruction = getReadabilityInstruction(improveReadability)
 
-let sectionStructureRequirements = `
+  let sectionStructureRequirements = `
           CRITICAL STRUCTURE & FORMATTING REQUIREMENTS:
           1. DO NOT output the H2 heading "${heading}" as text in your response. Start immediately with a strong, engaging introductory paragraph for this section.
           ${subheadings && subheadings.length > 0 ? `2. You MUST cover the following subheadings exactly as Markdown H3s (### [Title]):\n${subheadings.join('\n')}` : '2. Write the content directly without adding any new H3 subheadings.'}
           3. Format beautifully: Use bolding (**text**) for key terms, use bulleted lists for data, and keep paragraphs short (2-4 sentences max) for high web readability.
-        `;
+        `
 
   const rewriteInstruction = enableCaptionRewriting
     ? `Approach this section as an expert author writing an original piece inspired by the video content. Add depth where necessary.`
-    : `Extract and summarize the information exactly as it was presented in the video for this specific section. Do not add outside information.`;
+    : `Extract and summarize the information exactly as it was presented in the video for this specific section. Do not add outside information.`
 
-  const activeSEOKeyword = targetKeyword || articleTitle || heading;
-  const lsiData = await fetchPeopleAlsoSearchFor(activeSEOKeyword);
-  const lsiString = `Google Keywords: [${lsiData.google.join(', ')}]. Bing Keywords: [${lsiData.bing.join(', ')}].`;
+  const activeSEOKeyword = targetKeyword || articleTitle || heading
+  const lsiData = await fetchPeopleAlsoSearchFor(activeSEOKeyword)
+  const lsiString = `Google Keywords: [${lsiData.google.join(', ')}]. Bing Keywords: [${lsiData.bing.join(', ')}].`
 
   const keywordSEOInstructions = `
     CRITICAL SEO & FORMATTING REQUIREMENTS:
@@ -195,9 +217,7 @@ let sectionStructureRequirements = `
     2. LSI INTEGRATION: You MUST naturally integrate 1 to 2 of the provided LSI keywords into the paragraphs or subheadings of this section. CRITICAL: Use each LSI keyword a MAXIMUM of 1 or 2 times to avoid keyword stuffing. Ensure the main Target Keyword is used more frequently than any single LSI keyword.
     3. LSI BOLDING: Every time you use an LSI keyword, you MUST format it in bold (e.g., **LSI keyword**).
     4. LIST FORMATTING: If you use bullet points or ordered list items anywhere in this section, each individual list item MUST be 2 to 3 sentences long to provide detailed value. Do NOT write single-sentence or one-liner list items.
-  `;
-
-
+  `
 
   const sectionPrompt = `
         Article Topic Context: ${targetKeyword}
@@ -221,53 +241,57 @@ let sectionStructureRequirements = `
         ${toneInstruction}
         ${povInstruction}
         ${readabilityInstruction}
-      `;
+      `
 
-  let result;
- let retries = 5;
- const delay = 5000;
+  let result
+  const retries = 5
+  let delay = 800 // start fast; grow with jitter
 
-for (let i = 0; i < retries; i++) {
-  try {
-    result = await sectionModel.generateContent(sectionPrompt);
-    break;
-  } catch (error) {
-    const errorMessage = (error?.message || String(error) || '').toLowerCase();
-    const status = error?.status || error?.statusCode || error?.code;
+  for (let i = 0; i < retries; i++) {
+    try {
+      result = await sectionModel.generateContent(sectionPrompt)
+      break
+    } catch (error) {
+      const errorMessage = (error?.message || String(error) || '').toLowerCase()
+      const status = error?.status || error?.statusCode || error?.code
 
-    const isRetryable =
-      status === 429 || status === 500 || status === 503 ||
-      errorMessage.includes('429') ||
-      errorMessage.includes('503') ||
-      errorMessage.includes('500') ||
-      errorMessage.includes('rate limit') ||
-      errorMessage.includes('quota') ||
-      errorMessage.includes('overloaded') ||
-      errorMessage.includes('resource exhausted') ||
-      errorMessage.includes('fetch failed') ||
-      errorMessage.includes('econnreset') ||
-      errorMessage.includes('etimedout') ||
-      errorMessage.includes('network') ||
-      errorMessage.includes('timeout') ||
-      errorMessage.includes('socket hang up') ||
-      error.name === 'TypeError' ||
-      errorMessage.includes('typeerror');
+      const isRetryable =
+        status === 429 ||
+        status === 500 ||
+        status === 503 ||
+        errorMessage.includes('429') ||
+        errorMessage.includes('503') ||
+        errorMessage.includes('500') ||
+        errorMessage.includes('rate limit') ||
+        errorMessage.includes('quota') ||
+        errorMessage.includes('overloaded') ||
+        errorMessage.includes('resource exhausted') ||
+        errorMessage.includes('fetch failed') ||
+        errorMessage.includes('econnreset') ||
+        errorMessage.includes('etimedout') ||
+        errorMessage.includes('network') ||
+        errorMessage.includes('timeout') ||
+        errorMessage.includes('socket hang up') ||
+        error.name === 'TypeError' ||
+        errorMessage.includes('typeerror')
 
-    if (i === retries - 1 || !isRetryable) {
-      console.error(`[Gemini API] Final failure after ${i + 1} attempts:`, error);
-      throw new Error(
-        error?.message ||
-        (typeof error === 'string' ? error : 'Gemini generation failed after retries')
-      );
+      if (i === retries - 1 || !isRetryable) {
+        console.error(`[Gemini API] Final failure after ${i + 1} attempts:`, error)
+        throw new Error(
+          error?.message || (typeof error === 'string' ? error : 'Gemini generation failed after retries')
+        )
+      }
+
+      const jitter = Math.floor(Math.random() * 500)
+      const wait = Math.min(delay + jitter, 10000)
+      console.warn(
+        `[Gemini API] Transient error (status: ${status || 'n/a'}). ` +
+          `Retrying in ${(wait / 1000).toFixed(1)}s... (Attempt ${i + 1}/${retries})`
+      )
+      await new Promise(res => setTimeout(res, wait))
+      delay = Math.min(Math.floor(delay * 1.7), 10000)
     }
-
-    console.warn(
-      `[Gemini API] Transient error (status: ${status || 'n/a'}). ` +
-      `Retrying in ${delay / 1000}s... (Attempt ${i + 1}/${retries})`
-    );
-    await new Promise(res => setTimeout(res, delay));
   }
-}
 
-  return { success: true, text: result.response.text(), internalLinkUrl: internalLinkUrl};
+  return { success: true, text: result.response.text(), internalLinkUrl: internalLinkUrl }
 }
