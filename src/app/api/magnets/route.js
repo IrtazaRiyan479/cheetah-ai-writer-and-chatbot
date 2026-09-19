@@ -1,20 +1,21 @@
-import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { NextResponse } from 'next/server'
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+import { GoogleGenerativeAI } from '@google/generative-ai'
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_FREE_API_KEY)
 
 export async function POST(req) {
   try {
-    const body = await req.json();
-    const { action = 'create', prompt, aiInstructions, userInputs } = body;
+    const body = await req.json()
+    const { action = 'create', prompt, aiInstructions, userInputs } = body
 
     if (action === 'create') {
-      if (!prompt) return NextResponse.json({ error: 'Please provide a description.' }, { status: 400 });
+      if (!prompt) return NextResponse.json({ error: 'Please provide a description.' }, { status: 400 })
 
       const model = genAI.getGenerativeModel({
         model: 'gemini-3.1-flash-lite',
-        generationConfig: { responseMimeType: "application/json" }
-      });
+        generationConfig: { responseMimeType: 'application/json' }
+      })
 
       const aiPrompt = `
         You are an expert software architect building custom interactive web tools (Lead Magnets).
@@ -36,17 +37,16 @@ export async function POST(req) {
           "aiInstructions": "A system prompt instructing the AI on how to process the inputs to generate the final result."
         }
         Keep it to 1-4 highly relevant input fields.
-      `;
+      `
 
-      const result = await model.generateContent(aiPrompt);
-      const magnetConfig = JSON.parse(result.response.text());
+      const result = await model.generateContent(aiPrompt)
+      const magnetConfig = JSON.parse(result.response.text())
 
-      return NextResponse.json({ success: true, magnetConfig });
+      return NextResponse.json({ success: true, magnetConfig })
     }
 
     if (action === 'execute') {
-
-      const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
 
       const executionPrompt = `
         You are the execution engine for a specialized web tool. Provide a direct, helpful, user-friendly, and concise response formatted cleanly. Do not explain how you generated the result.
@@ -56,17 +56,17 @@ export async function POST(req) {
 
         USER INPUT DATA TO PROCESS:
         ${JSON.stringify(userInputs, null, 2)}
-      `;
+      `
 
-      const result = await model.generateContent(executionPrompt);
+      const result = await model.generateContent(executionPrompt)
 
-      return NextResponse.json({ success: true, result: result.response.text() });
+      return NextResponse.json({ success: true, result: result.response.text() })
     }
 
-    return NextResponse.json({ error: 'Invalid Action' }, { status: 400 });
-
+    return NextResponse.json({ error: 'Invalid Action' }, { status: 400 })
   } catch (error) {
-    console.error('AffiGenieMagnets API Error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.error('AffiGenieMagnets API Error:', error)
+
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   }
 }

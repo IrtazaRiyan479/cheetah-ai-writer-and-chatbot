@@ -198,7 +198,7 @@ export function calculateRelevanceScore(altText, query, topic) {
 }
 
 export async function generateFallbackImage(prompt) {
-  if (!process.env.GEMINI_API_KEY) return null
+  if (!process.env.GEMINI_FREE_API_KEY) return null
 
   try {
     const finalPrompt = `photorealistic style, landscape orientation, highly detailed. ${prompt}`
@@ -209,7 +209,7 @@ export async function generateFallbackImage(prompt) {
     }
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent?key=${process.env.GEMINI_FREE_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

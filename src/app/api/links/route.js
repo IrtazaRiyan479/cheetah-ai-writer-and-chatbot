@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
+
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import * as cheerio from 'cheerio';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_FREE_API_KEY);
 
 const browserHeaders = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -20,6 +21,7 @@ export async function POST(req) {
       if (!domain) return NextResponse.json({ error: 'Domain is required' }, { status: 400 });
 
       let cleanDomain = String(domain || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+
       if (!cleanDomain.startsWith('www.')) {
         cleanDomain = `www.${cleanDomain}`;
       }
@@ -31,26 +33,33 @@ export async function POST(req) {
       for (const path of sitemapPaths) {
         try {
           const response = await fetch(`https://${cleanDomain}${path}`, { headers: browserHeaders, signal: AbortSignal.timeout(6000) });
+
           if (response.ok) {
             sitemapFound = true;
             const xmlText = await response.text();
             let matches = [...xmlText.matchAll(/<loc>(.*?)<\/loc>/g)];
+
             extractedUrls = matches.map(m => m[1]);
 
             const isSitemapIndex = extractedUrls.some(url => url.endsWith('.xml'));
+
             if (isSitemapIndex) {
               const subSitemaps = extractedUrls.filter(url => url.includes('post-sitemap') || url.includes('page-sitemap') || url.includes('wp-sitemap-posts'));
+
               extractedUrls = [];
 
               for (const subMap of subSitemaps) {
                 const subResponse = await fetch(subMap, { headers: browserHeaders, signal: AbortSignal.timeout(6000) });
+
                 if (subResponse.ok) {
                   const subXmlText = await subResponse.text();
                   const subMatches = [...subXmlText.matchAll(/<loc>(.*?)<\/loc>/g)];
+
                   extractedUrls.push(...subMatches.map(m => m[1]));
                 }
               }
             }
+
             break;
           }
         } catch (error) {
@@ -65,18 +74,23 @@ export async function POST(req) {
       extractedUrls = extractedUrls.filter(url => {
         if (!url) return false;
         const path = new URL(url).pathname;
-        return path.length > 1 && !url.endsWith('.xml') && !url.includes('/wp-content/uploads/');
+
+        
+return path.length > 1 && !url.endsWith('.xml') && !url.includes('/wp-content/uploads/');
       });
       extractedUrls = [...new Set(extractedUrls)];
 
       const encoder = new TextEncoder();
+
       const stream = new ReadableStream({
         async start(controller) {
           try {
             const checkLiveness = async (url) => {
               try {
                 const res = await fetch(url, { method: 'HEAD', headers: browserHeaders, signal: AbortSignal.timeout(4000) });
-                return res.ok ? url : null;
+
+                
+return res.ok ? url : null;
               } catch (e) {
                 return null;
               }
@@ -125,6 +139,7 @@ export async function POST(req) {
             }
           } catch (error) {
             console.error('Crawl stream processing error:', error);
+
             if (!req.signal.aborted) {
               try {
                 controller.enqueue(encoder.encode(JSON.stringify({ type: 'error', message: error.message }) + '\n'));
@@ -168,8 +183,10 @@ export async function POST(req) {
           const html = await res.text();
           const $ = cheerio.load(html);
           let textContent = '';
+
           $('p, h2, h3, li').each((_, el) => {
             const text = $(el).text().trim();
+
             if (text.length > 20) textContent += text + '\n';
           });
 
@@ -180,6 +197,7 @@ export async function POST(req) {
       }
 
       const validPages = pagesWithContent.filter(p => p.content.length > 50);
+
       if (validPages.length === 0) {
         return NextResponse.json({ error: 'Could not extract text.' }, { status: 400 });
       }
@@ -190,6 +208,7 @@ export async function POST(req) {
       });
 
       const encoder = new TextEncoder();
+
       const stream = new ReadableStream({
         async start(controller) {
           try {
@@ -235,6 +254,7 @@ export async function POST(req) {
               if (req.signal.aborted) break;
 
               let rawText = String(result.response?.text() || '[]');
+
               rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
 
               try {
@@ -242,6 +262,7 @@ export async function POST(req) {
 
                 if (Array.isArray(batchSuggestions) && batchSuggestions.length > 0) {
                   const chunkData = JSON.stringify({ type: 'chunk', data: batchSuggestions }) + '\n';
+
                   controller.enqueue(encoder.encode(chunkData));
                 }
               } catch (parseError) {
@@ -257,6 +278,7 @@ export async function POST(req) {
             }
           } catch (error) {
             console.error('Analyze stream processing error:', error);
+
             if (!req.signal.aborted) {
               try {
                 controller.enqueue(encoder.encode(JSON.stringify({ type: 'error', message: error.message }) + '\n'));
@@ -280,6 +302,7 @@ export async function POST(req) {
 
   } catch (error) {
     console.error('API Error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    
+return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

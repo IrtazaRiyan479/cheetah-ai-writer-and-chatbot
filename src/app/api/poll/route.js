@@ -1,26 +1,27 @@
-import { GoogleGenAI } from '@google/genai';
-import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server'
+
+import { GoogleGenAI } from '@google/genai'
 
 export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-  const id = searchParams.get('id');
+  const { searchParams } = new URL(request.url)
+  const id = searchParams.get('id')
 
-  if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
+  if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 })
 
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const interaction = await ai.interactions.get(id);
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_FREE_API_KEY })
+    const interaction = await ai.interactions.get(id)
 
-    if (interaction.status === "completed") {
-      return NextResponse.json({ status: "completed", text: interaction.output_text });
-    } else if (interaction.status === "failed") {
-      return NextResponse.json({ status: "failed", error: "Deep search failed." });
+    if (interaction.status === 'completed') {
+      return NextResponse.json({ status: 'completed', text: interaction.output_text })
+    } else if (interaction.status === 'failed') {
+      return NextResponse.json({ status: 'failed', error: 'Deep search failed.' })
     }
 
-    return NextResponse.json({ status: "processing" });
-
+    return NextResponse.json({ status: 'processing' })
   } catch (error) {
-    console.error("Polling Error:", error);
-    return NextResponse.json({ status: "failed", error: error.message });
+    console.error('Polling Error:', error)
+
+    return NextResponse.json({ status: 'failed', error: error.message })
   }
 }
