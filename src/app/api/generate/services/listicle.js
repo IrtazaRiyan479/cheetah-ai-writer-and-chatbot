@@ -125,7 +125,9 @@ export async function generateListicleOutline(body, genAI) {
     } catch (err) {
       lastOutlineError = err
       const msg = String(err?.message || err)
-      const isRateLimit = /429|rate.?limit|quota|resource.?exhausted/i.test(msg)
+
+      const isRateLimit =
+        /429|rate.?limit|quota|resource.?exhausted|503|high demand|unavailable|overloaded|try again later/i.test(msg)
 
       if (isRateLimit) {
         console.warn('[Outline] Gemini quota — using Groq/Mistral')
@@ -386,7 +388,8 @@ export async function generateListicleSection(body, genAI) {
     const alt = await callLightLLM({
       system: 'You are an expert SEO article writer. Return only the section body in markdown. No preamble, no JSON.',
       prompt: sectionPrompt.slice(0, 6000),
-      max_tokens: 1400
+      max_tokens: 1400,
+      waitOn429: false
     })
 
     if (!alt?.text) {

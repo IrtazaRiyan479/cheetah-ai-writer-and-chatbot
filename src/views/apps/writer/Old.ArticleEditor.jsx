@@ -89,17 +89,23 @@ function failedSectionHtml(index, heading, { showHeading = true } = {}) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
 
-  // Must use schema node RetrySectionButton — TipTap strips plain <button> tags
-  const retryBtn = `<button type="button" data-retry-section="${index}" class="retry-section-btn" title="Retry this section" contenteditable="false"></button>`
+  const retryBtn = `
+<button type="button" data-retry-section="${index}" title="Retry this section"
+  style="flex-shrink:0;width:40px;height:40px;border:none;border-radius:10px;background:#8C57FF;color:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(140,87,255,0.35);">
+  <i class="ri-refresh-line" style="font-size:20px;line-height:1;"></i>
+</button>`
 
-  // Button lives inside the H2 so it sits on the right of the heading (h2 is flex)
-  if (showHeading) {
-    return `<h2 data-failed-heading="${index}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:40px;margin-bottom:16px;font-size:1.5rem;font-weight:700;color:rgba(38,43,67,0.9);line-height:1.3;">${safeHeading}${retryBtn}</h2>
-<p class="failed-section failed-section-${index}" data-failed-section="${index}" style="background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;border-radius:8px;padding:12px 16px;margin:0 0 16px;font-size:14px;line-height:1.5;">Section failed, retry later...</p>`
-  }
+  const headingRow = showHeading
+    ? `<div data-failed-section="${index}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:40px;margin-bottom:8px;">
+         <h2 style="font-size:1.5rem;font-weight:700;margin:0;color:rgba(38,43,67,0.9);line-height:1.3;flex:1;">${safeHeading}</h2>
+         ${retryBtn}
+       </div>`
+    : `<div data-failed-section="${index}" style="display:flex;justify-content:flex-end;margin:16px 0 8px;">${retryBtn}</div>`
 
-  return `<p data-failed-section="${index}" style="display:flex;justify-content:flex-end;margin:16px 0 8px;">${retryBtn}</p>
-<p class="failed-section failed-section-${index}" data-failed-section="${index}" style="background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;border-radius:8px;padding:12px 16px;margin:0 0 16px;font-size:14px;line-height:1.5;">Section failed, retry later...</p>`
+  return `${headingRow}
+<p class="failed-section failed-section-${index}" style="background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;border-radius:8px;padding:12px 16px;margin:0 0 16px;font-size:14px;line-height:1.5;">
+  Rate limited — regenerate this section later.
+</p>`
 }
 
 function upsertWaitInEditor(editor, index, text) {
@@ -304,61 +310,6 @@ const VideoExtension = Node.create({
   }
 })
 
-// TipTap strips unknown tags. This keeps the purple retry icon button inside failed headings.
-const RetrySectionButton = Node.create({
-  name: 'retrySectionButton',
-  group: 'inline',
-  inline: true,
-  atom: true,
-  selectable: false,
-  draggable: false,
-  addAttributes() {
-    return {
-      index: {
-        default: 0,
-        parseHTML: element => Number(element.getAttribute('data-retry-section') || 0),
-        renderHTML: attributes => ({ 'data-retry-section': String(attributes.index) })
-      }
-    }
-  },
-  parseHTML() {
-    return [{ tag: 'button[data-retry-section]' }]
-  },
-  renderHTML({ node }) {
-    return [
-      'button',
-      {
-        type: 'button',
-        'data-retry-section': String(node.attrs.index),
-        class: 'retry-section-btn',
-        contenteditable: 'false',
-        title: 'Retry this section'
-      }
-    ]
-  },
-  addNodeView() {
-    return ({ node }) => {
-      const btn = document.createElement('button')
-
-      btn.type = 'button'
-      btn.className = 'retry-section-btn'
-      btn.setAttribute('data-retry-section', String(node.attrs.index))
-      btn.setAttribute('contenteditable', 'false')
-      btn.title = 'Retry this section'
-      btn.innerHTML =
-        '<i class="ri-refresh-line" style="font-size:20px;line-height:1;pointer-events:none;display:block;"></i>'
-
-      return {
-        dom: btn,
-        ignoreMutation: () => true,
-
-        // Let click bubble to the editor root handler; block ProseMirror from eating it
-        stopEvent: event => event.type !== 'click'
-      }
-    }
-  }
-})
-
 const GlobalAttributes = Extension.create({
   name: 'globalAttributes',
   addGlobalAttributes() {
@@ -382,24 +333,6 @@ const GlobalAttributes = Extension.create({
               if (!attributes['data-wait-section']) return {}
 
               return { 'data-wait-section': attributes['data-wait-section'] }
-            }
-          },
-          'data-failed-section': {
-            default: null,
-            parseHTML: element => element.getAttribute('data-failed-section'),
-            renderHTML: attributes => {
-              if (!attributes['data-failed-section']) return {}
-
-              return { 'data-failed-section': attributes['data-failed-section'] }
-            }
-          },
-          'data-failed-heading': {
-            default: null,
-            parseHTML: element => element.getAttribute('data-failed-heading'),
-            renderHTML: attributes => {
-              if (!attributes['data-failed-heading']) return {}
-
-              return { 'data-failed-heading': attributes['data-failed-heading'] }
             }
           },
           style: {
@@ -451,7 +384,6 @@ const extensions = [
     }
   }),
   GlobalAttributes,
-  RetrySectionButton,
   TaskList,
   TaskItem.configure({ nested: true }),
   Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }).extend({
@@ -880,19 +812,26 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       })
 
       const processAndInsertSection = (i, group, data) => {
-        // Fail first — never insert a bare heading then skip the retry UI
-        if (!data || !data.success || !data?.text || data.text.trim().length < 30) {
-          editor
-            .chain()
-            .focus('end')
-            .insertContent(failedSectionHtml(i, group.h2?.text, { showHeading: i !== 0 }))
-            .run()
+        if (i !== 0) {
+          editor.chain().focus('end').insertContent(`<${group.h2.type}>${group.h2.text}</${group.h2.type}>`).run()
+        }
+
+        if (!data || !data.success) {
+          editor.chain().focus('end').insertContent('<p><em>❌ Error generating this section.</em></p>').run()
 
           return
         }
 
-        if (i !== 0) {
-          editor.chain().focus('end').insertContent(`<${group.h2.type}>${group.h2.text}</${group.h2.type}>`).run()
+        if (!data?.text || data.text.trim().length < 30) {
+          editor
+            .chain()
+            .focus('end')
+            .insertContent(
+              `<p><em>⚠️ Section "${group.h2.text}" could not be generated. Please regenerate this part.</em></p>`
+            )
+            .run()
+
+          return
         }
 
         let finalSectionText = data.text
@@ -1010,18 +949,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         }
       }
 
-      const liveUsedMediaEarly = new Set([settings.heroImage, ...(trackedImages || [])].filter(Boolean).map(mediaKey))
-
-      genContextRef.current = {
-        groupedSections,
-        settings,
-        outline,
-        liveUsedMedia: liveUsedMediaEarly,
-        trackedImages,
-        trackedInternalLinks,
-        trackedExternalLinks
-      }
-
       if (settings.deepSearch) {
         for (let i = 0; i < groupedSections.length; i++) {
           if (isCancelled) break
@@ -1032,8 +959,9 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
           const shouldGenerateMedia = i === 0 && settings.heroImage ? false : settings.aiImagesAndVideos
 
-          // Heading is inserted only on success (processAndInsertSection) or via failedSectionHtml
-          // so failed sections never lose the purple retry button / never get a bare heading.
+          if (i !== 0) {
+            editor.chain().focus('end').insertContent(`<${group.h2.type}>${group.h2.text}</${group.h2.type}>`).run()
+          }
 
           const subheadings = group.h3s.map(h3 => h3.text)
 
@@ -1155,22 +1083,14 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
               processAndInsertSection(i, group, { ...data, text: finalSectionText })
             } else {
-              editor
-                .chain()
-                .focus('end')
-                .insertContent(failedSectionHtml(i, group.h2?.text, { showHeading: i !== 0 }))
-                .run()
+              editor.chain().focus('end').insertContent('<p><em>❌ Error generating this section.</em></p>').run()
             }
           } catch (error) {
             if (error.name === 'AbortError') {
               editor.chain().focus('end').insertContent('<p><em>🛑 Generation Stopped.</em></p>').run()
               break
             } else {
-              editor
-                .chain()
-                .focus('end')
-                .insertContent(failedSectionHtml(i, group.h2?.text, { showHeading: i !== 0 }))
-                .run()
+              editor.chain().focus('end').insertContent(`<p><em>❌ Failed to fetch content. ${error}</em></p>`).run()
             }
           }
         }
@@ -1201,7 +1121,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         trackedExternalLinks
       }
 
-      const CONCURRENCY = 3
+      const CONCURRENCY = 1
 
       const tryFlush = () => {
         while (nextInsertIdx < groupedSections.length && resultsBuffer[nextInsertIdx] !== null) {
@@ -1498,18 +1418,11 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
     if (!group) return
 
-    const btn = editor.view.dom.querySelector(`[data-retry-section="${index}"]`)
-
-    const iconHtml =
-      '<i class="ri-refresh-line" style="font-size:20px;line-height:1;pointer-events:none;display:block;"></i>'
+    const btn = document.querySelector(`[data-retry-section="${index}"]`)
 
     if (btn) {
       btn.disabled = true
-      btn.style.opacity = '0.72'
-      btn.style.cursor = 'wait'
-
-      // NEVER use textContent here — that destroyed the icon and left "Retry" text
-      btn.innerHTML = '<span style="font-size:16px;font-weight:800;line-height:1;pointer-events:none;">…</span>'
+      btn.textContent = '…'
     }
 
     setWaitBanner('Retrying section…')
@@ -1558,7 +1471,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           articleTitle: ctx.settings.generatedTitle,
           improveReadability: ctx.settings.improveReadability,
           uploadedMedia: ctx.settings.uploadedMedia,
-          usedImageUrls: Array.from(ctx.liveUsedMedia || []),
+          usedImageUrls: Array.from(ctx.liveUsedMedia),
           usedInternalLinks: ctx.trackedInternalLinks
         })
       })
@@ -1568,9 +1481,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       if (!data?.success || !data?.text || data.text.trim().length < 30) {
         if (btn) {
           btn.disabled = false
-          btn.style.opacity = '1'
-          btn.style.cursor = 'pointer'
-          btn.innerHTML = iconHtml
+          btn.textContent = 'Retry'
         }
 
         setWaitBanner('Still rate limited — try again in a minute.')
@@ -1578,24 +1489,17 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         return
       }
 
-      // Remove failed heading (with retry btn) + yellow banner for this index
-      let html = editor.getHTML()
+      // Remove failed box, keep heading, insert body
+      const html = editor.getHTML()
 
-      html = html.replace(new RegExp(`<h2[^>]*data-failed-heading="${index}"[^>]*>[\\s\\S]*?<\\/h2>`, 'i'), '')
-      html = html.replace(new RegExp(`<p[^>]*data-failed-section="${index}"[^>]*>[\\s\\S]*?<\\/p>`, 'gi'), '')
-      html = html.replace(new RegExp(`<p[^>]*class="[^"]*failed-section-${index}[^"]*"[^>]*>[\\s\\S]*?<\\/p>`, 'i'), '')
-      html = html.replace(new RegExp(`<button[^>]*data-retry-section="${index}"[^>]*>[\\s\\S]*?<\\/button>`, 'gi'), '')
+      const failRe = new RegExp(
+        `<div[^>]*data-failed-section="${index}"[^>]*>[\\s\\S]*?<\\/div>\\s*<p[^>]*class="[^"]*failed-section-${index}[^"]*"[^>]*>[\\s\\S]*?<\\/p>`,
+        'i'
+      )
 
-      const tag = group.h2?.type === 'h3' ? 'h3' : 'h2'
+      editor.commands.setContent(html.replace(failRe, ''), false)
 
-      const headingHtml =
-        index !== 0 && group.h2
-          ? `<${tag}>${String(group.h2.text)
-              .replace(/&/g, '&amp;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;')}</${tag}>`
-          : ''
-
+      // Simple body: split paragraphs; full markdown pipeline is only inside generate effect
       const bodyHtml = String(data.text)
         .replace(/^##\s+.*$/gm, '')
         .trim()
@@ -1609,18 +1513,18 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         })
         .join('')
 
-      editor.commands.setContent(html + headingHtml + bodyHtml + (data.mediaHtml || ''), false)
+      editor.chain().focus('end').insertContent(bodyHtml).run()
+
+      if (data.mediaHtml) {
+        editor.chain().focus('end').insertContent(data.mediaHtml).run()
+      }
 
       if (data.mediaUrl) ctx.liveUsedMedia.add(mediaKey(data.mediaUrl))
-      if (data.mediaId) ctx.liveUsedMedia.add(mediaKey(data.mediaId))
-      if (data.internalLinkUrl) ctx.trackedInternalLinks.push(data.internalLinkUrl)
       setWaitBanner('')
     } catch (e) {
       if (btn) {
         btn.disabled = false
-        btn.style.opacity = '1'
-        btn.style.cursor = 'pointer'
-        btn.innerHTML = iconHtml
+        btn.textContent = 'Retry'
       }
 
       setWaitBanner('Retry failed.')
@@ -1780,42 +1684,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
             <Divider />
 
             <div className='flex-1 flex flex-col'>
-              <style>{`
-                .ProseMirror .retry-section-btn {
-                  flex-shrink: 0;
-                  width: 40px;
-                  height: 40px;
-                  padding: 0;
-                  border: none;
-                  border-radius: 10px;
-                  background: #8C57FF;
-                  color: #fff;
-                  cursor: pointer;
-                  display: inline-flex;
-                  align-items: center;
-                  justify-content: center;
-                  box-shadow: 0 2px 8px rgba(140, 87, 255, 0.35);
-                  vertical-align: middle;
-                  margin-left: 12px;
-                  pointer-events: auto;
-                }
-                .ProseMirror .retry-section-btn:hover {
-                  background: #7C3AED;
-                }
-                .ProseMirror .retry-section-btn:disabled {
-                  opacity: 0.72;
-                  cursor: wait;
-                }
-                .ProseMirror .retry-section-btn i {
-                  pointer-events: none;
-                }
-                .ProseMirror h2[data-failed-heading] {
-                  display: flex;
-                  align-items: center;
-                  justify-content: space-between;
-                  gap: 12px;
-                }
-              `}</style>
               <EditorContent editor={editor} />
 
               {isGenerating &&

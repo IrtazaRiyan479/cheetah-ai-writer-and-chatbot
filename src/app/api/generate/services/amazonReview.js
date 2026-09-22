@@ -182,8 +182,61 @@ export async function generateAmazonReviewOutline(body, genAI) {
     5. ${faqInstruction}}
     6- ${relatedInstruction}`
 
-  const result = await outlineModel.generateContent(outlinePrompt)
-  const parsedData = JSON.parse(result.response.text())
+  let parsedData = null
+  let lastOutlineError = null
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const result = await outlineModel.generateContent(outlinePrompt)
+
+      parsedData = JSON.parse(result.response.text())
+
+      if (!parsedData?.outline || !Array.isArray(parsedData.outline) || parsedData.outline.length === 0) {
+        throw new Error('Outline JSON missing outline array')
+      }
+
+      break
+    } catch (err) {
+      lastOutlineError = err
+      const msg = String(err?.message || err)
+
+      const isCapacity =
+        /429|rate.?limit|quota|resource.?exhausted|503|high demand|unavailable|overloaded|try again later/i.test(msg)
+
+      if (isCapacity) {
+        console.warn('[Outline] Gemini quota/high demand — using Groq/Mistral')
+
+        const alt = await callLightLLM({
+          system: 'Return only valid JSON with keys metaTitle, metaDescription, title, outline. No markdown.',
+          prompt:
+            outlinePrompt +
+            '\n\nReturn JSON: {"metaTitle":"","metaDescription":"","title":"","outline":[{"type":"h2","text":"","sectionType":"intro"}]}',
+          json: true,
+          max_tokens: 1600
+        })
+
+        const parsed = parseJsonSafe(alt?.text)
+
+        if (parsed?.outline?.length) {
+          parsedData = parsed
+          break
+        }
+
+        throw new Error('RATE_LIMIT: Gemini and Groq could not produce an outline. Wait ~60s and try again.')
+      }
+
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, 800 * attempt))
+        continue
+      }
+
+      throw new Error(`OUTLINE_PARSE_FAILED: Could not produce a valid outline after ${attempt} attempts. ${msg}`)
+    }
+  }
+
+  if (!parsedData) {
+    throw lastOutlineError || new Error('OUTLINE_PARSE_FAILED')
+  }
 
   if (parsedData.outline && parsedData.outline.length > 0) {
     parsedData.outline[0].productData = product
@@ -404,7 +457,8 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     const alt = await callLightLLM({
       system: 'You are an expert SEO article writer. Return only the section body in markdown. No preamble, no JSON.',
       prompt: sectionPrompt.slice(0, 6000),
-      max_tokens: 1400
+      max_tokens: 1400,
+      waitOn429: false
     })
 
     if (!alt?.text) {

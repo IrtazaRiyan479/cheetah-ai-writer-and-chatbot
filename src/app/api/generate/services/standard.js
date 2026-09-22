@@ -122,7 +122,9 @@ export async function generateStandardBlogOutline(body, genAI) {
     } catch (err) {
       lastOutlineError = err
       const msg = String(err?.message || err)
-      const isRateLimit = /429|rate.?limit|quota|resource.?exhausted/i.test(msg)
+
+      const isRateLimit =
+        /429|rate.?limit|quota|resource.?exhausted|503|high demand|unavailable|overloaded|try again later/i.test(msg)
 
       if (isRateLimit) {
         console.warn('[Outline] Gemini quota — using Groq/Mistral')

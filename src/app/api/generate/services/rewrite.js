@@ -110,8 +110,55 @@ export async function generateRewriteOutline(body, genAI) {
     Return ONLY valid JSON.
   `
 
-  const result = await outlineModel.generateContent(outlinePrompt)
-  const responseText = result.response.text()
+  let responseText = null
+  let lastOutlineError = null
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const result = await outlineModel.generateContent(outlinePrompt)
+
+      responseText = result.response.text()
+      JSON.parse(responseText) // validate early
+      break
+    } catch (err) {
+      lastOutlineError = err
+      const msg = String(err?.message || err)
+
+      const isCapacity =
+        /429|rate.?limit|quota|resource.?exhausted|503|high demand|unavailable|overloaded|try again later/i.test(msg)
+
+      if (isCapacity) {
+        console.warn('[Outline] Gemini quota/high demand — using Groq/Mistral')
+
+        const alt = await callLightLLM({
+          system: 'Return only valid JSON with keys metaTitle, metaDescription, title, outline. No markdown.',
+          prompt:
+            outlinePrompt +
+            '\n\nReturn JSON: {"metaTitle":"","metaDescription":"","title":"","outline":[{"type":"h2","text":""}]}',
+          json: true,
+          max_tokens: 1600
+        })
+
+        if (alt?.text) {
+          responseText = alt.text
+          break
+        }
+
+        throw new Error('RATE_LIMIT: Gemini and Groq could not produce an outline. Wait ~60s and try again.')
+      }
+
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, 800 * attempt))
+        continue
+      }
+
+      throw new Error(`OUTLINE_PARSE_FAILED: Could not produce a valid outline after ${attempt} attempts. ${msg}`)
+    }
+  }
+
+  if (!responseText) {
+    throw lastOutlineError || new Error('OUTLINE_PARSE_FAILED')
+  }
 
   const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
     fetchUnsplashImage(targetKeyword),
@@ -324,7 +371,8 @@ export async function generateRewriteSection(body, genAI) {
     const alt = await callLightLLM({
       system: 'You are an expert SEO article writer. Return only the section body in markdown. No preamble, no JSON.',
       prompt: sectionPrompt.slice(0, 6000),
-      max_tokens: 1400
+      max_tokens: 1400,
+      waitOn429: false
     })
 
     if (!alt?.text) {
