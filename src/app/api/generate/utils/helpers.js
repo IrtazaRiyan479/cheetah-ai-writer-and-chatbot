@@ -1,173 +1,428 @@
 import { YoutubeTranscript } from 'youtube-transcript'
 
-export async function fetchPexelsImage(query) {
+import { callLightLLM, parseJsonSafe } from './lightLLM'
+
+export function mediaKey(item) {
+  if (!item) return ''
+
+  if (typeof item === 'object' && item.id != null) {
+    return `${String(item.source || 'img').toLowerCase()}:${item.id}`
+  }
+
+  const url = typeof item === 'string' ? item : item.url || ''
+
+  if (!url) return ''
+
+  try {
+    const u = new URL(url)
+
+    u.search = ''
+    u.hash = ''
+
+    const unsplash = u.pathname.match(/photo-([a-zA-Z0-9_-]+)/)
+
+    if (unsplash) return `unsplash:${unsplash[1]}`
+
+    const pexels = u.pathname.match(/\/photos\/(\d+)/)
+
+    if (pexels) return `pexels:${pexels[1]}`
+
+    // Pixabay /get/gHASH_640.jpg is a download token, NOT a photo id
+    const pix = u.pathname.match(/\/get\/g([a-f0-9]+)_/)
+
+    if (pix) return `pixabay-file:${pix[1]}`
+
+    return `${u.origin}${u.pathname.replace(/\/$/, '')}`
+  } catch {
+    return String(url).split('?')[0]
+  }
+}
+
+const STOP_WORDS = new Set([
+  'a',
+  'about',
+  'above',
+  'after',
+  'again',
+  'against',
+  'all',
+  'am',
+  'an',
+  'and',
+  'any',
+  'are',
+  'arent',
+  'as',
+  'at',
+  'be',
+  'because',
+  'been',
+  'before',
+  'being',
+  'below',
+  'between',
+  'both',
+  'but',
+  'by',
+  'cant',
+  'cannot',
+  'could',
+  'couldnt',
+  'did',
+  'didnt',
+  'do',
+  'does',
+  'doesnt',
+  'doing',
+  'dont',
+  'down',
+  'during',
+  'each',
+  'few',
+  'for',
+  'from',
+  'further',
+  'had',
+  'hadnt',
+  'has',
+  'hasnt',
+  'have',
+  'havent',
+  'having',
+  'he',
+  'hed',
+  'hell',
+  'hes',
+  'her',
+  'here',
+  'heres',
+  'hers',
+  'herself',
+  'him',
+  'himself',
+  'his',
+  'how',
+  'hows',
+  'i',
+  'id',
+  'ill',
+  'im',
+  'ive',
+  'if',
+  'in',
+  'into',
+  'is',
+  'isnt',
+  'it',
+  'its',
+  'itself',
+  'lets',
+  'me',
+  'more',
+  'most',
+  'mustnt',
+  'my',
+  'myself',
+  'no',
+  'nor',
+  'not',
+  'of',
+  'off',
+  'on',
+  'once',
+  'only',
+  'or',
+  'other',
+  'ought',
+  'our',
+  'ours',
+  'ourselves',
+  'out',
+  'over',
+  'own',
+  'same',
+  'shant',
+  'she',
+  'shed',
+  'shell',
+  'shes',
+  'should',
+  'shouldnt',
+  'so',
+  'some',
+  'such',
+  'than',
+  'that',
+  'thats',
+  'the',
+  'their',
+  'theirs',
+  'them',
+  'themselves',
+  'then',
+  'there',
+  'theres',
+  'these',
+  'they',
+  'theyd',
+  'theyll',
+  'theyre',
+  'theyve',
+  'this',
+  'those',
+  'through',
+  'to',
+  'too',
+  'under',
+  'until',
+  'up',
+  'very',
+  'was',
+  'wasnt',
+  'we',
+  'wed',
+  'well',
+  'were',
+  'weve',
+  'werent',
+  'what',
+  'whats',
+  'when',
+  'whens',
+  'where',
+  'wheres',
+  'which',
+  'while',
+  'who',
+  'whos',
+  'whom',
+  'why',
+  'whys',
+  'with',
+  'wont',
+  'would',
+  'wouldnt',
+  'you',
+  'youd',
+  'youll',
+  'youre',
+  'youve',
+  'your',
+  'yours',
+  'yourself',
+  'yourselves',
+  'guide',
+  'best',
+  'top',
+  'vs',
+  'versus',
+  'can',
+  'will',
+  'introduction',
+  'conclusion',
+  'overview',
+  'summary',
+  'tips',
+  'ways',
+  'things',
+  'how',
+  'what',
+  'why',
+  'when',
+  'where',
+  'caring',
+  'care',
+  'old',
+  'new',
+  'ultimate',
+  'complete'
+])
+
+function isUsed(candidate, usedList) {
+  const used = new Set((usedList || []).map(mediaKey))
+  const keys = [mediaKey(candidate), candidate.url, String(candidate.id || '')].filter(Boolean)
+
+  return keys.some(k => used.has(k) || used.has(mediaKey(k)))
+}
+
+export async function fetchPexelsImage(query, { page = 1, perPage = 12 } = {}) {
   if (!process.env.PEXELS_API_KEY) return []
 
   try {
     const res = await fetch(
-      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=2&orientation=landscape`,
-      {
-        headers: { Authorization: process.env.PEXELS_API_KEY }
-      }
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&orientation=landscape`,
+      { headers: { Authorization: process.env.PEXELS_API_KEY } }
     )
 
-    if (!res.ok) {
-      console.error(`Pexels API Error: ${res.status}`)
-
-      return []
-    }
-
+    if (!res.ok) return []
     const data = await res.json()
 
-    if (data.photos && data.photos.length > 0) {
-      return data.photos.map(p => ({ url: p.src.large, alt: p.alt || query, source: 'Pexels' }))
-    }
+    return (data.photos || []).map(p => ({
+      id: p.id,
+      url: p.src.large,
+      alt: p.alt || query,
+      source: 'Pexels'
+    }))
   } catch (e) {
     console.error('Pexels Error:', e)
-  }
 
-  return []
-}
-
-export async function isUrlLive(url) {
-  if (!url) return false
-
-  try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 3000) // 3s timeout
-
-    const res = await fetch(url, {
-      method: 'HEAD',
-      cache: 'no-store',
-      signal: controller.signal
-    })
-
-    clearTimeout(timeoutId)
-
-    return res.ok
-  } catch {
-    return false
+    return []
   }
 }
 
-export async function fetchPixabayImage(query) {
+export async function fetchPixabayImage(query, { page = 1, perPage = 15 } = {}) {
   if (!process.env.PIXABAY_API_KEY) return []
 
   try {
     const res = await fetch(
-      `https://pixabay.com/api/?key=${process.env.PIXABAY_API_KEY}&q=${encodeURIComponent(query)}&image_type=photo&orientation=horizontal&per_page=5`
+      `https://pixabay.com/api/?key=${process.env.PIXABAY_API_KEY}&q=${encodeURIComponent(query)}&image_type=photo&orientation=horizontal&per_page=${perPage}&page=${page}`
     )
 
     if (!res.ok) return []
-
     const data = await res.json()
 
-    if (data.hits && data.hits.length > 0) {
-      // Process all URL checks concurrently rather than blocking the loop
-      const validationPromises = data.hits.map(async h => {
-        const imgUrl = h.webformatURL || h.largeImageURL
-        const isLive = await isUrlLive(imgUrl)
+    if (!data.hits?.length) return []
 
-        return isLive ? { url: imgUrl, alt: h.tags || query, source: 'Pixabay' } : null
-      })
-
-      const results = await Promise.all(validationPromises)
-
-      return results.filter(Boolean) // Filter out the null (failed) checks
-    }
+    return data.hits.map(h => ({
+      id: h.id, // stable photo id — this is what you track
+      url: h.webformatURL || h.largeImageURL,
+      alt: h.tags || query,
+      source: 'Pixabay'
+    }))
   } catch (e) {
     console.error('Pixabay API Error:', e)
-  }
 
-  return []
+    return []
+  }
 }
 
-export async function fetchUnsplashImage(query) {
+export async function fetchUnsplashImage(query, { page = 1, perPage = 10 } = {}) {
   if (!process.env.UNSPLASH_API_KEY) return []
 
   try {
     const res = await fetch(
-      `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=2&orientation=landscape&client_id=${process.env.UNSPLASH_API_KEY}`
+      `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&orientation=landscape&client_id=${process.env.UNSPLASH_API_KEY}`
     )
 
-    if (!res.ok) {
-      console.error(`Unsplash API Error: ${res.status}`)
-
-      return []
-    }
-
+    if (!res.ok) return []
     const data = await res.json()
 
-    if (data.results && data.results.length > 0) {
-      return data.results.map(r => ({ url: r.urls.regular, alt: r.alt_description || query, source: 'Unsplash' }))
-    }
+    return (data.results || []).map(r => ({
+      id: r.id,
+      url: r.urls.regular,
+      alt: r.alt_description || query,
+      source: 'Unsplash'
+    }))
   } catch (e) {
     console.error('Unsplash Error:', e)
-  }
 
-  return []
+    return []
+  }
 }
 
-async function getSmartImageKeyword(topic, heading, genAI) {
-  try {
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-3.1-flash-lite',
-      generationConfig: { responseMimeType: 'application/json' }
-    })
+const NON_VISUAL_WORDS = new Set([
+  ...STOP_WORDS,
+  'train',
+  'training',
+  'teach',
+  'teaching',
+  'learn',
+  'learning',
+  'mastering',
+  'establishing',
+  'developing',
+  'understanding',
+  'caring',
+  'care',
+  'guide',
+  'tips',
+  'ways',
+  'best',
+  'top',
+  'how',
+  'what',
+  'why',
+  'when',
+  'first',
+  'weeks',
+  'week',
+  'old',
+  'new',
+  'ultimate',
+  'complete',
+  'comprehensive',
+  'introduction',
+  'conclusion',
+  'overview',
+  'importance',
+  'using',
+  'ensure',
+  'must'
+])
 
-    const prompt = `Analyze this topic and heading for an image generation task.
-    Topic: "${topic}"
-    Section Context: "${heading}"
+function visualTokens(str) {
+  return (str || '')
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !NON_VISUAL_WORDS.has(w))
+}
 
-    Determine if this concept is something you could realistically find a normal stock photo of (e.g., "business meeting", "laptop on desk"). If the concept is highly unusual, surreal, fictional, or oddly specific (e.g., "green dog-shaped car", "flying elephant", "integrated bark-signal horn"), it is NOT realistic for stock photos.
+function coreSubjectQuery(topic, heading) {
+  const topicVis = visualTokens(topic).slice(0, 3) // e.g. german shepherd puppy
 
-    Output strictly this JSON schema:
-    {
-      "isRealisticStockPhoto": boolean,
-      "stockSearchQuery": "A specific 2-3 word query if true. If false, put null",
-      "aiGenerationPrompt": "A highly detailed, photorealistic prompt for an AI image generator capturing this specific/surreal concept."
-    }`
+  const headingVis = visualTokens(heading)
+    .filter(w => !topicVis.includes(w))
+    .slice(0, 2) // e.g. crate, leash, obedience
 
-    const result = await model.generateContent(prompt)
+  const q = [...topicVis, ...headingVis].join(' ').trim()
 
-    return JSON.parse(result.response.text())
-  } catch (e) {
-    console.error('Smart Image Keyword Error:', e)
+  return q || topicVis.join(' ') || (topic || 'dog puppy').trim()
+}
 
-    // Visual-subject fallback: drop filler words, keep the real noun subject
-    const visualStop = new Set([
-      ...STOP_WORDS,
-      'caring',
-      'care',
-      'guide',
-      'tips',
-      'ways',
-      'best',
-      'top',
-      'how',
-      'what',
-      'why',
-      'ultimate',
-      'complete',
-      'introduction',
-      'conclusion',
-      'overview'
-    ])
-
-    const words = (topic || '')
-      .toLowerCase()
-      .replace(/[^\w\s]/g, ' ')
-      .split(/\s+/)
-      .filter(w => w.length > 2 && !visualStop.has(w))
-
-    const stockQuery = words.slice(0, 4).join(' ') || (topic || 'nature').trim()
+async function getSmartImageKeyword(topic, heading, _genAI) {
+  const visualFallback = () => {
+    const stockSearchQuery = coreSubjectQuery(topic, heading)
 
     return {
       isRealisticStockPhoto: true,
-      stockSearchQuery: stockQuery,
-      aiGenerationPrompt: `Photorealistic, landscape, highly detailed photograph of ${stockQuery}, no text, no watermark`
+      stockSearchQuery,
+      aiGenerationPrompt: `Photorealistic photo of ${stockSearchQuery}, clearly showing the main subject, no text, no watermark`
     }
   }
+
+  try {
+    const result = await callLightLLM({
+      system: 'Reply with JSON only. No markdown.',
+      json: true,
+      max_tokens: 160,
+      waitOn429: false,
+      prompt: `Stock PHOTO search query for a blog image.
+Article topic (MAIN SUBJECT — must appear in the query): "${topic}"
+Section heading: "${heading}"
+
+RULES:
+- stockSearchQuery MUST include the visual subject from the topic (e.g. "german shepherd puppy").
+- Add 1-2 concrete nouns from the heading (crate, leash, food bowl, backyard) ONLY if they are photographable objects.
+- NEVER use verbs: train, training, teach, how, guide, weeks, importance, establishing.
+- NEVER return transport, cities, portraits of strangers, or unrelated objects.
+
+JSON: {"isRealisticStockPhoto":true,"stockSearchQuery":"3-6 words","aiGenerationPrompt":"photorealistic prompt"}`
+    })
+
+    const parsed = parseJsonSafe(result?.text)
+    const topicVis = visualTokens(topic)
+    const q = String(parsed?.stockSearchQuery || '').toLowerCase()
+    const hasSubject = topicVis.length === 0 || topicVis.some(t => q.includes(t))
+
+    if (typeof parsed?.isRealisticStockPhoto === 'boolean' && parsed.stockSearchQuery && hasSubject) {
+      return parsed
+    }
+  } catch (e) {
+    console.warn('[smart-image] light LLM skipped', e?.message || e)
+  }
+
+  return visualFallback()
 }
 
 export function calculateRelevanceScore(altText, query, topic) {
@@ -202,18 +457,7 @@ export function calculateRelevanceScore(altText, query, topic) {
     'shot',
     'view',
     'horizontal',
-    'vertical',
-    'person',
-    'people',
-    'man',
-    'woman',
-    'guy',
-    'girl',
-    'boy',
-    'old',
-    'young',
-    'senior',
-    'adult'
+    'vertical'
   ])
 
   const clean = str =>
@@ -224,6 +468,7 @@ export function calculateRelevanceScore(altText, query, topic) {
       .filter(w => w.length > 2 && !stopWords.has(w))
 
   const altTokens = clean(altText)
+  const altJoined = altTokens.join(' ')
   const altSet = new Set(altTokens)
   const queryTokens = clean(query)
   const topicTokens = clean(topic)
@@ -231,11 +476,70 @@ export function calculateRelevanceScore(altText, query, topic) {
 
   if (targetTokens.length === 0) return 0
 
+  const animalHints = [
+    'dog',
+    'puppy',
+    'puppies',
+    'canine',
+    'cat',
+    'kitten',
+    'pet',
+    'breed',
+    'shepherd',
+    'retriever',
+    'labrador',
+    'terrier',
+    'hound'
+  ]
+
+  const topicLower = (topic || '').toLowerCase()
+  const topicIsAnimal = animalHints.some(h => topicLower.includes(h))
+
+  if (topicIsAnimal) {
+    const altHasAnimal = animalHints.some(h => altJoined.includes(h))
+
+    if (!altHasAnimal) return 0
+  }
+
+  const offTopic = [
+    'train',
+    'railway',
+    'subway',
+    'metro',
+    'locomotive',
+    'station',
+    'kyoto',
+    'japan',
+    'tokyo',
+    'tram',
+    'bus',
+    'airplane',
+    'airport',
+    'cone',
+    'traffic',
+    'stadium',
+    'construction',
+    'barrier',
+    'woman',
+    'man',
+    'girl',
+    'boy',
+    'portrait',
+    'people',
+    'person',
+    'crowd'
+  ]
+
+  const offHits = offTopic.filter(w => altJoined.includes(w) && !topicLower.includes(w)).length
+
+  if (offHits >= 2) return 0
+
   let score = 0
   let matched = 0
 
-  // Exact token matches (strong)
   targetTokens.forEach(token => {
+    if (NON_VISUAL_WORDS?.has?.(token)) return
+
     if (altSet.has(token)) {
       score += 2.5
       matched += 1
@@ -250,44 +554,16 @@ export function calculateRelevanceScore(altText, query, topic) {
     }
   })
 
-  // Phrase / multi-word bonus
-  const queryPhrase = queryTokens.join(' ')
-  const altJoined = altTokens.join(' ')
+  const queryPhrase = queryTokens.filter(t => !NON_VISUAL_WORDS?.has?.(t)).join(' ')
 
-  if (queryPhrase.length > 4 && altJoined.includes(queryPhrase)) {
-    score += 4
-  }
+  if (queryPhrase.length > 4 && altJoined.includes(queryPhrase)) score += 4
 
-  // Coverage ratio — prefer images that hit more of the subject
-  const coverage = matched / targetTokens.length
+  if (targetTokens.length) score += (matched / targetTokens.length) * 3
 
-  score += coverage * 3
+  if (topicIsAnimal) {
+    const humanHits = ['man', 'woman', 'person', 'people', 'portrait', 'face'].filter(h => altJoined.includes(h)).length
 
-  // Penalize human-centric alts when topic is clearly animal/object/product
-  const animalObjectHints = [
-    'dog',
-    'cat',
-    'puppy',
-    'kitten',
-    'pet',
-    'breed',
-    'shepherd',
-    'retriever',
-    'product',
-    'device',
-    'tool',
-    'car',
-    'laptop'
-  ]
-
-  const humanHints = ['man', 'woman', 'person', 'people', 'face', 'portrait', 'headache', 'senior', 'elderly']
-  const topicLower = (topic || '').toLowerCase()
-  const isAnimalOrObject = animalObjectHints.some(h => topicLower.includes(h))
-
-  if (isAnimalOrObject) {
-    const humanHits = humanHints.filter(h => altJoined.includes(h)).length
-
-    if (humanHits > 0) score -= humanHits * 3
+    if (humanHits > 0) score -= humanHits * 4
   }
 
   return Math.max(0, score)
@@ -528,239 +804,43 @@ export async function isYouTubeVideoAvailable(url) {
   }
 }
 
-const STOP_WORDS = new Set([
-  'a',
-  'about',
-  'above',
-  'after',
-  'again',
-  'against',
-  'all',
-  'am',
-  'an',
-  'and',
-  'any',
-  'are',
-  'arent',
-  'as',
-  'at',
-  'be',
-  'because',
-  'been',
-  'before',
-  'being',
-  'below',
-  'between',
-  'both',
-  'but',
-  'by',
-  'cant',
-  'cannot',
-  'could',
-  'couldnt',
-  'did',
-  'didnt',
-  'do',
-  'does',
-  'doesnt',
-  'doing',
-  'dont',
-  'down',
-  'during',
-  'each',
-  'few',
-  'for',
-  'from',
-  'further',
-  'had',
-  'hadnt',
-  'has',
-  'hasnt',
-  'have',
-  'havent',
-  'having',
-  'he',
-  'hed',
-  'hell',
-  'hes',
-  'her',
-  'here',
-  'heres',
-  'hers',
-  'herself',
-  'him',
-  'himself',
-  'his',
-  'how',
-  'hows',
-  'i',
-  'id',
-  'ill',
-  'im',
-  'ive',
-  'if',
-  'in',
-  'into',
-  'is',
-  'isnt',
-  'it',
-  'its',
-  'itself',
-  'lets',
-  'me',
-  'more',
-  'most',
-  'mustnt',
-  'my',
-  'myself',
-  'no',
-  'nor',
-  'not',
-  'of',
-  'off',
-  'on',
-  'once',
-  'only',
-  'or',
-  'other',
-  'ought',
-  'our',
-  'ours',
-  'ourselves',
-  'out',
-  'over',
-  'own',
-  'same',
-  'shant',
-  'she',
-  'shed',
-  'shell',
-  'shes',
-  'should',
-  'shouldnt',
-  'so',
-  'some',
-  'such',
-  'than',
-  'that',
-  'thats',
-  'the',
-  'their',
-  'theirs',
-  'them',
-  'themselves',
-  'then',
-  'there',
-  'theres',
-  'these',
-  'they',
-  'theyd',
-  'theyll',
-  'theyre',
-  'theyve',
-  'this',
-  'those',
-  'through',
-  'to',
-  'too',
-  'under',
-  'until',
-  'up',
-  'very',
-  'was',
-  'wasnt',
-  'we',
-  'wed',
-  'well',
-  'were',
-  'weve',
-  'werent',
-  'what',
-  'whats',
-  'when',
-  'whens',
-  'where',
-  'wheres',
-  'which',
-  'while',
-  'who',
-  'whos',
-  'whom',
-  'why',
-  'whys',
-  'with',
-  'wont',
-  'would',
-  'wouldnt',
-  'you',
-  'youd',
-  'youll',
-  'youre',
-  'youve',
-  'your',
-  'yours',
-  'yourself',
-  'yourselves',
-  'guide',
-  'best',
-  'top',
-  'vs',
-  'versus',
-  'can',
-  'will',
-  'introduction',
-  'conclusion',
-  'overview',
-  'summary',
-  'tips',
-  'ways',
-  'things',
-  'how',
-  'what',
-  'why',
-  'when',
-  'where',
-  'caring',
-  'care',
-  'old',
-  'new',
-  'ultimate',
-  'complete'
-])
-
-async function getSmartVideoQuery(topic, heading, genAI) {
-  try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
-
-    const prompt = `Generate a highly specific 3-5 word YouTube search query for an educational video.
-CRITICAL RULE 1: The query MUST be primarily about the main topic: "${topic}".
-CRITICAL RULE 2: Integrate context from the section heading "${heading}" but do not lose the main topic.
-CRITICAL RULE 3: Do NOT use generic words like 'introduction', 'conclusion', 'tutorial', or 'video'.
-Reply ONLY with the exact search query, no quotes.`
-
-    const result = await model.generateContent(prompt)
-    const keyword = result.response.text().trim().replace(/['"]/g, '')
-
-    const cleanTopic = topic.toLowerCase().replace(/[^\w\s]|_/g, '')
-    const cleanKeyword = keyword.toLowerCase().replace(/[^\w\s]|_/g, '')
-
-    const topicWords = cleanTopic.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w))
-    const isRelated = topicWords.some(w => cleanKeyword.includes(w))
-
-    if (!isRelated && topicWords.length > 0) {
-      console.log(`[Video Fallback] Query "${keyword}" drifted. Falling back to core topic words.`)
-
-      return topicWords.slice(0, 4).join(' ')
-    }
-
-    return keyword || topicWords.slice(0, 4).join(' ') || topic.trim()
-  } catch (e) {
-    console.error('getSmartVideoQuery Error:', e?.message || e)
+async function getSmartVideoQuery(topic, heading, _genAI) {
+  const fallback = () => {
     const cleanTopic = (topic || '').toLowerCase().replace(/[^\w\s]|_/g, '')
     const fallbackWords = cleanTopic.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w))
 
     return fallbackWords.slice(0, 4).join(' ') || (topic || '').trim() || 'tutorial'
   }
+
+  //   try {
+  //     const prompt = `Generate a highly specific 3-5 word YouTube search query for an educational video.
+  // CRITICAL RULE 1: The query MUST be primarily about the main topic: "${topic}".
+  // CRITICAL RULE 2: Integrate context from the section heading "${heading}" but do not lose the main topic.
+  // CRITICAL RULE 3: Do NOT use generic words like 'introduction', 'conclusion', 'tutorial', or 'video'.
+  // Reply ONLY with the exact search query, no quotes.`
+
+  //     const result = await callLightLLM({ prompt })
+
+  //     if (!result?.text) return fallback()
+
+  //     const keyword = result.text.trim().replace(/['"]/g, '')
+  //     const cleanTopic = (topic || '').toLowerCase().replace(/[^\w\s]|_/g, '')
+  //     const cleanKeyword = keyword.toLowerCase().replace(/[^\w\s]|_/g, '')
+  //     const topicWords = cleanTopic.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w))
+  //     const isRelated = topicWords.some(w => cleanKeyword.includes(w))
+
+  //     if (!isRelated && topicWords.length > 0) {
+  //       return topicWords.slice(0, 4).join(' ')
+  //     }
+
+  //     return keyword || topicWords.slice(0, 4).join(' ') || topic.trim()
+  //   } catch (e) {
+  //     console.error('getSmartVideoQuery Error:', e?.message || e)
+
+  //     return fallback()
+  //   }
+
+  return fallback()
 }
 
 export async function fetchPeopleAlsoSearchFor(query) {
@@ -1014,7 +1094,7 @@ export async function getMediaInstruction(
         lowerHeading.includes('faq') ||
         lowerHeading.includes('frequently asked')
       ) {
-        return { mediaInstruction: '', assignedMediaElement: null, mediaUrl: null }
+        return { mediaInstruction: '', assignedMediaElement: null, mediaUrl: null, mediaId: null }
       }
 
       const imageLimit = parseInt(settings?.numberOfImages)
@@ -1036,7 +1116,7 @@ export async function getMediaInstruction(
       const canHaveVideo = !isImageSlot && videoSlotNumber < maxVideoSlots
 
       if (!canHaveImage && !canHaveVideo) {
-        return { mediaInstruction: '', assignedMediaElement: null, mediaUrl: null }
+        return { mediaInstruction: '', assignedMediaElement: null, mediaUrl: null, mediaId: null }
       }
 
       if (canHaveImage) {
@@ -1090,64 +1170,61 @@ export async function getMediaInstruction(
         }
 
         let bestImage = null
+        const MIN_ACCEPT = 5
+        const topicForScore = `${coreTopic} ${heading}`
+
+        const pickBest = (list, searchQuery) => {
+          const unused = (list || []).filter(c => !isUsed(c, usedImageUrls))
+
+          unused.forEach(c => {
+            c.score = calculateRelevanceScore(c.alt || '', searchQuery, topicForScore)
+          })
+          unused.sort((a, b) => b.score - a.score)
+
+          return unused.find(c => c.score >= MIN_ACCEPT) || null
+        }
 
         if (smartImageData.isRealisticStockPhoto && smartImageData.stockSearchQuery) {
-          const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
-            fetchUnsplashImage(smartImageData.stockSearchQuery),
-            fetchPexelsImage(smartImageData.stockSearchQuery),
-            fetchPixabayImage(smartImageData.stockSearchQuery)
+          const q1 = smartImageData.stockSearchQuery
+
+          const [u1, p1, x1] = await Promise.all([
+            fetchUnsplashImage(q1, { page: 1, perPage: 15 }),
+            fetchPexelsImage(q1, { page: 1, perPage: 15 }),
+            fetchPixabayImage(q1, { page: 1, perPage: 20 })
           ])
 
-          let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes]
-
-          if (candidates.length > 0) {
-            const preferredSources = ['Unsplash', 'Pexels', 'Pixabay']
-            const preferredSource = preferredSources[imageSlotNumber % 3]
-
-            const scored = candidates
-              .map(c => {
-                let finalScore = calculateRelevanceScore(c.alt || '', smartImageData.stockSearchQuery, coreTopic)
-
-                // Small source preference only as a tie-breaker, never override relevance
-                if (c.source === preferredSource) finalScore += 0.35
-
-                return { ...c, score: finalScore }
-              })
-              .filter(c => !usedImageUrls.includes(c.url))
-
-            // Sort by score DESC. Only accept if best score is meaningful.
-            scored.sort((a, b) => b.score - a.score)
-
-            const MIN_ACCEPT = 3.5
-
-            if (scored.length > 0 && scored[0].score >= MIN_ACCEPT) {
-              bestImage = scored[0]
-              selectedMediaUrl = bestImage.url
-              console.log(
-                `[Section Image] Picked ${bestImage.source} score=${bestImage.score.toFixed(2)} alt="${(bestImage.alt || '').slice(0, 60)}"`
-              )
-            } else if (scored.length > 0) {
-              // Still prefer highest score over random first item, but log low confidence
-              console.log(`[Section Image] Low confidence (best=${scored[0].score.toFixed(2)}). Will try AI fallback.`)
-            }
-          }
+          bestImage = pickBest([...u1, ...p1, ...x1], q1)
         }
 
         if (!bestImage) {
-          const generatedImg = await generateFallbackImage(smartImageData.aiGenerationPrompt)
+          const q2 = coreSubjectQuery(coreTopic, '')
 
-          bestImage = generatedImg || {
-            url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
-            alt: heading,
-            source: 'Hardcoded Fallback'
+          if (q2 && q2 !== smartImageData.stockSearchQuery) {
+            const [u2, p2, x2] = await Promise.all([
+              fetchUnsplashImage(q2, { page: 1, perPage: 15 }),
+              fetchPexelsImage(q2, { page: 1, perPage: 15 }),
+              fetchPixabayImage(q2, { page: 1, perPage: 20 })
+            ])
+
+            bestImage = pickBest([...u2, ...p2, ...x2], q2)
           }
-          selectedMediaUrl = bestImage.url
         }
 
-        const imageTitle = heading || coreTopic
-        const imageAlt = `${targetKeyword || coreTopic} ${heading || ''}`.trim()
+        if (bestImage) {
+          selectedMediaUrl = mediaKey(bestImage)
+          console.log(
+            `[Section Image] ${bestImage.source} id=${bestImage.id} score=${bestImage.score.toFixed(2)} alt="${(bestImage.alt || '').slice(0, 50)}"`
+          )
 
-        assignedMediaElement = `\n\n<img src="${bestImage.url}" alt="${imageAlt}" title="${imageTitle}" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;" />\n\n`
+          const imageTitle = heading || coreTopic
+          const imageAlt = `${targetKeyword || coreTopic} ${heading || ''}`.trim()
+
+          assignedMediaElement = `\n\n<img src="${bestImage.url}" alt="${imageAlt}" title="${imageTitle}" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;" />\n\n`
+        } else {
+          console.log('[Section Image] No on-topic stock photo — skipping image for this section')
+          selectedMediaUrl = null
+          assignedMediaElement = null
+        }
       } else if (canHaveVideo) {
         try {
           const smartYtQuery = await getSmartVideoQuery(articleTitle || targetKeyword, heading, genAI)
@@ -1177,11 +1254,16 @@ export async function getMediaInstruction(
       mediaInstruction = `\n[NOTE: A contextual image or video is placed at the end of this section. DO NOT attempt to generate image/video tags yourself.]`
     }
 
-    return { mediaInstruction, assignedMediaElement, mediaUrl: selectedMediaUrl }
+    return {
+      mediaInstruction,
+      assignedMediaElement,
+      mediaUrl: selectedMediaUrl,
+      mediaId: selectedMediaUrl
+    }
   } catch (err) {
     console.error('[getMediaInstruction] Non-fatal media failure:', err?.message || err)
 
-    return { mediaInstruction: '', assignedMediaElement: null, mediaUrl: null }
+    return { mediaInstruction: '', assignedMediaElement: null, mediaUrl: null, mediaId: null }
   }
 }
 
@@ -1341,49 +1423,49 @@ export async function getLinkInstruction(internalLinks, heading, genAI, usedInte
   let bestMatchUrl = availableUrls[0]
 
   if (availableUrls.length > 1) {
-    try {
-      const model = genAI.getGenerativeModel({
-        model: 'gemini-3.1-flash-lite',
-        generationConfig: { responseMimeType: 'application/json' }
-      })
-
-      const prompt = `You are an internal linking expert. Analyze these URLs and find the ONE that is most contextually relevant to this heading.
-      Heading: "${heading}"
-      Available URLs:
-      ${availableUrls.map(u => `- ${u}`).join('\n')}
-
-      Output strictly this JSON schema:
-      { "bestUrl": "The exact chosen URL from the list, or null if none are remotely relevant" }`
-
-      const result = await model.generateContent(prompt)
-      const parsed = JSON.parse(result.response.text())
-
-      if (parsed.bestUrl && availableUrls.includes(parsed.bestUrl)) {
-        bestMatchUrl = parsed.bestUrl
-      }
-    } catch (e) {
-      console.error('GenAI Link Matching Error, falling back to keyword logic:', e)
-
-      const cleanHeading = heading
+    const pickByKeywords = () => {
+      const words = (heading || '')
         .toLowerCase()
         .replace(/[^\w\s]/g, '')
         .split(/\s+/)
         .filter(w => w.length > 3)
 
-      let maxScore = -1
+      let best = availableUrls[0]
+      let max = -1
 
       for (const url of availableUrls) {
-        let score = 0
+        const lower = url.toLowerCase()
+        const score = words.reduce((n, w) => n + (lower.includes(w) ? 1 : 0), 0)
 
-        cleanHeading.forEach(word => {
-          if (url.toLowerCase().includes(word)) score++
-        })
-
-        if (score > maxScore) {
-          maxScore = score
-          bestMatchUrl = url
+        if (score > max) {
+          max = score
+          best = url
         }
       }
+
+      return best
+    }
+
+    try {
+      const shortList = availableUrls.slice(0, 15)
+
+      const result = await callLightLLM({
+        system: 'Reply with JSON only.',
+        json: true,
+        max_tokens: 80,
+        waitOn429: false,
+        prompt: `Pick the ONE URL most relevant to this heading.
+Heading: "${heading}"
+URLs:
+${shortList.map(u => `- ${u}`).join('\n')}
+{"bestUrl":"<exact url or null>"}`
+      })
+
+      const parsed = parseJsonSafe(result?.text)
+
+      bestMatchUrl = parsed?.bestUrl && availableUrls.includes(parsed.bestUrl) ? parsed.bestUrl : pickByKeywords()
+    } catch {
+      bestMatchUrl = pickByKeywords()
     }
   }
 

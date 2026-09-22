@@ -45,6 +45,66 @@ import Alert from '@mui/material/Alert'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Checkbox from '@mui/material/Checkbox'
 
+function mediaKey(item) {
+  if (!item) return ''
+
+  if (typeof item === 'object' && item.id != null) {
+    return `${String(item.source || 'img').toLowerCase()}:${item.id}`
+  }
+
+  const url = typeof item === 'string' ? item : item.url || ''
+
+  if (!url) return ''
+
+  try {
+    const u = new URL(url)
+
+    u.search = ''
+    u.hash = ''
+    const unsplash = u.pathname.match(/photo-([a-zA-Z0-9_-]+)/)
+
+    if (unsplash) return `unsplash:${unsplash[1]}`
+    const pexels = u.pathname.match(/\/photos\/(\d+)/)
+
+    if (pexels) return `pexels:${pexels[1]}`
+    const pix = u.pathname.match(/\/get\/g([a-f0-9]+)_/)
+
+    if (pix) return `pixabay-file:${pix[1]}`
+
+    return `${u.origin}${u.pathname.replace(/\/$/, '')}`
+  } catch {
+    return String(url).split('?')[0]
+  }
+}
+
+function waitHtml(index, text) {
+  const safe = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+  return `<p class="wait-section wait-section-${index}" data-wait-section="${index}" style="background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px;line-height:1.5;">${safe}</p>`
+}
+
+function upsertWaitInEditor(editor, index, text) {
+  if (!editor) return
+
+  const current = editor.getHTML()
+
+  const re = new RegExp(`<p[^>]*(?:data-wait-section="${index}"|wait-section-${index})[^>]*>[\\s\\S]*?<\\/p>`, 'i')
+
+  if (re.test(current)) {
+    editor.commands.setContent(current.replace(re, waitHtml(index, text)), false)
+  } else {
+    editor.chain().focus('end').insertContent(waitHtml(index, text)).run()
+  }
+}
+
+function removeWaitInEditor(editor, index) {
+  if (!editor) return
+
+  const re = new RegExp(`<p[^>]*(?:data-wait-section="${index}"|wait-section-${index})[^>]*>[\\s\\S]*?<\\/p>`, 'i')
+
+  editor.commands.setContent(editor.getHTML().replace(re, ''), false)
+}
+
 const ProgressCircularWithLabel = ({ value, color }) => {
   return (
     <div className='relative inline-flex'>
@@ -241,6 +301,15 @@ const GlobalAttributes = Extension.create({
               return { class: attributes.class }
             }
           },
+          'data-wait-section': {
+            default: null,
+            parseHTML: element => element.getAttribute('data-wait-section'),
+            renderHTML: attributes => {
+              if (!attributes['data-wait-section']) return {}
+
+              return { 'data-wait-section': attributes['data-wait-section'] }
+            }
+          },
           style: {
             default: null,
             parseHTML: element => element.getAttribute('style'),
@@ -411,6 +480,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
   const [pollingStatus, setPollingStatus] = useState('')
   const [deepSearchProgress, setDeepSearchProgress] = useState(0)
+  const [waitBanner, setWaitBanner] = useState('')
 
   const progressColors = ['secondary', 'success', 'error', 'warning', 'info', 'primary']
   const progressPercentage = outline && outline.length > 0 ? (currentIndex / outline.length) * 100 : 0
@@ -719,23 +789,25 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           editor.chain().focus('end').insertContent(`<${group.h2.type}>${group.h2.text}</${group.h2.type}>`).run()
         }
 
-        if (!data || !data.success) {
-          editor.chain().focus('end').insertContent('<p><em>❌ Error generating this section.</em></p>').run()
+        // if (!data || !data.success) {
+        //   editor.chain().focus('end').insertContent('<p><em>❌ Error generating this section.</em></p>').run()
 
-          return
-        }
+        //   return
+        // }
 
-        if (!data?.text || data.text.trim().length < 30) {
-          editor
-            .chain()
-            .focus('end')
-            .insertContent(
-              `<p><em>⚠️ Section "${group.h2.text}" could not be generated. Please regenerate this part.</em></p>`
-            )
-            .run()
+        // if (!data?.text || data.text.trim().length < 30) {
+        //   editor
+        //     .chain()
+        //     .focus('end')
+        //     .insertContent(
+        //       `<p><em>⚠️ Section "${group.h2.text}" could not be generated. Please regenerate this part.</em></p>`
+        //     )
+        //     .run()
 
-          return
-        }
+        //   return
+        // }
+
+        return
 
         let finalSectionText = data.text
 
@@ -1000,6 +1072,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
         if (!isCancelled) {
           setIsGenerating(false)
+          setWaitBanner('')
           setCurrentIndex(outline.length)
           editor.setEditable(true)
           clearUploadedMedia(settings.uploadedMedia)
@@ -1011,37 +1084,36 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       const resultsBuffer = new Array(groupedSections.length).fill(null)
       let nextInsertIdx = 0
 
-      // Shared live set — updated as each section finishes so later slots avoid repeats
-      const liveUsedMedia = new Set(trackedImages)
+      const liveUsedMedia = new Set([settings.heroImage, ...(trackedImages || [])].filter(Boolean).map(mediaKey))
 
-      const CONCURRENCY = 2 // keep at 2 to stay under Gemini free/paid RPM; raise to 3 only if you have high quota
+      const CONCURRENCY = 1
 
       const tryFlush = () => {
         while (nextInsertIdx < groupedSections.length && resultsBuffer[nextInsertIdx] !== null) {
           const { i, group, data, error } = resultsBuffer[nextInsertIdx]
 
           setCurrentIndex(group.originalIndex)
+          setWaitBanner('')
+          removeWaitInEditor(editor, i)
 
           if (error) {
             if (error.name === 'AbortError') {
-              editor.chain().focus('end').insertContent('<p><em>🛑 Generation Stopped.</em></p>').run()
+              editor.chain().focus('end').insertContent('<p><em>Generation stopped.</em></p>').run()
               nextInsertIdx = groupedSections.length
               break
-            } else {
-              editor
-                .chain()
-                .focus('end')
-                .insertContent(`<p><em>❌ Failed to fetch content. ${error?.message || error}</em></p>`)
-                .run()
             }
+          } else if (data?.skipped) {
           } else {
             processAndInsertSection(i, group, data)
 
             if (data?.mediaUrl) {
-              liveUsedMedia.add(data.mediaUrl)
-              trackedImages.push(data.mediaUrl)
+              const key = mediaKey(data.mediaUrl)
+
+              liveUsedMedia.add(key)
+              trackedImages.push(key)
             }
 
+            if (data?.mediaId) liveUsedMedia.add(mediaKey(data.mediaId))
             if (data?.internalLinkUrl) trackedInternalLinks.push(data.internalLinkUrl)
           }
 
@@ -1050,43 +1122,63 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
         if (nextInsertIdx >= groupedSections.length && !isCancelled) {
           setIsGenerating(false)
+          setWaitBanner('')
           setCurrentIndex(outline.length)
           editor.setEditable(true)
           clearUploadedMedia(settings.uploadedMedia)
         }
       }
 
-      const fetchWithRetry = async (url, options, retries = 4, baseDelay = 1200) => {
-        let delay = baseDelay
+      const sleep = ms => new Promise(r => setTimeout(r, ms))
 
-        for (let attempt = 0; attempt < retries; attempt++) {
+      const fetchWithRetry = async (url, options, { onRetry } = {}) => {
+        const delaysSec = [5, 10, 20]
+        const SECTION_TIMEOUT_MS = 90_000
+
+        let lastErr = null
+
+        for (let attempt = 0; attempt <= delaysSec.length; attempt++) {
           try {
-            const res = await fetch(url, options)
+            const timeoutCtrl = new AbortController()
+            const timer = setTimeout(() => timeoutCtrl.abort(), SECTION_TIMEOUT_MS)
 
-            if (!res.ok) {
-              const errText = await res.text().catch(() => '')
+            const parentSignal = options.signal
+            const onParentAbort = () => timeoutCtrl.abort()
 
-              // Retry only on transient server/rate errors
-              if (res.status === 429 || res.status === 500 || res.status === 503) {
-                throw new Error(`HTTP ${res.status}: ${errText.slice(0, 100)}`)
-              }
-
-              // Non-retryable client errors
-              throw Object.assign(new Error(`HTTP ${res.status}: ${errText.slice(0, 100)}`), { nonRetryable: true })
+            if (parentSignal) {
+              if (parentSignal.aborted) timeoutCtrl.abort()
+              else parentSignal.addEventListener('abort', onParentAbort, { once: true })
             }
 
-            return await res.json()
-          } catch (err) {
-            if (err.name === 'AbortError' || err.nonRetryable || attempt === retries - 1) throw err
-            const jitter = Math.floor(Math.random() * 400)
+            let res
 
-            console.warn(
-              `[Client Retry] Section failed (attempt ${attempt + 1}/${retries}): ${err.message}. Retrying in ${delay + jitter}ms...`
-            )
-            await new Promise(r => setTimeout(r, delay + jitter))
-            delay = Math.min(Math.floor(delay * 1.6), 8000)
+            try {
+              res = await fetch(url, { ...options, signal: timeoutCtrl.signal })
+            } finally {
+              clearTimeout(timer)
+              if (parentSignal) parentSignal.removeEventListener('abort', onParentAbort)
+            }
+
+            const data = await res.json().catch(() => ({}))
+
+            if (data?.skipped) return data
+            if (res.ok) return data
+
+            lastErr = new Error(data?.error || `HTTP ${res.status}`)
+          } catch (e) {
+            if (e?.name === 'AbortError' && options.signal?.aborted) throw e
+            lastErr = e?.name === 'AbortError' ? new Error('Section timed out after 90s') : e
+          }
+
+          if (attempt < delaysSec.length) {
+            const sec = delaysSec[attempt]
+
+            onRetry?.(`Waiting ${sec}s, then retrying…`)
+            await sleep(sec * 1000)
           }
         }
+
+        throw lastErr || new Error('Generation failed after retries')
       }
 
       // Worker pool — only CONCURRENCY in flight at once
@@ -1112,51 +1204,71 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
             allLinks = [...allLinks, ...customLinks]
           }
 
-          // Snapshot of media used so far (updated as earlier workers finish)
           const usedSnapshot = Array.from(liveUsedMedia)
 
+          const headingLabel = group.h2?.text || 'this section'
+
+          setCurrentIndex(group.originalIndex)
+
+          const setWait = msg => {
+            setWaitBanner(msg)
+            upsertWaitInEditor(editor, i, msg)
+          }
+
           try {
-            const data = await fetchWithRetry('/api/generate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              signal: abortControllerRef.current.signal,
-              body: JSON.stringify({
-                mode: 'section',
-                settings: settings,
-                targetKeyword: settings.targetKeyword,
-                model: settings.model,
-                outlineContext: outline,
-                heading: group.h2.text,
-                subheadings: subheadings,
-                internalLinks: allLinks,
-                seoOptimization: settings.seoOptimization,
-                manualKeywords: settings.manualKeywords,
-                aiImagesAndVideos: shouldGenerateMedia,
-                sectionIndex: i,
-                totalSections: groupedSections.length,
-                toneOfVoice: settings.toneOfVoice,
-                customToneOfVoice: settings.customToneOfVoice,
-                language: settings.language,
-                country: settings.country,
-                pointOfView: settings.pointOfView,
-                useRealTimeSearchData: settings.useRealTimeSearchData,
-                realTimeDataSource: settings.realTimeDataSource,
-                externalLinks: settings.fetchedExternalLinks,
-                usedExternalLinks: trackedExternalLinks,
-                deepSearch: false,
-                articleTitle: settings.generatedTitle,
-                improveReadability: settings.improveReadability,
-                uploadedMedia: settings.uploadedMedia,
-                usedImageUrls: usedSnapshot,
-                usedInternalLinks: trackedInternalLinks
-              })
-            })
+            const data = await fetchWithRetry(
+              '/api/generate',
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: abortControllerRef.current.signal,
+                body: JSON.stringify({
+                  mode: 'section',
+                  settings: settings,
+                  targetKeyword: settings.targetKeyword,
+                  model: settings.model,
+                  outlineContext: outline,
+                  heading: group.h2.text,
+                  subheadings: subheadings,
+                  internalLinks: allLinks,
+                  seoOptimization: settings.seoOptimization,
+                  manualKeywords: settings.manualKeywords,
+                  aiImagesAndVideos: shouldGenerateMedia,
+                  sectionIndex: i,
+                  totalSections: groupedSections.length,
+                  toneOfVoice: settings.toneOfVoice,
+                  customToneOfVoice: settings.customToneOfVoice,
+                  language: settings.language,
+                  country: settings.country,
+                  pointOfView: settings.pointOfView,
+                  useRealTimeSearchData: settings.useRealTimeSearchData,
+                  realTimeDataSource: settings.realTimeDataSource,
+                  externalLinks: settings.fetchedExternalLinks,
+                  usedExternalLinks: trackedExternalLinks,
+                  deepSearch: false,
+                  articleTitle: settings.generatedTitle,
+                  improveReadability: settings.improveReadability,
+                  uploadedMedia: settings.uploadedMedia,
+                  usedImageUrls: usedSnapshot,
+                  usedInternalLinks: trackedInternalLinks
+                })
+              },
+              { onRetry: setWait }
+            )
 
             if (isCancelled) return
 
-            // Reserve media immediately so the other worker doesn't pick the same URL
-            if (data?.mediaUrl) liveUsedMedia.add(data.mediaUrl)
+            if (data?.mediaUrl) {
+              const key = mediaKey(data.mediaUrl)
+
+              liveUsedMedia.add(key)
+              trackedImages.push(key)
+            }
+
+            if (data?.mediaId) liveUsedMedia.add(mediaKey(data.mediaId))
+
             resultsBuffer[i] = { i, group, data, error: null }
+            setWaitBanner('')
           } catch (error) {
             if (isCancelled) return
             resultsBuffer[i] = { i, group, data: null, error }
@@ -1228,6 +1340,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         alert('Could not load your draft.')
       } finally {
         setIsGenerating(false)
+        setWaitBanner('')
       }
     }
 
@@ -1240,6 +1353,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
     }
 
     setIsGenerating(false)
+    setWaitBanner('')
     if (editor) editor.setEditable(true)
     clearUploadedMedia(settings.uploadedMedia)
   }
@@ -1409,11 +1523,29 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                     </div>
                   </div>
                 ) : (
-                  <div className='flex items-center gap-2 px-6 pb-6 mt-2'>
-                    <CircularProgress variant='indeterminate' size={24} color={currentProgressColor} />
-                    <Typography variant='caption' className='italic font-medium' color={currentProgressColor}>
-                      AI is currently writing: {outline[currentIndex]?.text || '...'}
-                    </Typography>
+                  <div className='flex flex-col gap-2 px-6 pb-6 mt-2'>
+                    <div className='flex items-center gap-2'>
+                      <CircularProgress variant='indeterminate' size={24} color={currentProgressColor} />
+                      <Typography variant='caption' className='italic font-medium' color={currentProgressColor}>
+                        AI is currently writing: {outline[currentIndex]?.text || '...'}
+                      </Typography>
+                    </div>
+                    {waitBanner ? (
+                      <Typography
+                        variant='caption'
+                        sx={{
+                          bgcolor: '#FEF3C7',
+                          color: '#92400E',
+                          border: '1px solid #F59E0B',
+                          borderRadius: 1,
+                          px: 1.5,
+                          py: 1,
+                          display: 'block'
+                        }}
+                      >
+                        {waitBanner}
+                      </Typography>
+                    ) : null}
                   </div>
                 ))}
             </div>

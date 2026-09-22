@@ -1,6 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+
+import { useSearchParams } from 'next/navigation'
+
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Grid from '@mui/material/Grid'
@@ -8,6 +11,8 @@ import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import Divider from '@mui/material/Divider'
 import CircularProgress from '@mui/material/CircularProgress'
+
+import { toast } from 'react-toastify'
 
 import BlogFields from './fields/BlogFields'
 import ListicleFields from './fields/ListicleFields'
@@ -17,11 +22,6 @@ import YoutubeBlogFields from './fields/YoutubeBlogFields'
 import LocalRoundupFields from './fields/LocalRoundupFields'
 import RewriteFields from './fields/RewriteFields'
 
-import { toast } from 'react-toastify'
-
-import { useSearchParams } from 'next/navigation'
-import { useEffect } from 'react'
-
 const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -29,49 +29,51 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
   const draftId = searchParams.get('draftId')
 
   const ComponentMap = {
-    'blog': BlogFields,
-    'listicle': ListicleFields,
+    blog: BlogFields,
+    listicle: ListicleFields,
     'amazon-roundup': AmazonRoundupFields,
     'amazon-review': AmazonReviewFields,
     'youtube-blog': YoutubeBlogFields,
     'local-roundup': LocalRoundupFields,
-    'rewrite': RewriteFields
+    rewrite: RewriteFields
   }
 
   const ActiveFields = ComponentMap[settings.type] || BlogFields
 
   useEffect(() => {
-  if (draftId) {
-    setStep(2)
-  }
-}, [draftId, setStep])
+    if (draftId) {
+      setStep(2)
+    }
+  }, [draftId, setStep])
 
-const handleCreateArticle = async () => {
-
+  const handleCreateArticle = async () => {
     if (!settings.targetKeyword || settings.targetKeyword.trim() === '') {
       if (settings.type === 'amazon-review') {
         if (!settings.amazonProductUrl) {
-          toast.error("Please provide either an Amazon Product URL or a Target Keyword.");
-          return;
+          toast.error('Please provide either an Amazon Product URL or a Target Keyword.')
+
+          return
         }
       } else if (settings.type === 'amazon-roundup') {
         if (!settings.amazonSearchUrl) {
-          toast.error("Please provide either an Amazon Search URL or a Target Keyword.");
-          return;
+          toast.error('Please provide either an Amazon Search URL or a Target Keyword.')
+
+          return
         }
       } else {
-        toast.error("Target Keyword is required for this template.");
-        return;
+        toast.error('Target Keyword is required for this template.')
+
+        return
       }
     }
 
-  // if (settings.deepSearch) {
-  //     toast.error('Premium Feature: You do not have a paid plan. Please upgrade your account to use Deep Search.', {
-  //       position: 'top-right',
-  //       autoClose: 5000
-  //     })
-  //     return // Stop the function from generating
-  //   }
+    // if (settings.deepSearch) {
+    //     toast.error('Premium Feature: You do not have a paid plan. Please upgrade your account to use Deep Search.', {
+    //       position: 'top-right',
+    //       autoClose: 5000
+    //     })
+    //     return // Stop the function from generating
+    //   }
 
     setIsGenerating(true)
 
@@ -99,9 +101,11 @@ const handleCreateArticle = async () => {
       if (data.success) {
         updateSetting('generatedTitle', data.title)
         if (data.externalLinks) updateSetting('fetchedExternalLinks', data.externalLinks)
+
         if (data.heroImage) {
           updateSetting('heroImage', data.heroImage)
         }
+
         if (data.metaTitle) updateSetting('metaTitle', data.metaTitle)
         if (data.metaDescription) updateSetting('metaDescription', data.metaDescription)
         setOutline(data.outline)
@@ -113,11 +117,22 @@ const handleCreateArticle = async () => {
         }
       } else {
         throw new Error(data.error)
-
       }
     } catch (error) {
-      console.error("Error generating outline:", error)
-      alert(`Failed to generate outline. ${error}`);
+      console.error('Error generating outline:', error)
+      const msg = String(error?.message || error)
+
+      if (/RATE_LIMIT|429|quota|resource.?exhausted/i.test(msg)) {
+        toast.error('Gemini free rate limit hit. Wait ~60s, or reduce concurrent usage. Outline was not generated.', {
+          autoClose: 8000
+        })
+      } else if (/OUTLINE_PARSE_FAILED/i.test(msg)) {
+        toast.error('Outline generation returned invalid data after retries. Try again, or shorten the topic.', {
+          autoClose: 7000
+        })
+      } else {
+        toast.error(`Failed to generate outline: ${msg}`, { autoClose: 6000 })
+      }
     } finally {
       setIsGenerating(false)
     }
@@ -148,13 +163,19 @@ const handleCreateArticle = async () => {
           <div className='flex items-center gap-4 text-textSecondary'>
             <div className='flex items-center gap-1'>
               <i className='ri-line-chart-line text-lg' />
-              <Typography variant='caption' className='font-medium text-sm'>Current Usage:</Typography>
+              <Typography variant='caption' className='font-medium text-sm'>
+                Current Usage:
+              </Typography>
             </div>
-            <Typography variant='caption' className='text-sm'>0 / 0 words</Typography>
-            <Typography variant='caption' className='text-sm'>0 / 0 messages</Typography>
+            <Typography variant='caption' className='text-sm'>
+              0 / 0 words
+            </Typography>
+            <Typography variant='caption' className='text-sm'>
+              0 / 0 messages
+            </Typography>
           </div>
 
-         <Button
+          <Button
             variant='contained'
             color='primary'
             size='large'
@@ -163,7 +184,7 @@ const handleCreateArticle = async () => {
             disabled={isGenerating}
           >
             {isGenerating ? (
-              <CircularProgress size={24} color="inherit" />
+              <CircularProgress size={24} color='inherit' />
             ) : settings.useOutlineEditor ? (
               'Create Outline'
             ) : (

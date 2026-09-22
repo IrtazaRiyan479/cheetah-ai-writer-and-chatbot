@@ -20,6 +20,7 @@ import {
 } from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
+import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
 
 export async function generateStandardBlogOutline(body, genAI) {
   const { prompt, settings } = body
@@ -102,8 +103,61 @@ export async function generateStandardBlogOutline(body, genAI) {
   `
 
   const outlinePrompt = `Article Topic: ${targetKeyword || prompt}\n\n${lengthInstruction}\n${structureInstruction}`
-  const result = await outlineModel.generateContent(outlinePrompt)
-  const parsedData = JSON.parse(result.response.text())
+
+  let parsedData = null
+  let lastOutlineError = null
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const result = await outlineModel.generateContent(outlinePrompt)
+      const raw = result.response.text()
+
+      parsedData = JSON.parse(raw)
+
+      if (!parsedData?.outline || !Array.isArray(parsedData.outline) || parsedData.outline.length === 0) {
+        throw new Error('Outline JSON missing outline array')
+      }
+
+      break
+    } catch (err) {
+      lastOutlineError = err
+      const msg = String(err?.message || err)
+      const isRateLimit = /429|rate.?limit|quota|resource.?exhausted/i.test(msg)
+
+      if (isRateLimit) {
+        console.warn('[Outline] Gemini quota — using Groq/Mistral')
+
+        const alt = await callLightLLM({
+          system: 'Return only valid JSON with keys metaTitle, metaDescription, title, outline.',
+          prompt:
+            outlinePrompt +
+            '\n\nReturn JSON: {"metaTitle":"","metaDescription":"","title":"","outline":[{"type":"h2","text":""}]}',
+          json: true,
+          max_tokens: 1200
+        })
+
+        const parsed = parseJsonSafe(alt?.text)
+
+        if (parsed?.outline?.length) {
+          parsedData = parsed
+          break
+        }
+
+        throw new Error('RATE_LIMIT: Gemini and Groq could not produce an outline. Wait ~60s.')
+      }
+
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, 800 * attempt))
+        continue
+      }
+
+      throw new Error(`OUTLINE_PARSE_FAILED: Could not produce a valid outline after ${attempt} attempts. ${msg}`)
+    }
+  }
+
+  if (!parsedData) {
+    throw lastOutlineError || new Error('OUTLINE_PARSE_FAILED')
+  }
 
   const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
     fetchUnsplashImage(targetKeyword),
@@ -216,12 +270,16 @@ export async function generateStandardBlogSection(body, genAI) {
 
   const isWebSearch = !realTimeDataSource || realTimeDataSource === 'search'
 
-  if (useRealTimeSearchData && isWebSearch && !deepSearch) {
-    modelConfig.tools = [
-      {
-        googleSearch: {}
-      }
-    ]
+  const lowerHeading = String(heading || '').toLowerCase()
+
+  const skipTools =
+    lowerHeading.includes('faq') ||
+    lowerHeading.includes('frequently asked') ||
+    lowerHeading.includes('conclusion') ||
+    lowerHeading.includes('final verdict')
+
+  if (useRealTimeSearchData && isWebSearch && !deepSearch && !skipTools) {
+    modelConfig.tools = [{ googleSearch: {} }]
   }
 
   const sectionModel = genAI.getGenerativeModel(modelConfig)
@@ -308,51 +366,43 @@ export async function generateStandardBlogSection(body, genAI) {
     }
   }
 
-  let result
-  let retries = 5
-  const delay = 5000
+  let result = null
 
-  for (let i = 0; i < retries; i++) {
-    try {
-      result = await sectionModel.generateContent(sectionPrompt)
-      break
-    } catch (error) {
-      const errorMessage = (error?.message || String(error) || '').toLowerCase()
-      const status = error?.status || error?.statusCode || error?.code
+  try {
+    result = await sectionModel.generateContent(sectionPrompt)
+  } catch (error) {
+    const msg = (error?.message || String(error) || '').toLowerCase()
 
-      const isRetryable =
-        status === 429 ||
-        status === 500 ||
-        status === 503 ||
-        errorMessage.includes('429') ||
-        errorMessage.includes('503') ||
-        errorMessage.includes('500') ||
-        errorMessage.includes('rate limit') ||
-        errorMessage.includes('quota') ||
-        errorMessage.includes('overloaded') ||
-        errorMessage.includes('resource exhausted') ||
-        errorMessage.includes('fetch failed') ||
-        errorMessage.includes('econnreset') ||
-        errorMessage.includes('etimedout') ||
-        errorMessage.includes('network') ||
-        errorMessage.includes('timeout') ||
-        errorMessage.includes('socket hang up') ||
-        error.name === 'TypeError' ||
-        errorMessage.includes('typeerror')
-
-      if (i === retries - 1 || !isRetryable) {
-        console.error(`[Gemini API] Final failure after ${i + 1} attempts:`, error)
-        throw new Error(
-          error?.message || (typeof error === 'string' ? error : 'Gemini generation failed after retries')
-        )
-      }
-
-      console.warn(
-        `[Gemini API] Transient error (status: ${status || 'n/a'}). ` +
-          `Retrying in ${delay / 1000}s... (Attempt ${i + 1}/${retries})`
+    const shouldFallback =
+      /429|quota|rate.?limit|resource.?exhausted|503|high demand|unavailable|overloaded|try again later|fetch failed/i.test(
+        msg
       )
-      await new Promise(res => setTimeout(res, delay))
+
+    if (!shouldFallback) throw error
+
+    console.warn('[Section] Gemini quota hit — writing this section with Groq/Mistral')
+
+    const alt = await callLightLLM({
+      system: 'You are an expert SEO article writer. Return only the section body in markdown. No preamble, no JSON.',
+      prompt: sectionPrompt.slice(0, 6000),
+      max_tokens: 1400,
+      waitOn429: false
+    })
+
+    if (!alt?.text) {
+      // Do NOT throw — worker must continue other sections
+      console.error('[Section] All providers exhausted. Skipping this heading.')
+
+      return {
+        success: false,
+        skipped: true,
+        heading,
+        error: 'RATE_LIMIT',
+        message: 'Gemini, Groq, and Mistral are all rate-limited. Wait ~60s and regenerate this section.'
+      }
     }
+
+    result = { response: { text: () => alt.text } }
   }
 
   return {

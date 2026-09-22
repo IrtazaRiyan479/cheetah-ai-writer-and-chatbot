@@ -16,6 +16,7 @@ import {
 } from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
+import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
 
 async function fetchInternalAmazonData(keyword, settings) {
   const baseUrl =
@@ -389,51 +390,42 @@ export async function generateAmazonRoundupSection(body, genAI) {
     `
   }
 
-  let result
-  let retries = 5
-  const delay = 5000
+  let result = null
 
-  for (let i = 0; i < retries; i++) {
-    try {
-      result = await sectionModel.generateContent(sectionPrompt)
-      break
-    } catch (error) {
-      const errorMessage = (error?.message || String(error) || '').toLowerCase()
-      const status = error?.status || error?.statusCode || error?.code
+  try {
+    result = await sectionModel.generateContent(sectionPrompt)
+  } catch (error) {
+    const msg = (error?.message || String(error) || '').toLowerCase()
 
-      const isRetryable =
-        status === 429 ||
-        status === 500 ||
-        status === 503 ||
-        errorMessage.includes('429') ||
-        errorMessage.includes('503') ||
-        errorMessage.includes('500') ||
-        errorMessage.includes('rate limit') ||
-        errorMessage.includes('quota') ||
-        errorMessage.includes('overloaded') ||
-        errorMessage.includes('resource exhausted') ||
-        errorMessage.includes('fetch failed') ||
-        errorMessage.includes('econnreset') ||
-        errorMessage.includes('etimedout') ||
-        errorMessage.includes('network') ||
-        errorMessage.includes('timeout') ||
-        errorMessage.includes('socket hang up') ||
-        error.name === 'TypeError' ||
-        errorMessage.includes('typeerror')
-
-      if (i === retries - 1 || !isRetryable) {
-        console.error(`[Gemini API] Final failure after ${i + 1} attempts:`, error)
-        throw new Error(
-          error?.message || (typeof error === 'string' ? error : 'Gemini generation failed after retries')
-        )
-      }
-
-      console.warn(
-        `[Gemini API] Transient error (status: ${status || 'n/a'}). ` +
-          `Retrying in ${delay / 1000}s... (Attempt ${i + 1}/${retries})`
+    const shouldFallback =
+      /429|quota|rate.?limit|resource.?exhausted|503|high demand|unavailable|overloaded|try again later|fetch failed/i.test(
+        msg
       )
-      await new Promise(res => setTimeout(res, delay))
+
+    if (!shouldFallback) throw error
+
+    console.warn('[Section] Gemini quota hit — writing this section with Groq/Mistral')
+
+    const alt = await callLightLLM({
+      system: 'You are an expert SEO article writer. Return only the section body in markdown. No preamble, no JSON.',
+      prompt: sectionPrompt.slice(0, 6000),
+      max_tokens: 1400
+    })
+
+    if (!alt?.text) {
+      // Do NOT throw — worker must continue other sections
+      console.error('[Section] All providers exhausted. Skipping this heading.')
+
+      return {
+        success: false,
+        skipped: true,
+        heading,
+        error: 'RATE_LIMIT',
+        message: 'Gemini, Groq, and Mistral are all rate-limited. Wait ~60s and regenerate this section.'
+      }
     }
+
+    result = { response: { text: () => alt.text } }
   }
 
   return { success: true, text: result.response.text(), mediaHtml: null, internalLinkUrl: internalLinkUrl }

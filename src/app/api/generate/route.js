@@ -84,7 +84,7 @@ export async function POST(request) {
     }
 
     const defaultModel = genAI.getGenerativeModel({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.1-flash-lite',
       systemInstruction: getBaseSystemInstruction()
     })
 
@@ -112,8 +112,11 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true, text: result.response.text() })
   } catch (error) {
-    console.error('Gemini API Error:', error)
+    const msg = error?.message || String(error)
 
-    return NextResponse.json({ success: false, error: 'Failed to generate content', error }, { status: 500 })
+    const isCapacity =
+      /429|quota|rate.?limit|503|high demand|unavailable|overloaded|OUTLINE_PARSE_FAILED|RATE_LIMIT/i.test(msg)
+
+    return NextResponse.json({ success: false, skipped: isCapacity, error: msg }, { status: isCapacity ? 200 : 500 })
   }
 }

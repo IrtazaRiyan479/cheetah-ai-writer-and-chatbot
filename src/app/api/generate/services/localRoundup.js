@@ -19,9 +19,11 @@ import {
 } from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
+import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
 
 export async function generateLocalRoundupOutline(body, genAI) {
   const { prompt, settings } = body
+
   const {
     model,
     targetKeyword,
@@ -42,6 +44,7 @@ export async function generateLocalRoundupOutline(body, genAI) {
   const countryObj = countries ? countries.find(c => c.code === country) : null
   const countryName = countryObj ? countryObj.name : country || 'United States'
   const baseSystemInstruction = getBaseSystemInstruction(langName, countryName)
+
   const outlineModel = genAI.getGenerativeModel({
     model: model || 'gemini-3.1-flash-lite',
     generationConfig: { responseMimeType: 'application/json' },
@@ -56,10 +59,13 @@ export async function generateLocalRoundupOutline(body, genAI) {
   const format = listNumberingFormat || '1.'
 
   let numberingArray = []
+
   for (let i = 1; i <= itemCount; i++) {
     numberingArray.push(format === 'none' ? '' : format.replace('1', i))
   }
+
   if (useDescendingOrder) numberingArray.reverse()
+
   const explicitNumberingStr =
     format === 'none'
       ? 'Do not use numbering.'
@@ -69,13 +75,16 @@ export async function generateLocalRoundupOutline(body, genAI) {
     const placeNames = placesData
       .map((p, i) => {
         const prefix = numberingArray[i] ? `${numberingArray[i]} ` : ''
+
         return `${prefix}${p.title}`
       })
       .join('\n')
+
     placesInstruction = `You MUST use EXACTLY these locations for the core H2 headings in order:\n${placeNames}`
   } else {
     placesInstruction = `Generate exactly ${itemCount} H2 headings representing specific real-world locations related to the topic. Number them.${explicitNumberingStr}`
   }
+
   let fetchedExternalLinks = []
   let faqInstruction = ''
   let relatedInstruction = ''
@@ -122,8 +131,62 @@ export async function generateLocalRoundupOutline(body, genAI) {
         `
 
   const outlinePrompt = `Article Topic: ${targetKeyword || prompt}\n\n${lengthInstruction}\n${structureInstruction}`
-  const result = await outlineModel.generateContent(outlinePrompt)
-  const parsedData = JSON.parse(result.response.text())
+
+  let parsedData = null
+  let lastOutlineError = null
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const result = await outlineModel.generateContent(outlinePrompt)
+      const raw = result.response.text()
+
+      parsedData = JSON.parse(raw)
+
+      if (!parsedData?.outline || !Array.isArray(parsedData.outline) || parsedData.outline.length === 0) {
+        throw new Error('Outline JSON missing outline array')
+      }
+
+      break
+    } catch (err) {
+      lastOutlineError = err
+      const msg = String(err?.message || err)
+      const isRateLimit = /429|rate.?limit|quota|resource.?exhausted/i.test(msg)
+
+      if (isRateLimit) {
+        console.warn('[Outline] Gemini quota — using Groq/Mistral')
+
+        const alt = await callLightLLM({
+          system: 'Return only valid JSON with keys metaTitle, metaDescription, title, outline.',
+          prompt:
+            outlinePrompt +
+            '\n\nReturn JSON: {"metaTitle":"","metaDescription":"","title":"","outline":[{"type":"h2","text":""}]}',
+          json: true,
+          max_tokens: 1200
+        })
+
+        const parsed = parseJsonSafe(alt?.text)
+
+        if (parsed?.outline?.length) {
+          parsedData = parsed
+          break
+        }
+
+        throw new Error('RATE_LIMIT: Gemini and Groq could not produce an outline. Wait ~60s.')
+      }
+
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, 800 * attempt))
+        continue
+      }
+
+      throw new Error(`OUTLINE_PARSE_FAILED: Could not produce a valid outline after ${attempt} attempts. ${msg}`)
+    }
+  }
+
+  if (!parsedData) {
+    throw lastOutlineError || new Error('OUTLINE_PARSE_FAILED')
+  }
+
   if (placesData && placesData.length > 0) {
     let currentPlaceIndex = 0
 
@@ -139,6 +202,7 @@ export async function generateLocalRoundupOutline(body, genAI) {
         ) {
           if (currentPlaceIndex < placesData.length) {
             const prefix = numberingArray[currentPlaceIndex] ? `${numberingArray[currentPlaceIndex]} ` : ''
+
             item.text = `${prefix}${placesData[currentPlaceIndex].title}`
             currentPlaceIndex++
           }
@@ -181,8 +245,10 @@ export async function generateLocalRoundupOutline(body, genAI) {
 
   if (fallbackToAiImageTag) {
     const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : ''
+
     try {
       const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`)
+
       if (fallbackImage && fallbackImage.url) {
         heroImageUrl = fallbackImage.url
       }
@@ -252,6 +318,7 @@ export async function generateLocalRoundupSection(body, genAI) {
   }
 
   const isWebSearch = !realTimeDataSource || realTimeDataSource === 'search'
+
   if (useRealTimeSearchData && isWebSearch) {
     modelConfig.tools = [
       {
@@ -302,9 +369,11 @@ export async function generateLocalRoundupSection(body, genAI) {
 
   let narrativeRequirement = ''
   let placeDataStr = ''
+
   if (isCoreLocation) {
     const placeInfo = await fetchSerperPlacesData(`${heading} ${targetKeyword || ''}`, 1, country, language)
     const p = placeInfo.length > 0 ? placeInfo[0] : null
+
     if (p) {
       const mapLink = p.cid
         ? `https://maps.google.com/?cid=${p.cid}`
@@ -334,6 +403,7 @@ export async function generateLocalRoundupSection(body, genAI) {
       ? 'Write a compelling, authentic 2-paragraph review from a first-person perspective ("I", "my"). CRITICAL: You MUST drastically vary your opening sentences and narrative structure. DO NOT repetitively start paragraphs with generic phrases like "When I visited," "I recently went to," or "My experience." Instead, dive naturally into the review by immediately describing a specific sensory detail, an interaction with the staff, the immediate atmosphere, or a unique observation. Make it read like a dynamic, genuine blog post.'
       : 'Write a highly detailed, objective description (2 paragraphs) of this location, its atmosphere, and its best offerings. Maintain a professional, third-person perspective.'
   }
+
   let sectionStructureRequirements =
     `
               CRITICAL LOCAL ROUNDUP LAYOUT:
@@ -385,54 +455,42 @@ export async function generateLocalRoundupSection(body, genAI) {
         ${keywordSEOInstructions}
       `
 
-  let result
-  const retries = 5
-  let delay = 800 // start fast; grow with jitter
+  let result = null
 
-  for (let i = 0; i < retries; i++) {
-    try {
-      result = await sectionModel.generateContent(sectionPrompt)
-      break
-    } catch (error) {
-      const errorMessage = (error?.message || String(error) || '').toLowerCase()
-      const status = error?.status || error?.statusCode || error?.code
+  try {
+    result = await sectionModel.generateContent(sectionPrompt)
+  } catch (error) {
+    const msg = (error?.message || String(error) || '').toLowerCase()
 
-      const isRetryable =
-        status === 429 ||
-        status === 500 ||
-        status === 503 ||
-        errorMessage.includes('429') ||
-        errorMessage.includes('503') ||
-        errorMessage.includes('500') ||
-        errorMessage.includes('rate limit') ||
-        errorMessage.includes('quota') ||
-        errorMessage.includes('overloaded') ||
-        errorMessage.includes('resource exhausted') ||
-        errorMessage.includes('fetch failed') ||
-        errorMessage.includes('econnreset') ||
-        errorMessage.includes('etimedout') ||
-        errorMessage.includes('network') ||
-        errorMessage.includes('timeout') ||
-        errorMessage.includes('socket hang up') ||
-        error.name === 'TypeError' ||
-        errorMessage.includes('typeerror')
-
-      if (i === retries - 1 || !isRetryable) {
-        console.error(`[Gemini API] Final failure after ${i + 1} attempts:`, error)
-        throw new Error(
-          error?.message || (typeof error === 'string' ? error : 'Gemini generation failed after retries')
-        )
-      }
-
-      const jitter = Math.floor(Math.random() * 500)
-      const wait = Math.min(delay + jitter, 10000)
-      console.warn(
-        `[Gemini API] Transient error (status: ${status || 'n/a'}). ` +
-          `Retrying in ${(wait / 1000).toFixed(1)}s... (Attempt ${i + 1}/${retries})`
+    const shouldFallback =
+      /429|quota|rate.?limit|resource.?exhausted|503|high demand|unavailable|overloaded|try again later|fetch failed/i.test(
+        msg
       )
-      await new Promise(res => setTimeout(res, wait))
-      delay = Math.min(Math.floor(delay * 1.7), 10000)
+
+    if (!shouldFallback) throw error
+
+    console.warn('[Section] Gemini quota hit — writing this section with Groq/Mistral')
+
+    const alt = await callLightLLM({
+      system: 'You are an expert SEO article writer. Return only the section body in markdown. No preamble, no JSON.',
+      prompt: sectionPrompt.slice(0, 6000),
+      max_tokens: 1400
+    })
+
+    if (!alt?.text) {
+      // Do NOT throw — worker must continue other sections
+      console.error('[Section] All providers exhausted. Skipping this heading.')
+
+      return {
+        success: false,
+        skipped: true,
+        heading,
+        error: 'RATE_LIMIT',
+        message: 'Gemini, Groq, and Mistral are all rate-limited. Wait ~60s and regenerate this section.'
+      }
     }
+
+    result = { response: { text: () => alt.text } }
   }
 
   return {

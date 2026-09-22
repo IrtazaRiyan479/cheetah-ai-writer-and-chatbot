@@ -19,9 +19,11 @@ import {
 } from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
+import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
 
 export async function generateRewriteOutline(body, genAI) {
   const { prompt, settings } = body
+
   const {
     model,
     targetKeyword,
@@ -34,6 +36,7 @@ export async function generateRewriteOutline(body, genAI) {
   } = settings
 
   const articleData = await fetchArticleData(articleUrlToRewrite)
+
   if (!articleData.success) {
     throw new Error('Failed to fetch the target article. Please check the URL and try again.')
   }
@@ -144,8 +147,10 @@ export async function generateRewriteOutline(body, genAI) {
 
   if (fallbackToAiImageTag) {
     const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : ''
+
     try {
       const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`)
+
       if (fallbackImage && fallbackImage.url) {
         heroImageUrl = fallbackImage.url
       }
@@ -159,6 +164,7 @@ export async function generateRewriteOutline(body, genAI) {
 
   try {
     const jsonResult = JSON.parse(responseText)
+
     return {
       success: true,
       outline: jsonResult.outline,
@@ -170,6 +176,7 @@ export async function generateRewriteOutline(body, genAI) {
     }
   } catch (error) {
     console.error('Failed to parse Rewrite outline JSON', error)
+
     return { success: false, error: 'Invalid JSON from AI' }
   }
 }
@@ -298,54 +305,42 @@ export async function generateRewriteSection(body, genAI) {
     ${realTimeInstruction}
   `
 
-  let result
-  const retries = 5
-  let delay = 800 // start fast; grow with jitter
+  let result = null
 
-  for (let i = 0; i < retries; i++) {
-    try {
-      result = await sectionModel.generateContent(sectionPrompt)
-      break
-    } catch (error) {
-      const errorMessage = (error?.message || String(error) || '').toLowerCase()
-      const status = error?.status || error?.statusCode || error?.code
+  try {
+    result = await sectionModel.generateContent(sectionPrompt)
+  } catch (error) {
+    const msg = (error?.message || String(error) || '').toLowerCase()
 
-      const isRetryable =
-        status === 429 ||
-        status === 500 ||
-        status === 503 ||
-        errorMessage.includes('429') ||
-        errorMessage.includes('503') ||
-        errorMessage.includes('500') ||
-        errorMessage.includes('rate limit') ||
-        errorMessage.includes('quota') ||
-        errorMessage.includes('overloaded') ||
-        errorMessage.includes('resource exhausted') ||
-        errorMessage.includes('fetch failed') ||
-        errorMessage.includes('econnreset') ||
-        errorMessage.includes('etimedout') ||
-        errorMessage.includes('network') ||
-        errorMessage.includes('timeout') ||
-        errorMessage.includes('socket hang up') ||
-        error.name === 'TypeError' ||
-        errorMessage.includes('typeerror')
-
-      if (i === retries - 1 || !isRetryable) {
-        console.error(`[Gemini API] Final failure after ${i + 1} attempts:`, error)
-        throw new Error(
-          error?.message || (typeof error === 'string' ? error : 'Gemini generation failed after retries')
-        )
-      }
-
-      const jitter = Math.floor(Math.random() * 500)
-      const wait = Math.min(delay + jitter, 10000)
-      console.warn(
-        `[Gemini API] Transient error (status: ${status || 'n/a'}). ` +
-          `Retrying in ${(wait / 1000).toFixed(1)}s... (Attempt ${i + 1}/${retries})`
+    const shouldFallback =
+      /429|quota|rate.?limit|resource.?exhausted|503|high demand|unavailable|overloaded|try again later|fetch failed/i.test(
+        msg
       )
-      await new Promise(res => setTimeout(res, wait))
-      delay = Math.min(Math.floor(delay * 1.7), 10000)
+
+    if (!shouldFallback) throw error
+
+    console.warn('[Section] Gemini quota hit — writing this section with Groq/Mistral')
+
+    const alt = await callLightLLM({
+      system: 'You are an expert SEO article writer. Return only the section body in markdown. No preamble, no JSON.',
+      prompt: sectionPrompt.slice(0, 6000),
+      max_tokens: 1400
+    })
+
+    if (!alt?.text) {
+      // Do NOT throw — worker must continue other sections
+      console.error('[Section] All providers exhausted. Skipping this heading.')
+
+      return {
+        success: false,
+        skipped: true,
+        heading,
+        error: 'RATE_LIMIT',
+        message: 'Gemini, Groq, and Mistral are all rate-limited. Wait ~60s and regenerate this section.'
+      }
     }
+
+    result = { response: { text: () => alt.text } }
   }
 
   return {
