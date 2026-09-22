@@ -89,17 +89,109 @@ function failedSectionHtml(index, heading, { showHeading = true } = {}) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
 
-  // Must use schema node RetrySectionButton — TipTap strips plain <button> tags
+  // TipTap strips plain <button> unless RetrySectionButton is in the schema
   const retryBtn = `<button type="button" data-retry-section="${index}" class="retry-section-btn" title="Retry this section" contenteditable="false"></button>`
 
-  // Button lives inside the H2 so it sits on the right of the heading (h2 is flex)
-  if (showHeading) {
-    return `<h2 data-failed-heading="${index}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:40px;margin-bottom:16px;font-size:1.5rem;font-weight:700;color:rgba(38,43,67,0.9);line-height:1.3;">${safeHeading}${retryBtn}</h2>
-<p class="failed-section failed-section-${index}" data-failed-section="${index}" style="background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;border-radius:8px;padding:12px 16px;margin:0 0 16px;font-size:14px;line-height:1.5;">Section failed, retry later...</p>`
-  }
+  // Same visual as before: heading left, purple icon button right, yellow banner under
+  const headingRow = showHeading
+    ? `<h2 data-failed-heading="${index}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:40px;margin-bottom:8px;font-size:1.5rem;font-weight:700;color:rgba(38,43,67,0.9);line-height:1.3;">${safeHeading}${retryBtn}</h2>`
+    : `<p data-failed-section="${index}" style="display:flex;justify-content:flex-end;margin:16px 0 8px;">${retryBtn}</p>`
 
-  return `<p data-failed-section="${index}" style="display:flex;justify-content:flex-end;margin:16px 0 8px;">${retryBtn}</p>
+  return `${headingRow}
 <p class="failed-section failed-section-${index}" data-failed-section="${index}" style="background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;border-radius:8px;padding:12px 16px;margin:0 0 16px;font-size:14px;line-height:1.5;">Section failed, retry later...</p>`
+}
+
+/** Same markdown → HTML pipeline used during initial generation (tables, lists, links, etc.) */
+function sectionTextToHtml(finalSectionText) {
+  let cleanMd = String(finalSectionText || '')
+    .replace(/^##\s+.*$/gm, '')
+    .trim()
+
+  cleanMd = cleanMd.replace(/```[a-zA-Z]*\n([\s\S]*?)```/g, (match, code) => {
+    const escapedCode = code.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+    return `<pre style="background-color: #111827; color: #f3f4f6; padding: 16px; border-radius: 12px; margin: 24px 0; overflow-x: auto; font-family: monospace; font-size: 0.875rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #374151;"><code>${escapedCode}</code></pre>`
+  })
+
+  cleanMd = cleanMd.replace(/:\-\-+/g, '').replace(/\-\-+:/g, '')
+  cleanMd = cleanMd.replace(/(?:\|.*\|\n)+/g, match => {
+    const rows = match.trim().split('\n')
+    let html = '<table><tbody>'
+
+    rows.forEach((row, index) => {
+      if (row.match(/^\|?[\s:|-]+\|?$/)) return
+      const isHeader = index === 0
+      const tag = isHeader ? 'th' : 'td'
+
+      const cells = row
+        .split('|')
+        .map(c => c.trim())
+        .filter((c, i, arr) => !(i === 0 && c === '') && !(i === arr.length - 1 && c === ''))
+
+      html += '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>'
+    })
+    html += '</tbody></table>'
+
+    return html
+  })
+
+  cleanMd = cleanMd.replace(/^>\s+(.*)$/gm, '<blockquote>$1</blockquote>')
+  cleanMd = cleanMd.replace(/<\/blockquote>\n<blockquote>/g, '<br/>')
+
+  cleanMd = cleanMd.replace(/^[\s]*(?:-|\*)\s+(.*)$/gm, '<ul><li>$1</li></ul>')
+  cleanMd = cleanMd.replace(/^[\s]*\d+\.\s+(.*)$/gm, '<ol><li>$1</li></ol>')
+
+  cleanMd = cleanMd.replace(/<\/ul>\s*<ul>/g, '')
+  cleanMd = cleanMd.replace(/<\/ol>\s*<ol>/g, '')
+
+  cleanMd = cleanMd.replace(/^######\s+(.*)$/gm, '<h6>$1</h6>')
+  cleanMd = cleanMd.replace(/^#####\s+(.*)$/gm, '<h5>$1</h5>')
+  cleanMd = cleanMd.replace(/^####\s+(.*)$/gm, '<h4>$1</h4>')
+  cleanMd = cleanMd.replace(/^###\s+(.*)$/gm, '<h3>$1</h3>')
+
+  cleanMd = cleanMd.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />')
+  cleanMd = cleanMd.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+  )
+
+  cleanMd = cleanMd.replace(
+    /^---$/gm,
+    '<hr style="margin: 32px 0; border: 0; border-top: 1px solid rgba(38, 43, 67, 0.12);" />'
+  )
+
+  cleanMd = cleanMd.replace(
+    /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g,
+    '<img src="$2" alt="$1" style="border-radius: 12px; max-width: 100%; width: 672px; margin: 32px auto; display: block; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); aspect-ratio: 16/9; object-fit: cover;" />'
+  )
+
+  cleanMd = cleanMd.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    '<a href="$2" target="_blank" style="color: #666CFF; text-decoration: underline; font-weight: 500;">$1</a>'
+  )
+
+  cleanMd = cleanMd.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+  cleanMd = cleanMd.replace(/(?<!\w)\*(.*?)\*(?!\w)/g, '<em>$1</em>')
+  cleanMd = cleanMd.replace(/(?<!\w)_(.*?)_(?!\w)/g, '<em>$1</em>')
+  cleanMd = cleanMd.replace(
+    /`([^`]+)`/g,
+    '<code style="background-color: rgba(38, 43, 67, 0.06); padding: 2px 6px; border-radius: 4px; color: #666CFF; font-family: monospace; font-size: 0.875rem; border: 1px solid rgba(38, 43, 67, 0.12);">$1</code>'
+  )
+  cleanMd = cleanMd.replace(/~~(.*?)~~/g, '<s>$1</s>')
+
+  cleanMd = cleanMd.replace(/(<(ul|ol|table|blockquote|pre|hr|h[1-6]|img))/g, '\n\n$1')
+  cleanMd = cleanMd.replace(/(<\/(ul|ol|table|blockquote|pre|h[1-6])>)/g, '$1\n\n')
+
+  return cleanMd
+    .split(/\n\n+/)
+    .map(block => {
+      block = block.trim()
+      if (!block) return ''
+      if (block.match(/^(<h|<ul|<ol|<blockquote|<pre|<table|<hr|<img)/)) return block
+
+      return `<p>${block.replace(/\n/g, '<br/>')}</p>`
+    })
+    .join('')
 }
 
 function upsertWaitInEditor(editor, index, text) {
@@ -304,7 +396,7 @@ const VideoExtension = Node.create({
   }
 })
 
-// TipTap strips unknown tags. This keeps the purple retry icon button inside failed headings.
+// Keeps purple retry icon button — TipTap strips unknown <button> tags without this
 const RetrySectionButton = Node.create({
   name: 'retrySectionButton',
   group: 'inline',
@@ -351,8 +443,6 @@ const RetrySectionButton = Node.create({
       return {
         dom: btn,
         ignoreMutation: () => true,
-
-        // Let click bubble to the editor root handler; block ProseMirror from eating it
         stopEvent: event => event.type !== 'click'
       }
     }
@@ -880,7 +970,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       })
 
       const processAndInsertSection = (i, group, data) => {
-        // Fail first — never insert a bare heading then skip the retry UI
+        // Fail first — same failed UI + purple retry button (do not insert a bare heading)
         if (!data || !data.success || !data?.text || data.text.trim().length < 30) {
           editor
             .chain()
@@ -915,111 +1005,12 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           }
         }
 
-        let cleanMd = finalSectionText.replace(/^##\s+.*$/gm, '').trim()
-
-        cleanMd = cleanMd.replace(/```[a-zA-Z]*\n([\s\S]*?)```/g, (match, code) => {
-          const escapedCode = code.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-          return `<pre style="background-color: #111827; color: #f3f4f6; padding: 16px; border-radius: 12px; margin: 24px 0; overflow-x: auto; font-family: monospace; font-size: 0.875rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #374151;"><code>${escapedCode}</code></pre>`
-        })
-
-        cleanMd = cleanMd.replace(/:\-\-+/g, '').replace(/\-\-+:/g, '')
-        cleanMd = cleanMd.replace(/(?:\|.*\|\n)+/g, match => {
-          const rows = match.trim().split('\n')
-          let html = '<table><tbody>'
-
-          rows.forEach((row, index) => {
-            if (row.match(/^\|?[\s:|-]+\|?$/)) return
-            const isHeader = index === 0
-            const tag = isHeader ? 'th' : 'td'
-
-            const cells = row
-              .split('|')
-              .map(c => c.trim())
-              .filter((c, i, arr) => !(i === 0 && c === '') && !(i === arr.length - 1 && c === ''))
-
-            html += '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>'
-          })
-          html += '</tbody></table>'
-
-          return html
-        })
-
-        cleanMd = cleanMd.replace(/^>\s+(.*)$/gm, '<blockquote>$1</blockquote>')
-        cleanMd = cleanMd.replace(/<\/blockquote>\n<blockquote>/g, '<br/>')
-
-        cleanMd = cleanMd.replace(/^[\s]*(?:-|\*)\s+(.*)$/gm, '<ul><li>$1</li></ul>')
-        cleanMd = cleanMd.replace(/^[\s]*\d+\.\s+(.*)$/gm, '<ol><li>$1</li></ol>')
-
-        cleanMd = cleanMd.replace(/<\/ul>\s*<ul>/g, '')
-        cleanMd = cleanMd.replace(/<\/ol>\s*<ol>/g, '')
-
-        cleanMd = cleanMd.replace(/^######\s+(.*)$/gm, '<h6>$1</h6>')
-        cleanMd = cleanMd.replace(/^#####\s+(.*)$/gm, '<h5>$1</h5>')
-        cleanMd = cleanMd.replace(/^####\s+(.*)$/gm, '<h4>$1</h4>')
-        cleanMd = cleanMd.replace(/^###\s+(.*)$/gm, '<h3>$1</h3>')
-
-        cleanMd = cleanMd.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />')
-        cleanMd = cleanMd.replace(
-          /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g,
-          '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
-        )
-
-        cleanMd = cleanMd.replace(
-          /^---$/gm,
-          '<hr style="margin: 32px 0; border: 0; border-top: 1px solid rgba(38, 43, 67, 0.12);" />'
-        )
-
-        cleanMd = cleanMd.replace(
-          /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g,
-          '<img src="$2" alt="$1" style="border-radius: 12px; max-width: 100%; width: 672px; margin: 32px auto; display: block; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); aspect-ratio: 16/9; object-fit: cover;" />'
-        )
-
-        cleanMd = cleanMd.replace(
-          /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
-          '<a href="$2" target="_blank" style="color: #666CFF; text-decoration: underline; font-weight: 500;">$1</a>'
-        )
-
-        cleanMd = cleanMd.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        cleanMd = cleanMd.replace(/(?<!\w)\*(.*?)\*(?!\w)/g, '<em>$1</em>')
-        cleanMd = cleanMd.replace(/(?<!\w)_(.*?)_(?!\w)/g, '<em>$1</em>')
-        cleanMd = cleanMd.replace(
-          /`([^`]+)`/g,
-          '<code style="background-color: rgba(38, 43, 67, 0.06); padding: 2px 6px; border-radius: 4px; color: #666CFF; font-family: monospace; font-size: 0.875rem; border: 1px solid rgba(38, 43, 67, 0.12);">$1</code>'
-        )
-        cleanMd = cleanMd.replace(/~~(.*?)~~/g, '<s>$1</s>')
-
-        cleanMd = cleanMd.replace(/(<(ul|ol|table|blockquote|pre|hr|h[1-6]|img))/g, '\n\n$1')
-        cleanMd = cleanMd.replace(/(<\/(ul|ol|table|blockquote|pre|h[1-6])>)/g, '$1\n\n')
-
-        let formattedContent = cleanMd
-          .split(/\n\n+/)
-          .map(block => {
-            block = block.trim()
-            if (!block) return ''
-            if (block.match(/^(<h|<ul|<ol|<blockquote|<pre|<table|<hr|<img)/)) return block
-
-            return `<p>${block.replace(/\n/g, '<br/>')}</p>`
-          })
-          .join('')
-
-        editor.chain().focus('end').insertContent(formattedContent).run()
+        // Identical conversion path for generate + retry
+        editor.chain().focus('end').insertContent(sectionTextToHtml(finalSectionText)).run()
 
         if (data.mediaHtml && (i !== 0 || !['blog', 'listicle'].includes(settings.type))) {
           editor.chain().focus('end').insertContent(data.mediaHtml).run()
         }
-      }
-
-      const liveUsedMediaEarly = new Set([settings.heroImage, ...(trackedImages || [])].filter(Boolean).map(mediaKey))
-
-      genContextRef.current = {
-        groupedSections,
-        settings,
-        outline,
-        liveUsedMedia: liveUsedMediaEarly,
-        trackedImages,
-        trackedInternalLinks,
-        trackedExternalLinks
       }
 
       if (settings.deepSearch) {
@@ -1032,8 +1023,9 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
           const shouldGenerateMedia = i === 0 && settings.heroImage ? false : settings.aiImagesAndVideos
 
-          // Heading is inserted only on success (processAndInsertSection) or via failedSectionHtml
-          // so failed sections never lose the purple retry button / never get a bare heading.
+          if (i !== 0) {
+            editor.chain().focus('end').insertContent(`<${group.h2.type}>${group.h2.text}</${group.h2.type}>`).run()
+          }
 
           const subheadings = group.h3s.map(h3 => h3.text)
 
@@ -1201,7 +1193,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         trackedExternalLinks
       }
 
-      const CONCURRENCY = 3
+      const CONCURRENCY = 999
 
       const tryFlush = () => {
         while (nextInsertIdx < groupedSections.length && resultsBuffer[nextInsertIdx] !== null) {
@@ -1244,6 +1236,11 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           }
 
           nextInsertIdx++
+        }
+
+        // Progress label = next section waiting to appear (not the last worker that started)
+        if (nextInsertIdx < groupedSections.length) {
+          setCurrentIndex(groupedSections[nextInsertIdx].originalIndex)
         }
 
         if (nextInsertIdx >= groupedSections.length && !isCancelled) {
@@ -1332,13 +1329,13 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
           const usedSnapshot = Array.from(liveUsedMedia)
 
-          const headingLabel = group.h2?.text || 'this section'
+          // Do NOT setCurrentIndex here — workers finish out of order and would jump the UI
+          // to the last section. Progress is driven only from tryFlush (in-order).
 
-          setCurrentIndex(group.originalIndex)
-
+          // Status banner only — never call upsertWaitInEditor / setContent from workers.
+          // Concurrent setContent races wipe sections that already flushed.
           const setWait = msg => {
             setWaitBanner(msg)
-            upsertWaitInEditor(editor, i, msg)
           }
 
           try {
@@ -1382,9 +1379,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
               { onRetry: setWait }
             )
 
-            removeWaitInEditor(editor, i)
-            setWaitBanner('')
-
             if (isCancelled) return
 
             if (data?.mediaUrl) {
@@ -1397,14 +1391,12 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
             if (data?.mediaId) liveUsedMedia.add(mediaKey(data.mediaId))
 
             resultsBuffer[i] = { i, group, data, error: null }
-            setWaitBanner('')
           } catch (error) {
-            removeWaitInEditor(editor, i)
-            setWaitBanner('')
             if (isCancelled) return
             resultsBuffer[i] = { i, group, data: null, error }
           }
 
+          // Insert every consecutive finished section immediately (in outline order)
           tryFlush()
         }
       })
@@ -1508,7 +1500,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       btn.style.opacity = '0.72'
       btn.style.cursor = 'wait'
 
-      // NEVER use textContent here — that destroyed the icon and left "Retry" text
+      // Do NOT use textContent — that destroyed the icon and left plain "Retry" text
       btn.innerHTML = '<span style="font-size:16px;font-weight:800;line-height:1;pointer-events:none;">…</span>'
     }
 
@@ -1578,14 +1570,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         return
       }
 
-      // Remove failed heading (with retry btn) + yellow banner for this index
-      let html = editor.getHTML()
-
-      html = html.replace(new RegExp(`<h2[^>]*data-failed-heading="${index}"[^>]*>[\\s\\S]*?<\\/h2>`, 'i'), '')
-      html = html.replace(new RegExp(`<p[^>]*data-failed-section="${index}"[^>]*>[\\s\\S]*?<\\/p>`, 'gi'), '')
-      html = html.replace(new RegExp(`<p[^>]*class="[^"]*failed-section-${index}[^"]*"[^>]*>[\\s\\S]*?<\\/p>`, 'i'), '')
-      html = html.replace(new RegExp(`<button[^>]*data-retry-section="${index}"[^>]*>[\\s\\S]*?<\\/button>`, 'gi'), '')
-
+      // Same layout pipeline as initial generation
       const tag = group.h2?.type === 'h3' ? 'h3' : 'h2'
 
       const headingHtml =
@@ -1596,20 +1581,47 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
               .replace(/>/g, '&gt;')}</${tag}>`
           : ''
 
-      const bodyHtml = String(data.text)
-        .replace(/^##\s+.*$/gm, '')
-        .trim()
-        .split(/\n\n+/)
-        .map(p => p.trim())
-        .filter(Boolean)
-        .map(p => {
-          if (p.startsWith('<')) return p
+      const bodyHtml = sectionTextToHtml(data.text) + (data.mediaHtml || '')
+      const replacement = headingHtml + bodyHtml
 
-          return `<p>${p.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</p>`
-        })
-        .join('')
+      // Replace failed block IN PLACE so section order stays correct
+      let html = editor.getHTML()
 
-      editor.commands.setContent(html + headingHtml + bodyHtml + (data.mediaHtml || ''), false)
+      const patterns = [
+        // current failed UI: h2[data-failed-heading] + yellow banner
+        new RegExp(
+          `<h2[^>]*data-failed-heading="${index}"[^>]*>[\\s\\S]*?<\\/h2>\\s*<p[^>]*(?:data-failed-section="${index}"|failed-section-${index})[^>]*>[\\s\\S]*?<\\/p>`,
+          'i'
+        ),
+
+        // legacy div wrapper + banner
+        new RegExp(
+          `<div[^>]*data-failed-section="${index}"[^>]*>[\\s\\S]*?<\\/div>\\s*<p[^>]*(?:data-failed-section="${index}"|failed-section-${index})[^>]*>[\\s\\S]*?<\\/p>`,
+          'i'
+        ),
+
+        // banner only (and any leftover retry button)
+        new RegExp(
+          `(?:<button[^>]*data-retry-section="${index}"[^>]*>[\\s\\S]*?<\\/button>\\s*)?<p[^>]*(?:data-failed-section="${index}"|failed-section-${index})[^>]*>[\\s\\S]*?<\\/p>`,
+          'i'
+        )
+      ]
+
+      let replaced = false
+
+      for (const re of patterns) {
+        if (re.test(html)) {
+          html = html.replace(re, replacement)
+          replaced = true
+          break
+        }
+      }
+
+      if (replaced) {
+        editor.commands.setContent(html, false)
+      } else {
+        editor.chain().focus('end').insertContent(replacement).run()
+      }
 
       if (data.mediaUrl) ctx.liveUsedMedia.add(mediaKey(data.mediaUrl))
       if (data.mediaId) ctx.liveUsedMedia.add(mediaKey(data.mediaId))
@@ -1799,16 +1811,9 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                   margin-left: 12px;
                   pointer-events: auto;
                 }
-                .ProseMirror .retry-section-btn:hover {
-                  background: #7C3AED;
-                }
-                .ProseMirror .retry-section-btn:disabled {
-                  opacity: 0.72;
-                  cursor: wait;
-                }
-                .ProseMirror .retry-section-btn i {
-                  pointer-events: none;
-                }
+                .ProseMirror .retry-section-btn:hover { background: #7C3AED; }
+                .ProseMirror .retry-section-btn:disabled { opacity: 0.72; cursor: wait; }
+                .ProseMirror .retry-section-btn i { pointer-events: none; }
                 .ProseMirror h2[data-failed-heading] {
                   display: flex;
                   align-items: center;
