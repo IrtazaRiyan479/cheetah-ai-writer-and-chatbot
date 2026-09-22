@@ -789,25 +789,23 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           editor.chain().focus('end').insertContent(`<${group.h2.type}>${group.h2.text}</${group.h2.type}>`).run()
         }
 
-        // if (!data || !data.success) {
-        //   editor.chain().focus('end').insertContent('<p><em>❌ Error generating this section.</em></p>').run()
+        if (!data || !data.success) {
+          // editor.chain().focus('end').insertContent('<p><em>❌ Error generating this section.</em></p>').run()
 
-        //   return
-        // }
+          return
+        }
 
-        // if (!data?.text || data.text.trim().length < 30) {
-        //   editor
-        //     .chain()
-        //     .focus('end')
-        //     .insertContent(
-        //       `<p><em>⚠️ Section "${group.h2.text}" could not be generated. Please regenerate this part.</em></p>`
-        //     )
-        //     .run()
+        if (!data?.text || data.text.trim().length < 30) {
+          // editor
+          //   .chain()
+          //   .focus('end')
+          //   .insertContent(
+          //     `<p><em>⚠️ Section "${group.h2.text}" could not be generated. Please regenerate this part.</em></p>`
+          //   )
+          //   .run()
 
-        //   return
-        // }
-
-        return
+          return
+        }
 
         let finalSectionText = data.text
 
