@@ -168,6 +168,8 @@ export async function generateRewriteOutline(body, genAI) {
 
   let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url)
   let heroImageUrl = ''
+  let heroImageId = null
+  let heroImageSource = null
   let fallbackToAiImageTag = false
   let scoredCandidates = []
 
@@ -179,8 +181,10 @@ export async function generateRewriteOutline(body, genAI) {
 
     scoredCandidates.sort((a, b) => b.score - a.score)
 
-    if (scoredCandidates[0].score >= 0.1) {
+    if (scoredCandidates[0].score >= 2.0) {
       heroImageUrl = scoredCandidates[0].url
+      heroImageId = scoredCandidates[0].id ?? null
+      heroImageSource = scoredCandidates[0].source || null
       console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`)
     } else {
       console.log(
@@ -217,6 +221,8 @@ export async function generateRewriteOutline(body, genAI) {
       outline: jsonResult.outline,
       title: jsonResult.title,
       heroImage: heroImageUrl,
+      heroImageId,
+      heroImageSource,
       metaTitle: jsonResult.metaTitle,
       metaDescription: jsonResult.metaDescription,
       externalLinks: fetchedExternalLinks

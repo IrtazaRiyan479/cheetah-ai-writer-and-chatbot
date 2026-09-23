@@ -221,8 +221,10 @@ export async function generateAmazonRoundupOutline(body, genAI) {
 
   let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url)
   let heroImageUrl = ''
+  let heroImageId = null
+  let heroImageSource = null
   let fallbackToAiImageTag = false
-  let scoredCandidates
+  let scoredCandidates = []
 
   if (candidates.length > 0) {
     scoredCandidates = candidates.map(c => ({
@@ -234,6 +236,8 @@ export async function generateAmazonRoundupOutline(body, genAI) {
 
     if (scoredCandidates[0].score >= 2.0) {
       heroImageUrl = scoredCandidates[0].url
+      heroImageId = scoredCandidates[0].id ?? null
+      heroImageSource = scoredCandidates[0].source || null
       console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`)
     } else {
       console.log(
@@ -269,7 +273,9 @@ export async function generateAmazonRoundupOutline(body, genAI) {
     metaTitle: parsedData.metaTitle,
     metaDescription: parsedData.metaDescription,
     externalLinks: fetchedExternalLinks,
-    heroImage: heroImageUrl
+    heroImage: heroImageUrl,
+    heroImageId,
+    heroImageSource
   }
 }
 
@@ -426,10 +432,10 @@ export async function generateAmazonRoundupSection(body, genAI) {
       3. **Features:** A bulleted list of 3-4 key features.
       4. **Pros & Cons Table:** A strictly formatted Markdown table with "Pros" and "Cons" columns.
       5. **Real Buyer Opinions:** A brief summary of what real buyers think. CRITICAL: You must synthesize this summary directly from the "Official Features" provided above. Frame the feedback around how buyers react to those specific attributes (e.g., if a feature highlights 'lightweight design', mention how users praise its portability).
-      6. **CTA Button:** Insert this EXACT HTML for the affiliate button:
-                <div style="display: block; width: 100%; text-align: center; margin: 25px 0;">
-  <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" class="no-underline bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-block check-price-btn" >Check Price</a>
-</div>
+      6. **CTA Button:** Insert this EXACT HTML for the affiliate button (inline styles required so Copy HTML works in WordPress):
+         <div style="display:block;width:100%;text-align:center;margin:25px 0;">
+           <a href="${product.amazonUrl}" target="_blank" rel="sponsored noopener" class="check-price-btn" style="text-decoration:none;background-color:#6366f1;color:#ffffff !important;font-weight:700;padding:10px 24px;border-radius:9999px;display:inline-block;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1),0 2px 4px -2px rgba(0,0,0,0.1);border:1px solid #4f46e5;letter-spacing:0.025em;white-space:nowrap;">Check Price</a>
+         </div>
     `
   } else if (activeSectionType === 'faq') {
     sectionPrompt += `

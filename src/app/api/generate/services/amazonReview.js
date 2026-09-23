@@ -249,6 +249,8 @@ export async function generateAmazonReviewOutline(body, genAI) {
     metaTitle: parsedData.metaTitle,
     metaDescription: parsedData.metaDescription,
     heroImage: product?.imageUrl || '',
+    heroImageId: null,
+    heroImageSource: null,
     externalLinks: fetchedExternalLinks
   }
 }

@@ -106,6 +106,14 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
           updateSetting('heroImage', data.heroImage)
         }
 
+        if (data.heroImageId != null) {
+          updateSetting('heroImageId', data.heroImageId)
+        }
+
+        if (data.heroImageSource) {
+          updateSetting('heroImageSource', data.heroImageSource)
+        }
+
         if (data.metaTitle) updateSetting('metaTitle', data.metaTitle)
         if (data.metaDescription) updateSetting('metaDescription', data.metaDescription)
         setOutline(data.outline)

@@ -239,10 +239,21 @@ const STOP_WORDS = new Set([
 ])
 
 function isUsed(candidate, usedList) {
-  const used = new Set((usedList || []).map(mediaKey))
-  const keys = [mediaKey(candidate), candidate.url, String(candidate.id || '')].filter(Boolean)
+  const used = new Set((usedList || []).map(k => mediaKey(k)).filter(Boolean))
 
-  return keys.some(k => used.has(k) || used.has(mediaKey(k)))
+  if (!candidate) return true
+
+  const keys = []
+
+  if (typeof candidate === 'object') {
+    keys.push(mediaKey(candidate))
+    if (candidate.id != null) keys.push(mediaKey({ id: candidate.id, source: candidate.source || 'img' }))
+    if (candidate.url) keys.push(mediaKey(candidate.url))
+  } else {
+    keys.push(mediaKey(candidate))
+  }
+
+  return keys.filter(Boolean).some(k => used.has(k) || used.has(mediaKey(k)))
 }
 
 export async function fetchPexelsImage(query, { page = 1, perPage = 12 } = {}) {
@@ -756,7 +767,7 @@ export async function fetchYouTubeVideo(query) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const res = await fetch(
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=8&videoEmbeddable=true&key=${process.env.YOUTUBE_API_KEY}`
+        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=15&videoEmbeddable=true&key=${process.env.YOUTUBE_API_KEY}`
       )
 
       if (!res.ok) {
@@ -1108,8 +1119,7 @@ export async function getMediaInstruction(
 
       const isImageSlot = sectionIndex % 2 === 0
 
-      const imageSlotNumber = settings?.heroImage ? Math.floor((sectionIndex - 1) / 2) : Math.floor(sectionIndex / 2)
-
+      const imageSlotNumber = Math.floor(sectionIndex / 2)
       const videoSlotNumber = Math.floor(sectionIndex / 2)
 
       const canHaveImage = isImageSlot && imageSlotNumber < maxImageSlots
@@ -1181,7 +1191,13 @@ export async function getMediaInstruction(
           })
           unused.sort((a, b) => b.score - a.score)
 
-          return unused.find(c => c.score >= MIN_ACCEPT) || null
+          const eligible = unused.filter(c => c.score >= MIN_ACCEPT)
+
+          if (!eligible.length) return null
+
+          const idx = ((imageSlotNumber % eligible.length) + eligible.length) % eligible.length
+
+          return eligible[idx]
         }
 
         if (smartImageData.isRealisticStockPhoto && smartImageData.stockSearchQuery) {
@@ -1211,7 +1227,7 @@ export async function getMediaInstruction(
         }
 
         if (bestImage) {
-          selectedMediaUrl = mediaKey(bestImage)
+          selectedMediaUrl = bestImage.url
           console.log(
             `[Section Image] ${bestImage.source} id=${bestImage.id} score=${bestImage.score.toFixed(2)} alt="${(bestImage.alt || '').slice(0, 50)}"`
           )
@@ -1231,9 +1247,15 @@ export async function getMediaInstruction(
           const ytVideos = await fetchYouTubeVideo(smartYtQuery)
 
           if (ytVideos && ytVideos.length > 0) {
-            const availableVideos = ytVideos.filter(video => !usedImageUrls.includes(video.id))
+            const availableVideos = ytVideos.filter(
+              video => !isUsed(video.id, usedImageUrls) && !isUsed({ id: video.id, source: 'youtube' }, usedImageUrls)
+            )
 
-            for (const ytVideo of availableVideos) {
+            const start = videoSlotNumber % Math.max(availableVideos.length, 1)
+
+            const ordered = [...availableVideos.slice(start), ...availableVideos.slice(0, start)]
+
+            for (const ytVideo of ordered) {
               const videoUrl = `https://www.youtube.com/watch?v=${ytVideo.id}`
               const isAvailable = await isYouTubeVideoAvailable(videoUrl)
 
@@ -1258,7 +1280,12 @@ export async function getMediaInstruction(
       mediaInstruction,
       assignedMediaElement,
       mediaUrl: selectedMediaUrl,
-      mediaId: selectedMediaUrl
+      mediaId:
+        selectedMediaUrl && typeof selectedMediaUrl === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(selectedMediaUrl)
+          ? mediaKey({ id: selectedMediaUrl, source: 'youtube' })
+          : selectedMediaUrl
+            ? mediaKey(selectedMediaUrl)
+            : null
     }
   } catch (err) {
     console.error('[getMediaInstruction] Non-fatal media failure:', err?.message || err)

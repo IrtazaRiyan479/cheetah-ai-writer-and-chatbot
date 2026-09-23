@@ -89,10 +89,8 @@ function failedSectionHtml(index, heading, { showHeading = true } = {}) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
 
-  // TipTap strips plain <button> unless RetrySectionButton is in the schema
   const retryBtn = `<button type="button" data-retry-section="${index}" class="retry-section-btn" title="Retry this section" contenteditable="false"></button>`
 
-  // Same visual as before: heading left, purple icon button right, yellow banner under
   const headingRow = showHeading
     ? `<h2 data-failed-heading="${index}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:40px;margin-bottom:8px;font-size:1.5rem;font-weight:700;color:rgba(38,43,67,0.9);line-height:1.3;">${safeHeading}${retryBtn}</h2>`
     : `<p data-failed-section="${index}" style="display:flex;justify-content:flex-end;margin:16px 0 8px;">${retryBtn}</p>`
@@ -396,7 +394,6 @@ const VideoExtension = Node.create({
   }
 })
 
-// Keeps purple retry icon button — TipTap strips unknown <button> tags without this
 const RetrySectionButton = Node.create({
   name: 'retrySectionButton',
   group: 'inline',
@@ -702,9 +699,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
 
-        // To delete specific files
-        // body: JSON.stringify({ fileUrls: uploadedUrls })
-
         body: JSON.stringify({ clearAll: true })
       })
       console.log('Cleanup complete: Uploaded media removed.')
@@ -952,6 +946,10 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
       if (settings.heroImage) {
         trackedImages.push(settings.heroImage)
+
+        if (settings.heroImageId != null) {
+          trackedImages.push(mediaKey({ id: settings.heroImageId, source: settings.heroImageSource || 'img' }))
+        }
       }
 
       let trackedExternalLinks = []
@@ -970,7 +968,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       })
 
       const processAndInsertSection = (i, group, data) => {
-        // Fail first — same failed UI + purple retry button (do not insert a bare heading)
         if (!data || !data.success || !data?.text || data.text.trim().length < 30) {
           editor
             .chain()
@@ -1005,11 +1002,33 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           }
         }
 
-        // Identical conversion path for generate + retry
         editor.chain().focus('end').insertContent(sectionTextToHtml(finalSectionText)).run()
 
-        if (data.mediaHtml && (i !== 0 || !['blog', 'listicle'].includes(settings.type))) {
-          editor.chain().focus('end').insertContent(data.mediaHtml).run()
+        let mediaHtml = data.mediaHtml || ''
+
+        const skipMediaForHeroIntro = i === 0 && !!settings.heroImage
+
+        if (mediaHtml && !skipMediaForHeroIntro) {
+          const candidateKeys = [data.mediaUrl, data.mediaId].filter(Boolean).flatMap(v => {
+            const keys = [mediaKey(v)]
+
+            if (/^[a-zA-Z0-9_-]{11}$/.test(String(v))) {
+              keys.push(mediaKey({ id: v, source: 'youtube' }))
+            }
+
+            return keys
+          })
+
+          const alreadyUsed = candidateKeys.some(k => liveUsedMedia.has(k))
+
+          if (alreadyUsed) {
+            mediaHtml = ''
+          } else {
+            candidateKeys.forEach(k => {
+              if (k) liveUsedMedia.add(k)
+            })
+            editor.chain().focus('end').insertContent(mediaHtml).run()
+          }
         }
       }
 
@@ -1181,7 +1200,15 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       const resultsBuffer = new Array(groupedSections.length).fill(null)
       let nextInsertIdx = 0
 
-      const liveUsedMedia = new Set([settings.heroImage, ...(trackedImages || [])].filter(Boolean).map(mediaKey))
+      const liveUsedMedia = new Set((settings.usedImageUrls || []).map(mediaKey).filter(Boolean))
+
+      if (settings.heroImage) {
+        liveUsedMedia.add(mediaKey(settings.heroImage))
+
+        if (settings.heroImageId != null) {
+          liveUsedMedia.add(mediaKey({ id: settings.heroImageId, source: settings.heroImageSource || 'img' }))
+        }
+      }
 
       genContextRef.current = {
         groupedSections,
@@ -1224,21 +1251,14 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           } else {
             processAndInsertSection(i, group, data)
 
-            if (data?.mediaUrl) {
-              const key = mediaKey(data.mediaUrl)
-
-              liveUsedMedia.add(key)
-              trackedImages.push(key)
-            }
-
-            if (data?.mediaId) liveUsedMedia.add(mediaKey(data.mediaId))
+            if (data?.mediaUrl) trackedImages.push(mediaKey(data.mediaUrl))
+            if (data?.mediaId) trackedImages.push(mediaKey(data.mediaId))
             if (data?.internalLinkUrl) trackedInternalLinks.push(data.internalLinkUrl)
           }
 
           nextInsertIdx++
         }
 
-        // Progress label = next section waiting to appear (not the last worker that started)
         if (nextInsertIdx < groupedSections.length) {
           setCurrentIndex(groupedSections[nextInsertIdx].originalIndex)
         }
@@ -1304,7 +1324,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         throw lastErr || new Error('Generation failed after retries')
       }
 
-      // Worker pool — only CONCURRENCY in flight at once
       let cursor = 0
 
       const workers = Array.from({ length: Math.min(CONCURRENCY, groupedSections.length) }, async () => {
@@ -1329,11 +1348,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
           const usedSnapshot = Array.from(liveUsedMedia)
 
-          // Do NOT setCurrentIndex here — workers finish out of order and would jump the UI
-          // to the last section. Progress is driven only from tryFlush (in-order).
-
-          // Status banner only — never call upsertWaitInEditor / setContent from workers.
-          // Concurrent setContent races wipe sections that already flushed.
           const setWait = msg => {
             setWaitBanner(msg)
           }
@@ -1381,22 +1395,12 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
             if (isCancelled) return
 
-            if (data?.mediaUrl) {
-              const key = mediaKey(data.mediaUrl)
-
-              liveUsedMedia.add(key)
-              trackedImages.push(key)
-            }
-
-            if (data?.mediaId) liveUsedMedia.add(mediaKey(data.mediaId))
-
             resultsBuffer[i] = { i, group, data, error: null }
           } catch (error) {
             if (isCancelled) return
             resultsBuffer[i] = { i, group, data: null, error }
           }
 
-          // Insert every consecutive finished section immediately (in outline order)
           tryFlush()
         }
       })
@@ -1500,7 +1504,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       btn.style.opacity = '0.72'
       btn.style.cursor = 'wait'
 
-      // Do NOT use textContent — that destroyed the icon and left plain "Retry" text
       btn.innerHTML = '<span style="font-size:16px;font-weight:800;line-height:1;pointer-events:none;">…</span>'
     }
 
@@ -1570,7 +1573,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         return
       }
 
-      // Same layout pipeline as initial generation
       const tag = group.h2?.type === 'h3' ? 'h3' : 'h2'
 
       const headingHtml =
@@ -1581,26 +1583,48 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
               .replace(/>/g, '&gt;')}</${tag}>`
           : ''
 
-      const bodyHtml = sectionTextToHtml(data.text) + (data.mediaHtml || '')
+      let mediaHtml = data.mediaHtml || ''
+      const mediaKeysToAdd = []
+
+      const candidateKeys = [data.mediaUrl, data.mediaId].filter(Boolean).flatMap(v => {
+        const keys = [mediaKey(v)]
+
+        if (/^[a-zA-Z0-9_-]{11}$/.test(String(v))) {
+          keys.push(mediaKey({ id: v, source: 'youtube' }))
+        }
+
+        return keys
+      })
+
+      const alreadyUsed = candidateKeys.some(k => ctx.liveUsedMedia.has(k))
+
+      if (alreadyUsed) {
+        mediaHtml = ''
+      } else {
+        candidateKeys.forEach(k => {
+          if (k) {
+            ctx.liveUsedMedia.add(k)
+            mediaKeysToAdd.push(k)
+          }
+        })
+      }
+
+      const bodyHtml = sectionTextToHtml(data.text) + mediaHtml
       const replacement = headingHtml + bodyHtml
 
-      // Replace failed block IN PLACE so section order stays correct
       let html = editor.getHTML()
 
       const patterns = [
-        // current failed UI: h2[data-failed-heading] + yellow banner
         new RegExp(
           `<h2[^>]*data-failed-heading="${index}"[^>]*>[\\s\\S]*?<\\/h2>\\s*<p[^>]*(?:data-failed-section="${index}"|failed-section-${index})[^>]*>[\\s\\S]*?<\\/p>`,
           'i'
         ),
 
-        // legacy div wrapper + banner
         new RegExp(
           `<div[^>]*data-failed-section="${index}"[^>]*>[\\s\\S]*?<\\/div>\\s*<p[^>]*(?:data-failed-section="${index}"|failed-section-${index})[^>]*>[\\s\\S]*?<\\/p>`,
           'i'
         ),
 
-        // banner only (and any leftover retry button)
         new RegExp(
           `(?:<button[^>]*data-retry-section="${index}"[^>]*>[\\s\\S]*?<\\/button>\\s*)?<p[^>]*(?:data-failed-section="${index}"|failed-section-${index})[^>]*>[\\s\\S]*?<\\/p>`,
           'i'
@@ -1623,7 +1647,14 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         editor.chain().focus('end').insertContent(replacement).run()
       }
 
-      if (data.mediaUrl) ctx.liveUsedMedia.add(mediaKey(data.mediaUrl))
+      if (data.mediaUrl) {
+        ctx.liveUsedMedia.add(mediaKey(data.mediaUrl))
+
+        if (/^[a-zA-Z0-9_-]{11}$/.test(String(data.mediaUrl))) {
+          ctx.liveUsedMedia.add(mediaKey({ id: data.mediaUrl, source: 'youtube' }))
+        }
+      }
+
       if (data.mediaId) ctx.liveUsedMedia.add(mediaKey(data.mediaId))
       if (data.internalLinkUrl) ctx.trackedInternalLinks.push(data.internalLinkUrl)
       setWaitBanner('')

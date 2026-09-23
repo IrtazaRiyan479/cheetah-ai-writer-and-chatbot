@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+
 import Grid from '@mui/material/Grid'
 import Container from '@mui/material/Container'
 
@@ -76,11 +77,11 @@ const AffiGenieWriter = () => {
       if (Array.isArray(data)) {
         setPresets(data)
       } else {
-        console.error("API did not return an array:", data)
+        console.error('API did not return an array:', data)
         setPresets([])
       }
     } catch (error) {
-      console.error("Failed to fetch presets:", error)
+      console.error('Failed to fetch presets:', error)
       setPresets([])
     }
   }
@@ -93,27 +94,33 @@ const AffiGenieWriter = () => {
     setSettings(prev => ({ ...prev, [key]: value }))
   }
 
-
-  const handleLoadPreset = (presetId) => {
+  const handleLoadPreset = presetId => {
     setSelectedPresetId(presetId)
+
     if (presetId === 'default') {
       setSettings(defaultSettings)
+
       return
     }
+
     const preset = presets.find(p => p.id === presetId)
+
     if (preset) {
       setSettings({ ...JSON.parse(preset.settings), targetKeyword: '' })
     }
   }
 
-  const handleCreatePreset = async (name) => {
+  const handleCreatePreset = async name => {
     const { targetKeyword, ...settingsToSave } = settings
+
     const res = await fetch('/api/presets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, settings: settingsToSave })
     })
+
     const newPreset = await res.json()
+
     setPresets(prev => [...prev, newPreset])
     setSelectedPresetId(newPreset.id)
   }
@@ -121,12 +128,13 @@ const AffiGenieWriter = () => {
   const handleUpdatePreset = async () => {
     if (selectedPresetId === 'default') return
     const { targetKeyword, ...settingsToSave } = settings
+
     await fetch('/api/presets', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: selectedPresetId, settings: settingsToSave })
     })
-    alert("Preset saved successfully!")
+    alert('Preset saved successfully!')
   }
 
   const handleDeletePreset = async () => {
@@ -143,53 +151,54 @@ const AffiGenieWriter = () => {
   return (
     <Container maxWidth='md' className='p-0'>
       {step === 0 && (
-      <Grid container spacing={6}>
-        <Grid size={{ xs: 12 }}><WriterIntro /></Grid>
+        <Grid container spacing={6}>
+          <Grid size={{ xs: 12 }}>
+            <WriterIntro />
+          </Grid>
 
-        <Grid size={{ xs: 12 }}>
-          {/* Pass the state and functions to Pricing to power the UI */}
-          <WriterHeader
-            settings={settings}
-            updateSetting={updateSetting}
-            presets={presets}
-            selectedPresetId={selectedPresetId}
-            onLoadPreset={handleLoadPreset}
-            onCreatePreset={handleCreatePreset}
-            onUpdatePreset={handleUpdatePreset}
-            onDeletePreset={handleDeletePreset}
-          />
-        </Grid>
+          <Grid size={{ xs: 12 }}>
+            {/* Pass the state and functions to Pricing to power the UI */}
+            <WriterHeader
+              settings={settings}
+              updateSetting={updateSetting}
+              presets={presets}
+              selectedPresetId={selectedPresetId}
+              onLoadPreset={handleLoadPreset}
+              onCreatePreset={handleCreatePreset}
+              onUpdatePreset={handleUpdatePreset}
+              onDeletePreset={handleDeletePreset}
+            />
+          </Grid>
 
-        <Grid size={{ xs: 12 }}>
-          <ArticleTypeMenu
-            selectedType={settings.type}
-            setSelectedType={(val) => {
-      setSettings((prev) => ({
-        ...defaultSettings,
-        model: prev.model,
-        type: val
-      }))
-    }}
-          />
-        </Grid>
+          <Grid size={{ xs: 12 }}>
+            <ArticleTypeMenu
+              selectedType={settings.type}
+              setSelectedType={val => {
+                setSettings(prev => ({
+                  ...defaultSettings,
+                  model: prev.model,
+                  type: val
+                }))
+              }}
+            />
+          </Grid>
 
-        <Grid size={{ xs: 12 }}>
-          <WriterPage
-            settings={settings}
-            updateSetting={updateSetting}
-            setStep={setStep}
-            setOutline={setOutline}
-          />
+          <Grid size={{ xs: 12 }}>
+            <WriterPage settings={settings} updateSetting={updateSetting} setStep={setStep} setOutline={setOutline} />
+          </Grid>
         </Grid>
-      </Grid>
       )}
 
-      {step === 1 && (
-        <OutlineEditor settings={settings} setStep={setStep} outline={outline} setOutline={setOutline} />
-      )}
+      {step === 1 && <OutlineEditor settings={settings} setStep={setStep} outline={outline} setOutline={setOutline} />}
 
       {step === 2 && (
-        <ArticleEditor settings={settings} setSettings={setSettings} setStep={setStep} outline={outline} setOutline={setOutline}/>
+        <ArticleEditor
+          settings={settings}
+          setSettings={setSettings}
+          setStep={setStep}
+          outline={outline}
+          setOutline={setOutline}
+        />
       )}
     </Container>
   )

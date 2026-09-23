@@ -169,6 +169,8 @@ export async function generateStandardBlogOutline(body, genAI) {
 
   let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url)
   let heroImageUrl = ''
+  let heroImageId = null
+  let heroImageSource = null
   let fallbackToAiImageTag = false
   let scoredCandidates = []
 
@@ -185,6 +187,8 @@ export async function generateStandardBlogOutline(body, genAI) {
 
     if (best && best.score >= MIN_HERO) {
       heroImageUrl = best.url
+      heroImageId = best.id ?? null
+      heroImageSource = best.source || null
       console.log(
         `[Hero Image] Selected ${best.source} score=${best.score.toFixed(2)} alt="${(best.alt || '').slice(0, 60)}"`
       )
@@ -221,6 +225,8 @@ export async function generateStandardBlogOutline(body, genAI) {
     outline: parsedData.outline,
     externalLinks: fetchedExternalLinks,
     heroImage: heroImageUrl,
+    heroImageId,
+    heroImageSource,
     metaTitle: parsedData.metaTitle,
     metaDescription: parsedData.metaDescription
   }
