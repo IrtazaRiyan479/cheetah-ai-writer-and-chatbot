@@ -36,29 +36,29 @@ const Layout = async props => {
 
   return (
     <Providers direction={direction}>
-      <AuthGuard locale={lang}>
-        <LayoutWrapper
-          systemMode={systemMode}
-          verticalLayout={
-            <VerticalLayout
-              navigation={<Navigation dictionary={dictionary} mode={mode} />}
-              navbar={<Navbar />}
-              footer={<ConditionalFooter>
-                  <VerticalFooter />
-                </ConditionalFooter>}
-            >
-              {children}
-            </VerticalLayout>
-          }        />
-        <ScrollToTop className='mui-fixed'>
-          <Button
-            variant='contained'
-            className='is-10 bs-10 rounded-full p-0 min-is-0 flex items-center justify-center'
+      {/* <AuthGuard locale={lang}> */}
+      <LayoutWrapper
+        systemMode={systemMode}
+        verticalLayout={
+          <VerticalLayout
+            navigation={<Navigation dictionary={dictionary} mode={mode} />}
+            navbar={<Navbar />}
+            footer={
+              <ConditionalFooter>
+                <VerticalFooter />
+              </ConditionalFooter>
+            }
           >
-            <i className='ri-arrow-up-line' />
-          </Button>
-        </ScrollToTop>
-      </AuthGuard>
+            {children}
+          </VerticalLayout>
+        }
+      />
+      <ScrollToTop className='mui-fixed'>
+        <Button variant='contained' className='is-10 bs-10 rounded-full p-0 min-is-0 flex items-center justify-center'>
+          <i className='ri-arrow-up-line' />
+        </Button>
+      </ScrollToTop>
+      {/* </AuthGuard> */}
     </Providers>
   )
 }
