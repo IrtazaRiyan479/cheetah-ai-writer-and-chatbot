@@ -33,6 +33,9 @@ import TaskItem from '@tiptap/extension-task-item'
 import { styled } from '@mui/material/styles'
 import LinearProgress, { linearProgressClasses } from '@mui/material/LinearProgress'
 
+import { serializeError } from '@/utils/serializeError'
+import { finalizeArticleHtml, getAffigenieArticleCss, prepareArticleHtml } from '@/app/api/generate/utils/articleHtml'
+
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
@@ -100,7 +103,7 @@ function failedSectionHtml(index, heading, { showHeading = true } = {}) {
 }
 
 /** Same markdown → HTML pipeline used during initial generation (tables, lists, links, etc.) */
-function sectionTextToHtml(finalSectionText) {
+function sectionTextToHtml(finalSectionText, language) {
   let cleanMd = String(finalSectionText || '')
     .replace(/^##\s+.*$/gm, '')
     .trim()
@@ -177,19 +180,21 @@ function sectionTextToHtml(finalSectionText) {
   )
   cleanMd = cleanMd.replace(/~~(.*?)~~/g, '<s>$1</s>')
 
-  cleanMd = cleanMd.replace(/(<(ul|ol|table|blockquote|pre|hr|h[1-6]|img))/g, '\n\n$1')
+  cleanMd = cleanMd.replace(/(<(ul|ol|table|blockquote|pre|hr|h[1-6]|img|div))/g, '\n\n$1')
   cleanMd = cleanMd.replace(/(<\/(ul|ol|table|blockquote|pre|h[1-6])>)/g, '$1\n\n')
 
-  return cleanMd
+  const html = cleanMd
     .split(/\n\n+/)
     .map(block => {
       block = block.trim()
       if (!block) return ''
-      if (block.match(/^(<h|<ul|<ol|<blockquote|<pre|<table|<hr|<img)/)) return block
+      if (block.match(/^(<h|<ul|<ol|<blockquote|<pre|<table|<hr|<img|<div)/)) return block
 
       return `<p>${block.replace(/\n/g, '<br/>')}</p>`
     })
     .join('')
+
+  return prepareArticleHtml(html, { language })
 }
 
 function upsertWaitInEditor(editor, index, text) {
@@ -487,6 +492,15 @@ const GlobalAttributes = Extension.create({
               if (!attributes['data-failed-heading']) return {}
 
               return { 'data-failed-heading': attributes['data-failed-heading'] }
+            }
+          },
+          'data-label': {
+            default: null,
+            parseHTML: element => element.getAttribute('data-label'),
+            renderHTML: attributes => {
+              if (!attributes['data-label']) return {}
+
+              return { 'data-label': attributes['data-label'] }
             }
           },
           style: {
@@ -806,6 +820,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         siteId: !isCustom && !isDbSaved ? activeSiteId : null,
         customSite: isCustom || isDbSaved ? activeCustomData : null,
         featuredImageUrl: finalHeroImage,
+        language: settings.language,
         metaTitle: metaTitle,
         metaDescription: metaDescription
       }
@@ -868,7 +883,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       if (data.success) {
         setPublishSuccessData({ type: 'draft-success' })
       } else {
-        alert('Error saving draft: ' + data.error)
+        alert('Error saving draft: ' + serializeError(data.error))
       }
     } catch (error) {
       console.error(error)
@@ -1002,7 +1017,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           }
         }
 
-        editor.chain().focus('end').insertContent(sectionTextToHtml(finalSectionText)).run()
+        editor.chain().focus('end').insertContent(sectionTextToHtml(finalSectionText, settings.language)).run()
 
         let mediaHtml = data.mediaHtml || ''
 
@@ -1107,7 +1122,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
             }
 
             if (!res.ok || !data?.success) {
-              throw new Error(data?.error || `HTTP ${res.status}`)
+              throw new Error(serializeError(data?.error || data) || `HTTP ${res.status}`)
             }
 
             if (data.success) {
@@ -1220,7 +1235,29 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         trackedExternalLinks
       }
 
-      const CONCURRENCY = 999
+      let shared = null
+
+      try {
+        const prepStarted = Date.now()
+        const prepRes = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: abortControllerRef.current?.signal,
+          body: JSON.stringify({
+            mode: 'prepare',
+            settings,
+            targetKeyword: settings.targetKeyword
+          })
+        })
+        const prep = await prepRes.json()
+
+        if (prep?.success) shared = prep.shared
+        console.info(`[writer] prepare ms=${Date.now() - prepStarted}`)
+      } catch (error) {
+        if (error?.name === 'AbortError') return
+      }
+
+      const CONCURRENCY = 3
 
       const tryFlush = () => {
         while (nextInsertIdx < groupedSections.length && resultsBuffer[nextInsertIdx] !== null) {
@@ -1275,7 +1312,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       const sleep = ms => new Promise(r => setTimeout(r, ms))
 
       const fetchWithRetry = async (url, options, { onRetry } = {}) => {
-        const delaysSec = [5, 10, 20]
+        const delaysSec = [8]
         const SECTION_TIMEOUT_MS = 90_000
 
         let lastErr = null
@@ -1307,7 +1344,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
             if (data?.skipped) return data
             if (res.ok) return data
 
-            lastErr = new Error(data?.error || `HTTP ${res.status}`)
+            lastErr = new Error(serializeError(data?.error || data) || `HTTP ${res.status}`)
           } catch (e) {
             if (e?.name === 'AbortError' && options.signal?.aborted) throw e
             lastErr = e?.name === 'AbortError' ? new Error('Section timed out after 90s') : e
@@ -1387,7 +1424,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                   improveReadability: settings.improveReadability,
                   uploadedMedia: settings.uploadedMedia,
                   usedImageUrls: usedSnapshot,
-                  usedInternalLinks: trackedInternalLinks
+                  usedInternalLinks: trackedInternalLinks,
+                  shared
                 })
               },
               { onRetry: setWait }
@@ -1609,7 +1647,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         })
       }
 
-      const bodyHtml = sectionTextToHtml(data.text) + mediaHtml
+      const bodyHtml = sectionTextToHtml(data.text, ctx.settings?.language) + mediaHtml
       const replacement = headingHtml + bodyHtml
 
       let html = editor.getHTML()
@@ -1710,11 +1748,13 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
     const currentHtml = editor.getHTML()
     const fileNameBase = (settings.generatedTitle || 'article').replace(/[^a-z0-9]/gi, ' ').toLowerCase()
 
+    const exportHtml = finalizeArticleHtml(currentHtml, { language: settings.language })
+
     if (action === 'copy-html') {
-      handleCopyClipboard(currentHtml)
+      handleCopyClipboard(exportHtml)
     } else if (action === 'download-html') {
       handleDownloadFile(
-        currentHtml,
+        exportHtml,
         `${fileNameBase
           .split(' ')
           .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -1851,6 +1891,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                   justify-content: space-between;
                   gap: 12px;
                 }
+                ${getAffigenieArticleCss()}
               `}</style>
               <EditorContent editor={editor} />
 

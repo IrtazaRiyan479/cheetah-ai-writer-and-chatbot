@@ -14,6 +14,8 @@ import CircularProgress from '@mui/material/CircularProgress'
 
 import { toast } from 'react-toastify'
 
+import { serializeError } from '@/utils/serializeError'
+
 import BlogFields from './fields/BlogFields'
 import ListicleFields from './fields/ListicleFields'
 import AmazonRoundupFields from './fields/AmazonRoundupFields'
@@ -35,7 +37,9 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
     'amazon-review': AmazonReviewFields,
     'youtube-blog': YoutubeBlogFields,
     'local-roundup': LocalRoundupFields,
-    rewrite: RewriteFields
+    rewrite: RewriteFields,
+    'amazon-roundup-rewrite': RewriteFields,
+    'amazon-review-rewrite': RewriteFields
   }
 
   const ActiveFields = ComponentMap[settings.type] || BlogFields
@@ -57,6 +61,16 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
       } else if (settings.type === 'amazon-roundup') {
         if (!settings.amazonSearchUrl) {
           toast.error('Please provide either an Amazon Search URL or a Target Keyword.')
+
+          return
+        }
+      } else if (
+        settings.type === 'rewrite' ||
+        settings.type === 'amazon-roundup-rewrite' ||
+        settings.type === 'amazon-review-rewrite'
+      ) {
+        if (!settings.articleUrlToRewrite) {
+          toast.error('Please provide an article URL to rewrite.')
 
           return
         }
@@ -124,11 +138,11 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
           setStep(2)
         }
       } else {
-        throw new Error(data.error)
+        throw new Error(serializeError(data?.error || data))
       }
     } catch (error) {
-      console.error('Error generating outline:', error)
-      const msg = String(error?.message || error)
+      console.error('Error generating outline:', serializeError(error))
+      const msg = serializeError(error)
 
       if (/RATE_LIMIT|429|quota|resource.?exhausted/i.test(msg)) {
         toast.error('Gemini free rate limit hit. Wait ~60s, or reduce concurrent usage. Outline was not generated.', {
@@ -198,6 +212,31 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
             ) : (
               'Create Article'
             )}
+          </Button>
+          <Button
+            variant='outlined'
+            disabled={isGenerating}
+            onClick={async () => {
+              const lines = window.prompt('Pro/admin batch: one keyword per line')
+
+              if (!lines) return
+              const articles = lines
+                .split('\n')
+                .map(keyword => keyword.trim())
+                .filter(Boolean)
+                .map(keyword => ({ settings: { ...settings, targetKeyword: keyword } }))
+              const res = await fetch('/api/generate/batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ articles })
+              })
+              const data = await res.json()
+
+              if (!data.success) toast.error(serializeError(data.error))
+              else toast.success(`Batch ${data.batch.status}: ${data.batch.nextIndex}/${data.batch.total}`)
+            }}
+          >
+            Batch
           </Button>
         </div>
       </CardContent>

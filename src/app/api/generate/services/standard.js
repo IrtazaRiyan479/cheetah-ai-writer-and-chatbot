@@ -201,22 +201,9 @@ export async function generateStandardBlogOutline(body, genAI) {
   }
 
   if (fallbackToAiImageTag) {
-    const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : ''
-
-    try {
-      const fallbackImage = await generateFallbackImage(
-        `High quality photorealistic landscape photograph of ${targetKeyword}, subject clearly visible, no text, no watermark`
-      )
-
-      if (fallbackImage && fallbackImage.url) {
-        heroImageUrl = fallbackImage.url
-      }
-    } catch (error) {
-      heroImageUrl = safetyBackup
-      console.log(`[Hero Image] AI Fallback failed to generate a URL.`)
-    }
-
-    console.log(`[Hero Image] AI Generation Result: ${heroImageUrl ? 'Success' : 'Failed - Using Safety Backup'}`)
+    heroImageUrl = ''
+    heroImageId = null
+    heroImageSource = null
   }
 
   return {

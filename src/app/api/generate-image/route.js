@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
-
+import { getServerSession } from 'next-auth'
 import { PrismaClient } from '@prisma/client'
+
+import { authOptions } from '@/libs/auth'
+import { assertCanGenerate } from '@/libs/entitlement'
 
 const prisma = global.prisma || new PrismaClient()
 
@@ -29,6 +32,16 @@ export async function DELETE() {
 }
 
 export async function POST(req) {
+  const session = await getServerSession(authOptions)
+  const gate = await assertCanGenerate({
+    userId: session?.user?.id,
+    email: session?.user?.email,
+    featureKey: 'image-standalone',
+    estimatedWords: 0
+  })
+
+  if (!gate.ok) return NextResponse.json({ success: false, error: gate.error }, { status: gate.status })
+
   const body = await req.json()
   const { prompt, model, style, size, numImages, lossless, uploadedImage } = body
 
@@ -95,7 +108,7 @@ export async function POST(req) {
 
         if (!finalPrompt) throw new Error('A prompt or an uploaded image is required.')
         if (lossless) finalPrompt = `${finalPrompt}, 8k resolution, ultra-crisp, uncompressed style`
-        finalPrompt = `${style} style. ${finalPrompt}`
+        finalPrompt = `${style} style. ${finalPrompt}. Show only the requested subject. Do not add flowers, mountains, landscapes, abstract backgrounds, or unrelated scenes. Do not draw words or titles.`
 
         const initPayload = JSON.stringify({
           status: 'processing',

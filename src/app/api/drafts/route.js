@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { getServerSession } from "next-auth/next";
 import { authOptions } from '@/libs/auth'
+import { recordSavedWords } from '@/libs/entitlement'
 
 const prisma = new PrismaClient();
 
@@ -59,6 +60,8 @@ export async function POST(request) {
         targetSite: targetSite || null,
       }
     });
+
+    await recordSavedWords(user.id, content || '')
 
     return NextResponse.json({ success: true, article: newArticle });
   } catch (error) {

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 
+import { serializeError } from '@/utils/serializeError'
+
 import { callMistral } from '../generate/utils/lightLLM'
 
 export async function POST(request) {
@@ -22,6 +24,6 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true, provider: 'mistral', text })
   } catch (e) {
-    return NextResponse.json({ success: false, error: e.message || 'Mistral error' }, { status: 500 })
+    return NextResponse.json({ success: false, error: serializeError(e) }, { status: 500 })
   }
 }

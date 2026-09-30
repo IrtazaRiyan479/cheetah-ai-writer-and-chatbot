@@ -436,8 +436,154 @@ JSON: {"isRealisticStockPhoto":true,"stockSearchQuery":"3-6 words","aiGeneration
   return visualFallback()
 }
 
+const GENERIC_IMAGE_WORDS = ['nature', 'flower', 'flowers', 'succulent', 'landscape', 'mountain', 'mountains', 'background', 'abstract', 'wallpaper', 'scenery', 'sunset']
+
+export function buildSubjectQuery(title, keyword) {
+  const stop = new Set(['the', 'and', 'for', 'with', 'from', 'your', 'best', 'top', 'how', 'what', 'why', 'guide', 'review', 'reviews'])
+  const tokens = `${keyword || ''} ${title || ''}`
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(word => word.length > 2 && !stop.has(word))
+
+  return [...new Set(tokens)].slice(0, 6).join(' ')
+}
+
+function isIrrelevantImage(image, query) {
+  const alt = `${image?.alt || ''} ${image?.tags || ''}`.toLowerCase()
+  const queryTokens = String(query || '').toLowerCase().split(/\s+/).filter(word => word.length > 2)
+  const overlap = queryTokens.filter(word => alt.includes(word))
+  const banned = GENERIC_IMAGE_WORDS.filter(word => alt.includes(word))
+  const queryAllowsBanned = banned.some(word => queryTokens.includes(word))
+
+  if (!overlap.length) return true
+  if (banned.length && !queryAllowsBanned) return true
+
+  return false
+}
+
+export async function pickRelevantImages(title, keyword, count = 4) {
+  const query = buildSubjectQuery(title, keyword)
+
+  if (!query) return []
+
+  const [pexels, pixabay, unsplash] = await Promise.all([
+    fetchPexelsImage(query, { perPage: 12 }),
+    fetchPixabayImage(query, { perPage: 12 }),
+    fetchUnsplashImage(query, { perPage: 12 })
+  ])
+
+  const seen = new Set()
+  const picked = []
+
+  for (const list of [pexels, pixabay, unsplash]) {
+    const ranked = (list || [])
+      .filter(image => image?.url && !seen.has(image.url) && !isIrrelevantImage(image, query))
+      .map(image => ({ ...image, score: calculateRelevanceScore(image.alt || image.tags || '', query, keyword) }))
+      .filter(image => image.score >= 3)
+      .sort((a, b) => b.score - a.score)
+
+    for (const image of ranked) {
+      if (picked.length >= count) break
+      seen.add(image.url)
+      picked.push(image)
+    }
+  }
+
+  return picked
+}
+
+function siteLabel(settings = {}) {
+  const raw = settings.siteName || settings.clientSite || settings.website || settings.targetSite || ''
+  const host = String(raw).replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '')
+  const name = host.replace(/\.[a-z]{2,}$/i, '').replace(/[-_]/g, ' ').trim()
+
+  return name ? name.replace(/\b\w/g, char => char.toUpperCase()) : 'AffiGenie'
+}
+
+function heroSvg(title, siteName, hasPhoto) {
+  const xml = value => String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  let font = 58
+  let lines = []
+
+  while (font >= 28) {
+    const max = Math.max(14, Math.floor(1000 / (font * 0.52)))
+    const words = String(title || 'Article').split(/\s+/)
+    lines = []
+    let line = ''
+
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word
+
+      if (next.length > max && line) {
+        lines.push(line)
+        line = word
+      } else {
+        line = next
+      }
+    }
+
+    if (line) lines.push(line)
+    if (lines.length <= 4) break
+    font -= 4
+  }
+
+  lines = lines.slice(0, 4)
+  const startY = 250 - ((lines.length - 1) * font) / 2
+  const text = lines.map((line, index) => `<tspan x="80" dy="${index === 0 ? 0 : font + 8}">${xml(line)}</tspan>`).join('')
+  const underlineY = startY + lines.length * (font + 6)
+
+  return `<svg width="1200" height="675" xmlns="http://www.w3.org/2000/svg">
+    ${hasPhoto ? '<rect width="1200" height="675" fill="rgba(15,23,42,0.55)"/>' : '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1e3a8a"/><stop offset="1" stop-color="#4f46e5"/></linearGradient></defs><rect width="1200" height="675" fill="url(#g)"/>'}
+    <text x="80" y="${startY}" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="${font}" font-weight="700">${text}</text>
+    <line x1="80" y1="${underlineY}" x2="420" y2="${underlineY}" stroke="#ffffff" stroke-width="4"/>
+    <text x="80" y="620" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="28">${xml(siteName)}</text>
+  </svg>`
+}
+
+export async function buildBrandedHero({ title, siteName, backgroundUrl }) {
+  const svg = Buffer.from(heroSvg(title, siteName, Boolean(backgroundUrl)))
+  const sharp = (await import('sharp')).default
+  let base = sharp({ create: { width: 1200, height: 675, channels: 3, background: '#1e3a8a' } })
+
+  if (backgroundUrl && !String(backgroundUrl).startsWith('data:')) {
+    const res = await fetch(backgroundUrl)
+
+    if (res.ok) {
+      base = sharp(Buffer.from(await res.arrayBuffer())).resize(1200, 675, { fit: 'cover' })
+    }
+  }
+
+  const png = await base.composite([{ input: svg, top: 0, left: 0 }]).png().toBuffer()
+
+  return `data:image/png;base64,${png.toString('base64')}`
+}
+
+export async function attachBrandedHero(result, settings = {}) {
+  if (!result?.success) return result
+
+  const title = result.title || settings.targetKeyword || 'Article'
+  const photo = (await pickRelevantImages(title, settings.targetKeyword || title, 1))[0]
+  let heroImage = ''
+
+  try {
+    heroImage = await buildBrandedHero({ title, siteName: siteLabel(settings), backgroundUrl: photo?.url || '' })
+  } catch (error) {
+    console.error('[hero] branded raster failed', error?.message || error)
+  }
+
+  if (!heroImage) return { ...result, heroImage: '', heroImageId: null, heroImageSource: 'gradient' }
+
+  return { ...result, heroImage, heroImageId: null, heroImageSource: photo ? 'branded-photo' : 'branded-gradient' }
+}
+
 export function calculateRelevanceScore(altText, query, topic) {
+  const haystack = `${altText || ''} ${topic || ''} ${query || ''}`.toLowerCase()
+  const altOnly = String(altText || '').toLowerCase()
+
+  if (GENERIC_IMAGE_WORDS.some(word => altOnly.includes(word) && !`${query || ''} ${topic || ''}`.toLowerCase().includes(word))) return 0
   if (!altText) return 0
+  void haystack
 
   const stopWords = new Set([
     'a',

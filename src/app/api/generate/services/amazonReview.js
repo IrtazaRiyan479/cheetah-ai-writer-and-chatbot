@@ -9,11 +9,13 @@ import {
   getPovInstruction,
   getToneInstruction,
   getBaseSystemInstruction,
-  fetchPeopleAlsoSearchFor
+  fetchPeopleAlsoSearchFor,
+  pickRelevantImages
 } from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
+import { buildCheckPriceButton, resolveAffiliateUrl, withRequiredCheckPrice } from '../utils/articleHtml'
 
 function extractASIN(url) {
   if (!url) return null
@@ -49,18 +51,22 @@ function formatAmazonProducts(apiData, settings) {
 
   if (!rawData.length) return []
 
-  return rawData.map(item => {
-    const ASIN = item.asin || ''
-    let affiliateUrl = new URL(
-      item.detailPageURL ||
-        `https://${settings.amazonDomain || 'www.amazon.com'}/dp/${ASIN}?tag='babiescarrier-20'}&linkCode=osi&th=1&psc=1`
-    )
+  const domain = settings.amazonDomain || 'www.amazon.com'
+  const partnerTag = settings.partnerTag || process.env.AMAZON_PARTNER_TAG || 'babiescarrier-20'
 
-    if (settings.amazonTrackingId) affiliateUrl.searchParams.set('tag', settings.amazonTrackingId)
+  return rawData.map(item => {
+    const asin = item.asin || ''
 
     return {
       productName: item.itemInfo?.title?.displayValue || 'Amazon Product',
-      amazonUrl: affiliateUrl.toString(),
+      asin,
+      amazonUrl: resolveAffiliateUrl({
+        url: item.detailPageURL,
+        asin,
+        domain,
+        partnerTag,
+        forceTag: settings.amazonTrackingId || ''
+      }),
       imageUrl: item.images?.primary?.large?.url || '',
       price: item.offersV2?.listings?.[0]?.price?.displayAmount || 'Check Amazon',
       features: item.itemInfo?.features?.displayValues || []
@@ -402,15 +408,26 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     `
   }
 
-  if (activeSectionType === 'intro') {
+  const priceButton = buildCheckPriceButton(product?.amazonUrl, {
+    language: settings.language,
+    asin: product?.asin,
+    domain: settings.amazonDomain || 'www.amazon.com',
+    partnerTag: settings.amazonTrackingId || settings.partnerTag || process.env.AMAZON_PARTNER_TAG || 'babiescarrier-20'
+  })
+
+  if (activeSectionType === 'intro' && priceButton) {
     sectionPrompt += `
       TASK: Write a highly engaging introduction.
 
       STRICT LAYOUT REQUIREMENT (Image & CTA):
-      Immediately following your introductory text, you MUST insert this EXACT HTML block to display link:
-      <div align="center" style="margin: 25px 0;">
-        <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 8px 16px; border-radius: 4px; display: inline-block;" class="check-price-btn">Check Price on Amazon</a>
+      Immediately following your introductory text, you MUST insert this EXACT HTML block. Do not change the link or the label:
+      <div class="affigenie-cta" style="display:block;width:100%;max-width:100%;text-align:center;margin:25px 0;">
+        ${priceButton}
       </div>
+    `
+  } else if (activeSectionType === 'intro') {
+    sectionPrompt += `
+      TASK: Write a highly engaging introduction.
     `
   } else if (activeSectionType === 'pros_cons') {
     sectionPrompt += `
@@ -420,12 +437,16 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
   } else if (activeSectionType === 'conclusion') {
     sectionPrompt += `
       TASK: Write a compelling conclusion and final verdict.
-      STRICT LAYOUT REQUIREMENT (Final CTA):
-      At the very end of your conclusion, insert this EXACT HTML block:
+      ${
+        priceButton
+          ? `STRICT LAYOUT REQUIREMENT (Final CTA):
+      At the very end of your conclusion, insert this EXACT HTML block. Do not change the link or the label:
 
-      <div align="center" style="margin: 25px 0;">
-       <a href="${product?.amazonUrl || '#'}" target="_blank" rel="sponsored noopener" style="text-decoration: none; background-color: #6366f1; color: #ffffff !important; font-weight: 700; padding: 8px 16px; border-radius: 4px; display: inline-block;" class="check-price-btn">Check Price on Amazon</a>
-      </div>
+      <div class="affigenie-cta" style="display:block;width:100%;max-width:100%;text-align:center;margin:25px 0;">
+        ${priceButton}
+      </div>`
+          : ''
+      }
     `
   } else if (activeSectionType === 'faq') {
     sectionPrompt += `
@@ -478,9 +499,42 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     result = { response: { text: () => alt.text } }
   }
 
+  let text = result.response.text()
+  const firstFeature = (outlineContext || []).find(section => section.sectionType === 'features')
+
+  const headingText = String(heading || '')
+  const featureText = String(firstFeature?.text || '')
+
+  if (activeSectionType === 'features' && featureText && (headingText === featureText || headingText.includes(featureText) || featureText.includes(headingText))) {
+    const extras = await pickRelevantImages(articleTitle || targetKeyword, targetKeyword || product?.productName, 4)
+    const images = [
+      ...(product?.imageUrl ? [{ url: product.imageUrl, alt: product.productName }] : []),
+      ...extras
+    ]
+
+    if (images.length) {
+      text += `\n\n${images
+        .map(
+          image =>
+            `<img src="${image.url}" alt="${image.alt || targetKeyword || 'Product'}" style="width:100%;max-width:100%;height:auto;border-radius:12px;margin:24px 0;display:block;" />`
+        )
+        .join('\n')}`
+    }
+  }
+
+  if (priceButton && (activeSectionType === 'intro' || activeSectionType === 'conclusion')) {
+    text = withRequiredCheckPrice(text, {
+      url: product?.amazonUrl,
+      asin: product?.asin,
+      language: settings.language,
+      domain: settings.amazonDomain || 'www.amazon.com',
+      partnerTag: settings.amazonTrackingId || settings.partnerTag || process.env.AMAZON_PARTNER_TAG || 'babiescarrier-20'
+    })
+  }
+
   return {
     success: true,
-    text: result.response.text(),
+    text,
     mediaHtml: null,
     internalLinkUrl: internalLinkUrl
   }

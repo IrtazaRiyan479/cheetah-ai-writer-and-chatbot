@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
 
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { authOptions } from '@/libs/auth'
+import { assertCanGenerate, featureKeyForType } from '@/libs/entitlement'
+import { serializeError } from '@/utils/serializeError'
 
 import { generateLocalRoundupOutline, generateLocalRoundupSection } from './services/localRoundup'
 import { generateListicleOutline, generateListicleSection } from './services/listicle'
@@ -10,14 +13,67 @@ import { generateRewriteOutline, generateRewriteSection } from './services/rewri
 import { generateAmazonRoundupOutline, generateAmazonRoundupSection } from './services/amazonRoundUp'
 import { generateAmazonReviewOutline, generateAmazonReviewSection } from './services/amazonReview'
 import { getBaseSystemInstruction } from './utils/helpers'
+import { callLLM, createProviderGenAI } from './utils/llm'
+import { attachBrandedHero, fetchSerperOutlineData, pickRelevantImages } from './utils/helpers'
+
+export const maxDuration = 60
+
+function logStage(stage, started, type) {
+  console.info(`[generate] ${stage} type=${type || 'blog'} ms=${Date.now() - started}`)
+}
 
 export async function POST(request) {
   try {
     const body = await request.json()
     const { mode, prompt, settings = {}, history = [] } = body
     const { type } = settings
+    const session = await getServerSession(authOptions)
+    const gate = await assertCanGenerate({
+      userId: session?.user?.id,
+      email: session?.user?.email,
+      featureKey: featureKeyForType(type),
+      estimatedWords: mode === 'section' ? 0 : 1
+    })
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_FREE_API_KEY)
+    if (!gate.ok) {
+      return NextResponse.json({ success: false, error: gate.error }, { status: gate.status })
+    }
+
+    const genAI = createProviderGenAI()
+    const started = Date.now()
+
+    if (mode === 'prepare') {
+      const keyword = settings.targetKeyword || body.targetKeyword || ''
+      const title = settings.generatedTitle || keyword
+      const [images, serp] = await Promise.all([
+        pickRelevantImages(title, keyword, 6).catch(() => []),
+        keyword ? fetchSerperOutlineData(keyword).catch(() => null) : null
+      ])
+      let amazon = null
+
+      if ((type === 'amazon-roundup' || type === 'amazon-review') && keyword) {
+        try {
+          const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+          const res = await fetch(`${base}/api/amazon`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              keyword,
+              domain: settings.amazonDomain || 'www.amazon.com',
+              partnerTag: process.env.AMAZON_PARTNER_TAG || ''
+            })
+          })
+
+          if (res.ok) amazon = await res.json()
+        } catch {
+          amazon = null
+        }
+      }
+
+      logStage('prepare', started, type)
+
+      return NextResponse.json({ success: true, shared: { images, serp, amazon } })
+    }
 
     if (mode === 'outline') {
       let result
@@ -33,6 +89,8 @@ export async function POST(request) {
           result = await generateYoutubeBlogOutline(body, genAI)
           break
         case 'rewrite':
+        case 'amazon-roundup-rewrite':
+        case 'amazon-review-rewrite':
           result = await generateRewriteOutline(body, genAI)
           break
         case 'amazon-roundup':
@@ -46,7 +104,9 @@ export async function POST(request) {
           break
       }
 
-      return NextResponse.json(result)
+      logStage('outline', started, type)
+
+      return NextResponse.json(await attachBrandedHero(result, settings))
     }
 
     if (mode === 'section') {
@@ -63,6 +123,8 @@ export async function POST(request) {
           result = await generateYoutubeBlogSection(body, genAI)
           break
         case 'rewrite':
+        case 'amazon-roundup-rewrite':
+        case 'amazon-review-rewrite':
           result = await generateRewriteSection(body, genAI)
           break
         case 'amazon-roundup':
@@ -76,6 +138,8 @@ export async function POST(request) {
           break
       }
 
+      logStage('section', started, type)
+
       return NextResponse.json(result)
     }
 
@@ -83,36 +147,20 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 })
     }
 
-    const defaultModel = genAI.getGenerativeModel({
-      model: 'gemini-3.1-flash-lite',
-      systemInstruction: getBaseSystemInstruction()
+    const historyText = (Array.isArray(history) ? history : [])
+      .map(msg => `${msg?.senderId === 'ai-assistant' ? 'Assistant' : 'User'}: ${msg?.message || ''}`)
+      .filter(Boolean)
+      .join('\n\n')
+
+    const result = await callLLM({
+      system: getBaseSystemInstruction(),
+      prompt: historyText ? `${historyText}\n\nUser: ${prompt}` : prompt,
+      maxTokens: 2048
     })
 
-    let cleanHistory = []
-    let lastRole = null
-
-    for (const msg of history) {
-      const role = msg.senderId === 'ai-assistant' ? 'model' : 'user'
-
-      if (cleanHistory.length === 0 && role === 'model') continue
-
-      if (role !== lastRole) {
-        cleanHistory.push({ role: role, parts: [{ text: msg.message }] })
-        lastRole = role
-      } else {
-        cleanHistory[cleanHistory.length - 1].parts[0].text += `\n\n${msg.message}`
-      }
-    }
-
-    const chat = defaultModel.startChat({
-      history: cleanHistory
-    })
-
-    const result = await chat.sendMessage(prompt)
-
-    return NextResponse.json({ success: true, text: result.response.text() })
+    return NextResponse.json({ success: true, text: result.text })
   } catch (error) {
-    const msg = error?.message || String(error)
+    const msg = serializeError(error)
 
     const isCapacity =
       /429|quota|rate.?limit|503|high demand|unavailable|overloaded|OUTLINE_PARSE_FAILED|RATE_LIMIT/i.test(msg)

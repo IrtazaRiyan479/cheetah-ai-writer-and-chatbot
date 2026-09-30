@@ -20,6 +20,7 @@ import {
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
+import { buildCheckPriceButton, extractAsin, withRequiredCheckPrice } from '../utils/articleHtml'
 
 export async function generateRewriteOutline(body, genAI) {
   const { prompt, settings } = body
@@ -107,6 +108,13 @@ export async function generateRewriteOutline(body, genAI) {
     3. ${faqInstruction}
     4. ${takeawaysInstruction}
     5. ${relatedInstruction}
+    ${
+      settings.type === 'amazon-roundup-rewrite'
+        ? '6. Reshape this into an Amazon product roundup. Use sectionType "intro", then one "product" H2 per product found in the source, then "conclusion". Put productName and the exact affiliate amazonUrl on each product item. Never strip affiliate tags.'
+        : settings.type === 'amazon-review-rewrite'
+          ? '6. Reshape this into an Amazon single-product review. sectionType must be intro, features, pros_cons, conclusion, or faq, in that order. Preserve the affiliate URL exactly.'
+          : ''
+    }
     Return ONLY valid JSON.
   `
 
@@ -356,6 +364,11 @@ export async function generateRewriteSection(body, genAI) {
     ${readabilityInstruction}
     ${keywordSEOInstructions}
     ${realTimeInstruction}
+    ${
+      settings.type === 'amazon-roundup-rewrite' || settings.type === 'amazon-review-rewrite'
+        ? `Preserve every Amazon affiliate tag from the source. If this section recommends a product, end with this exact button HTML: ${buildCheckPriceButton('', { asin: extractAsin(sourceText), language: settings.language, partnerTag: process.env.AMAZON_PARTNER_TAG || settings.partnerTag || '' })}`
+        : ''
+    }
   `
 
   let result = null

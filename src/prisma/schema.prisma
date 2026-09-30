@@ -44,11 +44,24 @@ model User {
   password      String?
   image         String?
   supportPin    String?
+  role          String    @default("free")
+  plan          String    @default("free")
+  subscriptionStatus String @default("none")
+  stripeCustomerId String?
+  stripeSubscriptionId String?
+  wordsUsed     Int       @default(0)
+  wordsLimit    Int       @default(5000)
   accounts      Account[]
   sessions      Session[]
   generatedImages GeneratedImage[]
   articles      Article[]
   customWPSites CustomWPSite[]
+}
+
+model FeatureFlag {
+  key     String  @id
+  enabled Boolean @default(true)
+  free    Boolean @default(false)
 }
 
 model VerificationToken {
