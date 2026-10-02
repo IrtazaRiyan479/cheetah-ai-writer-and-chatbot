@@ -51,6 +51,7 @@ model User {
   stripeSubscriptionId String?
   wordsUsed     Int       @default(0)
   wordsLimit    Int       @default(5000)
+  wordsLimitCustomized Boolean @default(false)
   accounts      Account[]
   sessions      Session[]
   generatedImages GeneratedImage[]
@@ -62,6 +63,13 @@ model FeatureFlag {
   key     String  @id
   enabled Boolean @default(true)
   free    Boolean @default(false)
+  mode    String  @default("pro")
+}
+
+model AppSetting {
+  key       String   @id
+  value     String   @db.LongText
+  updatedAt DateTime @updatedAt
 }
 
 model VerificationToken {

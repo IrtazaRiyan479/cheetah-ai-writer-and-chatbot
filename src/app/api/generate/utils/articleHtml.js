@@ -174,6 +174,23 @@ export function renderResponsiveTable({ headers = [], rows = [] } = {}) {
   return `<table class="affigenie-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
 }
 
+export function renderTopPickCards(products = [], options = {}) {
+  const cards = products.map((product, index) => {
+    const name = escapeHtml(product.productName || 'Amazon Product')
+    const image = product.imageUrl ? `<img src="${escapeHtml(protectUrl(product.imageUrl))}" alt="${name}" style="display:block;width:100%;max-width:420px;height:auto;object-fit:contain;border-radius:10px;margin:12px auto;" />` : ''
+    const rating = product.rating ? `<p><strong>Rating:</strong> ${escapeHtml(product.rating)}</p>` : ''
+    const features = Array.isArray(product.features) ? product.features.slice(0, 3) : []
+    const pros = features.length ? `<p><strong>Pros:</strong> ${features.map(escapeHtml).join(' · ')}</p>` : '<p><strong>Pros:</strong> Amazon-listed details are available for review.</p>'
+    const cons = '<p><strong>Cons:</strong> Confirm product limitations and fit on the Amazon listing.</p>'
+    const verdict = `<p>${index === 0 ? 'Our leading option based on its relevance to this roundup and the available listing details.' : 'A worthwhile alternative; compare its listing details against your needs.'}</p>`
+    const button = buildCheckPriceButton(product.amazonUrl, { ...options, asin: product.asin })
+
+    return `<article class="affigenie-product-card" style="box-sizing:border-box;width:100%;max-width:100%;margin:20px 0;padding:16px;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">${index === 0 ? '<div style="display:inline-block;background:#eef2ff;color:#3730a3;font-weight:700;padding:6px 10px;border-radius:999px;margin-bottom:8px;">Top Pick</div>' : ''}${image}<h3>${name}</h3>${rating}${verdict}${pros}${cons}<div style="width:100%;max-width:100%;">${button}</div></article>`
+  }).join('')
+
+  return `<div class="affigenie-product-cards" style="width:100%;max-width:100%;">${cards}</div>`
+}
+
 export function getAffigenieArticleCss() {
   return `
 table.affigenie-table{width:100%;max-width:100%;border-collapse:collapse;table-layout:auto;display:table;overflow:visible;margin:24px 0}

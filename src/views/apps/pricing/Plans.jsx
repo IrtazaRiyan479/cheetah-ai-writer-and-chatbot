@@ -1,5 +1,5 @@
 // Next Imports
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { usePathname } from 'next/navigation'
 
@@ -125,6 +125,20 @@ const Plans = () => {
   const locale = pathname?.split('/').filter(Boolean)[0] || 'en'
   const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [checkoutError, setCheckoutError] = useState('')
+  const [pricingCopy, setPricingCopy] = useState(null)
+
+  useEffect(() => {
+    let active = true
+
+    fetch('/api/pricing/copy').then(response => response.json()).then(data => {
+      if (active && data.success && Array.isArray(data.pricing)) setPricingCopy(data.pricing)
+    }).catch(() => {})
+
+    return () => { active = false }
+  }, [])
+
+  const copyFor = key => pricingCopy?.find(plan => plan.key === key)
+
 
   const startCheckout = async () => {
     setCheckoutError('')
@@ -154,7 +168,7 @@ return
       <div className={frontCommonStyles.layoutSpacing}>
         <div className='flex flex-col text-center gap-2 mbe-6'>
           <Typography variant='h4'>Pick a plan that works best for you</Typography>
-          <Typography>Stay cool, we have a 48-hour money back guarantee!</Typography>
+          <Typography>{pricingCopy?.some(plan => plan.footnote) ? pricingCopy.filter(plan => plan.footnote).map(plan => `${plan.name}: ${plan.footnote}`).join(' · ') : 'Stay cool, we have a 48-hour money back guarantee!'}</Typography>
         </div>
         {checkoutError ? (
           <Typography color='error' role='alert' sx={{ mt: 2, textAlign: 'center' }}>
@@ -167,26 +181,26 @@ return
               <tr>
                 <th>Time</th>
                 <th>
-                  <>STARTER</>
+                  {copyFor('starter')?.name || 'STARTER'}
                   <Typography variant='body2' className='capitalize'>
-                    Free
+                    {copyFor('starter')?.interval || 'Free'}
                   </Typography>
                 </th>
                 <th>
                   <div className='flex justify-center gap-x-2'>
-                    <>Pro</>
+                    {copyFor('pro')?.name || 'Pro'}
                     <CustomAvatar size={20} color='primary'>
                       <i className='ri-star-line text-[14px]' />
                     </CustomAvatar>
                   </div>
                   <Typography variant='body2' className='capitalize'>
-                    $7.5/Month
+                    {copyFor('pro')?.displayAmount ? `$${copyFor('pro').displayAmount}/${copyFor('pro').interval || 'Month'}` : '$7.5/Month'}
                   </Typography>
                 </th>
                 <th>
-                  <>ENTERPRISE</>
+                  {copyFor('enterprise')?.name || 'ENTERPRISE'}
                   <Typography variant='body2' className='capitalize'>
-                    $16/Month
+                    {copyFor('enterprise')?.displayAmount ? `$${copyFor('enterprise').displayAmount}/${copyFor('enterprise').interval || 'Month'}` : '$16/Month'}
                   </Typography>
                 </th>
               </tr>
@@ -231,7 +245,7 @@ return
                       disabled={plan.plan === 'pro' && checkoutLoading}
                       onClick={plan.plan === 'pro' ? startCheckout : () => window.location.assign('/' + locale + '/register')}
                     >
-                      {plan.plan === 'pro' && checkoutLoading ? 'Redirecting...' : plan.label}
+                      {plan.plan === 'pro' && checkoutLoading ? 'Redirecting...' : copyFor(plan.plan)?.cta || plan.label}
                     </Button>
                   </td>
                 ))}

@@ -13,6 +13,7 @@ const articleTypes = [
   { id: 'local-roundup', title: 'Local Places Roundup', icon: 'ri-map-pin-2-line' },
   { id: 'amazon-roundup', title: 'Amazon Product Roundup', icon: 'ri-shopping-cart-line' },
   { id: 'amazon-review', title: 'Amazon Single Product Review', icon: 'ri-star-line' },
+  { id: 'product-comparison', title: 'Product Comparison', icon: 'ri-scales-3-line' },
   { id: 'youtube-blog', title: 'YouTube Video to Blog Post', icon: 'ri-youtube-line' },
   { id: 'rewrite', title: 'Rewrite Blog Post', icon: 'ri-edit-2-line' },
   { id: 'amazon-roundup-rewrite', title: 'Rewrite Amazon P Roundup', icon: 'ri-shopping-bag-3-line' },

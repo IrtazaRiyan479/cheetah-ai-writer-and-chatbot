@@ -1086,6 +1086,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                 outlineContext: outline,
                 heading: group.h2.text,
                 subheadings: subheadings,
+                shared: shared || (settings.type === 'product-comparison' ? settings.comparisonShared : null),
                 internalLinks: allLinks,
                 seoOptimization: settings.seoOptimization,
                 manualKeywords: settings.manualKeywords,
@@ -1234,31 +1235,32 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         trackedExternalLinks
       }
 
-      let shared = null
+      let shared = settings.type === 'product-comparison' ? settings.comparisonShared : null
 
-      try {
-        const prepStarted = Date.now()
+      if (settings.type !== 'product-comparison') {
+        try {
+          const prepStarted = Date.now()
 
-        const prepRes = await fetch('/api/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: abortControllerRef.current?.signal,
-          body: JSON.stringify({
-            mode: 'prepare',
-            settings,
-            targetKeyword: settings.targetKeyword
+          const prepRes = await fetch('/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: abortControllerRef.current?.signal,
+            body: JSON.stringify({
+              mode: 'prepare',
+              settings,
+              targetKeyword: settings.targetKeyword
+            })
           })
-        })
 
-        const prep = await prepRes.json()
-
-        if (prep?.success) shared = prep.shared
-        console.info(`[writer] prepare ms=${Date.now() - prepStarted}`)
-      } catch (error) {
-        if (error?.name === 'AbortError') return
+          const prep = await prepRes.json()
+          if (prep?.success) shared = prep.shared
+          console.info(`[writer] prepare ms=${Date.now() - prepStarted}`)
+        } catch (error) {
+          if (error?.name === 'AbortError') return
+        }
       }
 
-      const CONCURRENCY = 3
+      const CONCURRENCY = settings.type === 'product-comparison' ? 1 : 3
 
       const tryFlush = () => {
         while (nextInsertIdx < groupedSections.length && resultsBuffer[nextInsertIdx] !== null) {
@@ -1426,7 +1428,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                   uploadedMedia: settings.uploadedMedia,
                   usedImageUrls: usedSnapshot,
                   usedInternalLinks: trackedInternalLinks,
-                  shared
+                  shared: shared || (settings.type === 'product-comparison' ? settings.comparisonShared : null)
                 })
               },
               { onRetry: setWait }

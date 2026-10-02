@@ -21,11 +21,12 @@ import {
   buildCheckPriceButton,
   escapeHtml,
   renderResponsiveTable,
+  renderTopPickCards,
   resolveAffiliateUrl,
   withRequiredCheckPrice
 } from '../utils/articleHtml'
 
-async function fetchInternalAmazonData(keyword, settings) {
+export async function fetchInternalAmazonData(keyword, settings) {
   const baseUrl =
     process.env.NEXT_PUBLIC_APP_URL ||
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
@@ -57,7 +58,7 @@ async function fetchInternalAmazonData(keyword, settings) {
   return await response.json()
 }
 
-function formatAmazonProducts(apiData, settings) {
+export function formatAmazonProducts(apiData, settings) {
   const rawData = apiData?.data?.searchResult?.items || []
   const numberOfProducts = settings.numberOfProducts || 5
   const limitedProducts = rawData.slice(0, numberOfProducts)
@@ -86,6 +87,7 @@ function formatAmazonProducts(apiData, settings) {
       }),
       imageUrl: imageUrl,
       price: price,
+      rating: item?.customerReviews?.starRating || item?.customerReviews?.rating || null,
       features: features
     }
   })
@@ -390,31 +392,22 @@ export async function generateAmazonRoundupSection(body, genAI) {
       partnerTag: settings.amazonTrackingId || process.env.AMAZON_PARTNER_TAG || ''
     }
 
-    topPicksTable = renderResponsiveTable({
-      headers: ['Image', 'Product', 'Link'],
-      rows: top3.map(p => {
-        const safeTitle = escapeHtml(String(p.productName || '').replace(/[\r\n]+/g, ' '))
-        const safeImageUrl = escapeHtml(String(p.imageUrl || '').replace(/_/g, '%5F'))
-        const altText = escapeHtml(`${targetKeyword || ''} ${p.productName || ''}`.trim())
-        const button = buildCheckPriceButton(p.amazonUrl, { ...linkOptions, asin: p.asin })
+    topPicksTable = settings.roundupLayout === 'top-pick'
+      ? renderTopPickCards(formattedProducts, linkOptions)
+      : renderResponsiveTable({
+          headers: ['Image', 'Product', 'Link'],
+          rows: top3.map(p => {
+            const safeTitle = escapeHtml(String(p.productName || '').replace(/[\r\n]+/g, ' '))
+            const safeImageUrl = escapeHtml(String(p.imageUrl || '').replace(/_/g, '%5F'))
+            const altText = escapeHtml(`${targetKeyword || ''} ${p.productName || ''}`.trim())
+            const button = buildCheckPriceButton(p.amazonUrl, { ...linkOptions, asin: p.asin })
+            return [`<img src="${safeImageUrl}" alt="${altText}" title="${safeTitle}" style="width:80px;height:80px;max-width:100%;object-fit:contain;border-radius:8px;" />`, safeTitle, button]
+          })
+        })
 
-        return [
-          `<img src="${safeImageUrl}" alt="${altText}" title="${safeTitle}" style="width:80px;height:80px;max-width:100%;object-fit:contain;border-radius:8px;" />`,
-          safeTitle,
-          button
-        ]
-      })
-    })
-
-    sectionPrompt += `
-        TASK: Write a strong, engaging introduction for the keyword "${targetKeyword}".
-
-        STRICT LAYOUT REQUIREMENT (Top 3 Picks Table):
-        Immediately following your introductory paragraphs, you MUST include this EXACT HTML table. Do not change the links, labels, or table markup:
-
-        ### Our Top 3 Picks
-        ${topPicksTable}
-        `
+    sectionPrompt += settings.roundupLayout === 'top-pick'
+      ? `TASK: Write an engaging introduction for "${targetKeyword}". Follow it with these ranked product cards; do not add a product table:\n${topPicksTable}`
+      : `TASK: Write a strong, engaging introduction for the keyword "${targetKeyword}". Immediately following your introductory paragraphs, include this Product Table:\n### Our Top 3 Picks\n${topPicksTable}`
   } else if (activeSectionType === 'product') {
     const cleanHeading = activeHeadingText
       .replace(/^\d+\.\s*/, '')
@@ -513,8 +506,13 @@ export async function generateAmazonRoundupSection(body, genAI) {
 
   let text = result.response.text()
 
-  if (activeSectionType === 'intro' && typeof topPicksTable === 'string' && topPicksTable && !/<table[\s>]/i.test(text)) {
-    text += `\n\n${topPicksTable}`
+  if (activeSectionType === 'intro' && typeof topPicksTable === 'string' && topPicksTable) {
+    if (settings.roundupLayout === 'top-pick') {
+      text = text.replace(/<table\b[\s\S]*?<\/table>/gi, '')
+      if (!/affigenie-product-cards/i.test(text)) text += `\n\n${topPicksTable}`
+    } else if (!/<table[\s>]/i.test(text)) {
+      text += `\n\n${topPicksTable}`
+    }
   }
 
   if (activeSectionType === 'product' && matchedProduct?.amazonUrl) {

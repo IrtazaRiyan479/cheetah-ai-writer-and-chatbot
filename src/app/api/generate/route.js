@@ -12,6 +12,7 @@ import { generateYoutubeBlogOutline, generateYoutubeBlogSection } from './servic
 import { generateRewriteOutline, generateRewriteSection } from './services/rewrite'
 import { generateAmazonRoundupOutline, generateAmazonRoundupSection } from './services/amazonRoundUp'
 import { generateAmazonReviewOutline, generateAmazonReviewSection } from './services/amazonReview'
+import { generateProductComparisonOutline, generateProductComparisonSection, validateProductComparisonUrls } from './services/productComparison'
 import { getBaseSystemInstruction } from './utils/helpers'
 import { callLLM, createProviderGenAI } from './utils/llm'
 import { attachBrandedHero, fetchSerperOutlineData, pickRelevantImages } from './utils/helpers'
@@ -27,20 +28,27 @@ export async function POST(request) {
     const body = await request.json()
     const { mode, prompt, settings = {}, history = [] } = body
     const { type } = settings
+    if (type === 'product-comparison') {
+      const validation = validateProductComparisonUrls(settings.productComparisonUrls)
+      if (!validation.ok) return NextResponse.json({ success: false, error: serializeError(new Error('Provide two or three valid Amazon product URLs.')) }, { status: 400 })
+    }
+
     const session = await getServerSession(authOptions)
     const gate = await assertCanGenerate({
       userId: session?.user?.id,
       email: session?.user?.email,
-      featureKey: featureKeyForType(type),
+      featureKey: type === 'product-comparison' ? 'product-comparison' : featureKeyForType(type),
       estimatedWords: mode === 'section' ? 0 : 1
     })
 
     if (!gate.ok) {
-      return NextResponse.json({ success: false, error: gate.error }, { status: gate.status })
+      return NextResponse.json({ success: false, error: serializeError(gate.error) }, { status: gate.status })
     }
 
     const genAI = createProviderGenAI()
     const started = Date.now()
+
+    if (mode === 'prepare' && type === 'product-comparison') return NextResponse.json({ success: true, shared: {} })
 
     if (mode === 'prepare') {
       const keyword = settings.targetKeyword || body.targetKeyword || ''
@@ -93,6 +101,9 @@ export async function POST(request) {
         case 'amazon-review-rewrite':
           result = await generateRewriteOutline(body, genAI)
           break
+        case 'product-comparison':
+          result = await generateProductComparisonOutline(body)
+          break
         case 'amazon-roundup':
           result = await generateAmazonRoundupOutline(body, genAI)
           break
@@ -106,7 +117,7 @@ export async function POST(request) {
 
       logStage('outline', started, type)
 
-      return NextResponse.json(await attachBrandedHero(result, settings))
+      return NextResponse.json(type === 'product-comparison' ? result : await attachBrandedHero(result, settings))
     }
 
     if (mode === 'section') {
@@ -126,6 +137,9 @@ export async function POST(request) {
         case 'amazon-roundup-rewrite':
         case 'amazon-review-rewrite':
           result = await generateRewriteSection(body, genAI)
+          break
+        case 'product-comparison':
+          result = await generateProductComparisonSection(body)
           break
         case 'amazon-roundup':
           result = await generateAmazonRoundupSection(body, genAI)

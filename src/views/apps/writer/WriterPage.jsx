@@ -23,6 +23,7 @@ import AmazonReviewFields from './fields/AmazonReviewFields'
 import YoutubeBlogFields from './fields/YoutubeBlogFields'
 import LocalRoundupFields from './fields/LocalRoundupFields'
 import RewriteFields from './fields/RewriteFields'
+import ProductComparisonFields from './fields/ProductComparisonFields'
 
 const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -39,7 +40,8 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
     'local-roundup': LocalRoundupFields,
     rewrite: RewriteFields,
     'amazon-roundup-rewrite': RewriteFields,
-    'amazon-review-rewrite': RewriteFields
+    'amazon-review-rewrite': RewriteFields,
+    'product-comparison': ProductComparisonFields
   }
 
   const ActiveFields = ComponentMap[settings.type] || BlogFields
@@ -55,6 +57,17 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
       settings.type === 'rewrite' ||
       settings.type === 'amazon-roundup-rewrite' ||
       settings.type === 'amazon-review-rewrite'
+
+    if (settings.type === 'product-comparison') {
+      const links = Array.isArray(settings.productComparisonUrls) ? settings.productComparisonUrls.map(value => String(value || '').trim()).filter(Boolean) : []
+
+      if (links.length < 2 || links.length > 3 || links.some(value => {
+        try { return !['http:', 'https:'].includes(new URL(value).protocol) } catch { return true }
+      })) {
+        toast.error('Provide two or three valid Amazon product URLs.')
+        return
+      }
+    }
 
     if (isRewriteType && !String(settings.articleUrlToRewrite || '').trim()) {
       toast.error('Please provide an article URL to rewrite.')
@@ -75,7 +88,7 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
 
           return
         }
-      } else if (!isRewriteType) {
+      } else if (!isRewriteType && settings.type !== 'product-comparison') {
         toast.error('Target Keyword is required for this template.')
 
         return
@@ -128,7 +141,7 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
         if (data.heroImageSource) {
           updateSetting('heroImageSource', data.heroImageSource)
         }
-
+        if (data.comparisonShared) updateSetting('comparisonShared', data.comparisonShared)
         if (data.metaTitle) updateSetting('metaTitle', data.metaTitle)
         if (data.metaDescription) updateSetting('metaDescription', data.metaDescription)
         setOutline(data.outline)
@@ -145,7 +158,9 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
       console.error('Error generating outline:', serializeError(error))
       const msg = serializeError(error)
 
-      if (/RATE_LIMIT|429|quota|resource.?exhausted/i.test(msg)) {
+      if (settings.type === 'product-comparison') {
+        toast.error(`Failed to generate outline: ${msg}`, { autoClose: 6000 })
+      } else if (/RATE_LIMIT|429|quota|resource.?exhausted/i.test(msg)) {
         toast.error('Gemini free rate limit hit. Wait ~60s, or reduce concurrent usage. Outline was not generated.', {
           autoClose: 8000
         })

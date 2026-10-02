@@ -24,7 +24,7 @@ export const FEATURE_KEYS = [
   'batch-generate'
 ]
 
-const FREE_FEATURES = new Set(['standard', 'rewrite'])
+export const FREE_FEATURES = new Set(['standard', 'rewrite'])
 
 export function featureKeyForType(type) {
   const map = {
@@ -75,17 +75,19 @@ export async function assertCanGenerate({ userId, email, featureKey, estimatedWo
 
     const flag = await prisma.featureFlag.findUnique({ where: { key: featureKey } }).catch(() => null)
 
-    if (flag && flag.enabled === false) {
+    if (flag && (flag.mode === 'off' || flag.enabled === false)) {
       return { ok: false, status: 403, error: 'This feature is turned off.' }
     }
 
-    const freeFeature = flag ? flag.free : FREE_FEATURES.has(featureKey)
+    const freeFeature = flag ? (flag.mode ? flag.mode === 'free' : flag.free) : FREE_FEATURES.has(featureKey)
 
     if (!isPaid(user) && !freeFeature) {
       return { ok: false, status: 402, error: 'This feature requires a Pro plan.' }
     }
 
-    const limit = user.wordsLimit || FREE_WORD_CAP
+    const capSetting = await prisma.appSetting.findUnique({ where: { key: 'globalFreeWordCap' } }).catch(() => null)
+    const globalFreeWordCap = capSetting ? Math.max(0, Number(capSetting.value) || 0) : FREE_WORD_CAP
+    const limit = user.wordsLimitCustomized ? user.wordsLimit : globalFreeWordCap
 
     if (!isPaid(user) && estimatedWords > 0 && user.wordsUsed >= limit) {
       return { ok: false, status: 402, error: `Free word limit reached (${limit} words).` }
