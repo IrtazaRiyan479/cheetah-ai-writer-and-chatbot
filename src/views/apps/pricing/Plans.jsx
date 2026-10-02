@@ -1,5 +1,9 @@
 // Next Imports
-import Link from 'next/link'
+import { useState } from 'react'
+
+import { usePathname } from 'next/navigation'
+
+import { useSession } from 'next-auth/react'
 
 // MUI Imports
 import Typography from '@mui/material/Typography'
@@ -116,6 +120,35 @@ const plans = [
 ]
 
 const Plans = () => {
+  const { data: session } = useSession()
+  const pathname = usePathname()
+  const locale = pathname?.split('/').filter(Boolean)[0] || 'en'
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
+  const [checkoutError, setCheckoutError] = useState('')
+
+  const startCheckout = async () => {
+    setCheckoutError('')
+
+    if (!session?.user) {
+      window.location.assign('/' + locale + '/login?callbackUrl=%2F' + locale + '%2Fpricing')
+
+return
+    }
+
+    setCheckoutLoading(true)
+
+    try {
+      const response = await fetch('/api/billing/checkout', { method: 'POST' })
+      const data = await response.json()
+
+      if (!response.ok || !data.url) throw new Error(data.error || 'Could not start checkout.')
+      window.location.assign(data.url)
+    } catch (error) {
+      setCheckoutError(error?.message || 'Could not start checkout.')
+      setCheckoutLoading(false)
+    }
+  }
+
   return (
     <section className='md:plb-[100px] plb-[50px] bg-backgroundPaper'>
       <div className={frontCommonStyles.layoutSpacing}>
@@ -123,6 +156,11 @@ const Plans = () => {
           <Typography variant='h4'>Pick a plan that works best for you</Typography>
           <Typography>Stay cool, we have a 48-hour money back guarantee!</Typography>
         </div>
+        {checkoutError ? (
+          <Typography color='error' role='alert' sx={{ mt: 2, textAlign: 'center' }}>
+            {checkoutError}
+          </Typography>
+        ) : null}
         <div className='overflow-x-auto border rounded'>
           <table className={tableStyles.table}>
             <thead className={classnames('border-be', styles.tableHead)}>
@@ -188,8 +226,12 @@ const Plans = () => {
                 <td></td>
                 {plans.map((plan, index) => (
                   <td key={index} className='text-center plb-[9px]'>
-                    <Button component={Link} href='/register' variant={plan.variant}>
-                      {plan.label}
+                    <Button
+                      variant={plan.variant}
+                      disabled={plan.plan === 'pro' && checkoutLoading}
+                      onClick={plan.plan === 'pro' ? startCheckout : () => window.location.assign('/' + locale + '/register')}
+                    >
+                      {plan.plan === 'pro' && checkoutLoading ? 'Redirecting...' : plan.label}
                     </Button>
                   </td>
                 ))}

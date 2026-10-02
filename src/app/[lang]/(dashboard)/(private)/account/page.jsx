@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+
+import { usePathname } from 'next/navigation'
+
 import { useSession } from 'next-auth/react'
 
 import Typography from '@mui/material/Typography'
@@ -25,6 +28,8 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 
 const AccountSettings = () => {
   const { data: session, update: updateSession } = useSession()
+  const pathname = usePathname()
+  const locale = pathname?.split('/').filter(Boolean)[0] || 'en'
   const [isLoading, setIsLoading] = useState(true)
   const [tooltipText, setTooltipText] = useState("Copy ID")
 
@@ -38,7 +43,11 @@ const AccountSettings = () => {
     email: '',
     userId: '',
     supportPin: '',
-    wordsLimit: '5,000 / 5,000 words',
+    plan: 'free',
+    subscriptionStatus: 'none',
+    wordsUsed: 0,
+    wordsLimit: 5000,
+    hasStripeCustomer: false,
     chatsLimit: '25 / 25 chats'
   })
 
@@ -55,7 +64,12 @@ const AccountSettings = () => {
               name: data.user.name || 'N/A',
               email: data.user.email,
               userId: data.user.id,
-              supportPin: data.user.supportPin || 'N/A'
+              supportPin: data.user.supportPin || 'N/A',
+              plan: data.user.role === 'admin' ? 'admin' : data.user.plan || 'free',
+              subscriptionStatus: data.user.subscriptionStatus || 'none',
+              wordsUsed: data.user.wordsUsed || 0,
+              wordsLimit: data.user.wordsLimit || 5000,
+              hasStripeCustomer: Boolean(data.user.hasStripeCustomer)
             }))
           }
         } catch (error) {
@@ -74,6 +88,22 @@ const AccountSettings = () => {
       navigator.clipboard.writeText(userData.userId)
       setTooltipText("Copied!")
       setTimeout(() => setTooltipText("Copy ID"), 2000)
+    }
+  }
+
+  const handleManageBilling = async () => {
+    setUpdateError('')
+    setIsUpdating(true)
+
+    try {
+      const response = await fetch('/api/billing/portal', { method: 'POST' })
+      const data = await response.json()
+
+      if (!response.ok || !data.url) throw new Error(data.error || 'Could not open billing management.')
+      window.location.assign(data.url)
+    } catch (error) {
+      setUpdateError(error?.message || 'Could not open billing management.')
+      setIsUpdating(false)
     }
   }
 
@@ -227,14 +257,36 @@ const AccountSettings = () => {
                 Current Plan
               </Typography>
               <Chip
-                label="Inactive"
+                label={userData.plan === 'admin' ? 'Admin' : userData.plan === 'pro' ? `Pro · ${userData.subscriptionStatus}` : 'Free plan'}
                 size="small"
-                sx={{ fontWeight: 600, borderRadius: 1.5, bgcolor: 'error.main', color: 'error.contrastText' }}
+                color={userData.plan === 'pro' || userData.plan === 'admin' ? 'success' : 'default'}
+                sx={{ fontWeight: 600, borderRadius: 1.5 }}
               />
             </Box>
-            <Button variant="contained" color="primary" disableElevation sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}>
-              View Pricing
-            </Button>
+            {userData.hasStripeCustomer ? (
+              <Button
+                variant="contained"
+                color="primary"
+                disableElevation
+                onClick={handleManageBilling}
+                disabled={isUpdating}
+                sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
+              >
+                {isUpdating ? <CircularProgress size={20} color="inherit" /> : 'Manage Billing'}
+              </Button>
+            ) : (
+              <Button
+                component="a"
+                href={`/${locale}/pricing`}
+                variant="contained"
+                color="primary"
+                disableElevation
+                sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
+              >
+                View Pricing
+              </Button>
+            )}
+            {updateError ? <Alert severity="error">{updateError}</Alert> : null}
           </Paper>
         </Box>
 
@@ -252,13 +304,13 @@ const AccountSettings = () => {
                   Words Generated
                 </Typography>
                 <Typography variant="body2" color="text.secondary" fontWeight={500}>
-                  {userData.wordsLimit}
+                  {`${Number(userData.wordsUsed).toLocaleString()} / ${Number(userData.wordsLimit).toLocaleString()} words`}
                 </Typography>
               </Box>
               <LinearProgress
                 variant="determinate"
-                value={100}
-                color="error"
+                value={userData.wordsLimit ? Math.min(100, (userData.wordsUsed / userData.wordsLimit) * 100) : 0}
+                color={userData.wordsUsed >= userData.wordsLimit ? 'error' : 'primary'}
                 sx={{ height: 8, borderRadius: 4, bgcolor: 'action.hover' }}
               />
             </Box>

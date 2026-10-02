@@ -33,9 +33,6 @@ import TaskItem from '@tiptap/extension-task-item'
 import { styled } from '@mui/material/styles'
 import LinearProgress, { linearProgressClasses } from '@mui/material/LinearProgress'
 
-import { serializeError } from '@/utils/serializeError'
-import { finalizeArticleHtml, getAffigenieArticleCss, prepareArticleHtml } from '@/app/api/generate/utils/articleHtml'
-
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
@@ -47,6 +44,9 @@ import InputLabel from '@mui/material/InputLabel'
 import Alert from '@mui/material/Alert'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Checkbox from '@mui/material/Checkbox'
+
+import { finalizeArticleHtml, getAffigenieArticleCss, prepareArticleHtml } from '@/app/api/generate/utils/articleHtml'
+import { serializeError } from '@/utils/serializeError'
 
 function mediaKey(item) {
   if (!item) return ''
@@ -102,7 +102,6 @@ function failedSectionHtml(index, heading, { showHeading = true } = {}) {
 <p class="failed-section failed-section-${index}" data-failed-section="${index}" style="background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;border-radius:8px;padding:12px 16px;margin:0 0 16px;font-size:14px;line-height:1.5;">Section failed, retry later...</p>`
 }
 
-/** Same markdown → HTML pipeline used during initial generation (tables, lists, links, etc.) */
 function sectionTextToHtml(finalSectionText, language) {
   let cleanMd = String(finalSectionText || '')
     .replace(/^##\s+.*$/gm, '')
@@ -1239,6 +1238,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
       try {
         const prepStarted = Date.now()
+
         const prepRes = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1249,6 +1249,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
             targetKeyword: settings.targetKeyword
           })
         })
+
         const prep = await prepRes.json()
 
         if (prep?.success) shared = prep.shared

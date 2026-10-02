@@ -22,6 +22,29 @@ import { countries } from '@/configs/countries'
 import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
 import { buildCheckPriceButton, extractAsin, withRequiredCheckPrice } from '../utils/articleHtml'
 
+function firstAmazonUrl(text) {
+  const match = String(text || '').match(/https?:\/\/(?:www\.)?(?:amazon\.[^\s)"'<>]+|amzn\.to\/[^\s)"'<>]+)/i)
+
+  return match ? match[0].replace(/[.,;]+$/, '') : ''
+}
+
+function amazonRewriteOptions(settings, sourceText, extraText = '') {
+  const url = firstAmazonUrl(sourceText) || firstAmazonUrl(extraText)
+  const asin = extractAsin(url) || extractAsin(sourceText) || extractAsin(extraText)
+
+  return {
+    url,
+    asin,
+    language: settings.language,
+    domain: settings.amazonDomain || 'www.amazon.com',
+    partnerTag: process.env.AMAZON_PARTNER_TAG || settings.amazonTrackingId || settings.partnerTag || ''
+  }
+}
+
+function isAmazonRewriteType(type) {
+  return type === 'amazon-roundup-rewrite' || type === 'amazon-review-rewrite'
+}
+
 export async function generateRewriteOutline(body, genAI) {
   const { prompt, settings } = body
 
@@ -365,8 +388,8 @@ export async function generateRewriteSection(body, genAI) {
     ${keywordSEOInstructions}
     ${realTimeInstruction}
     ${
-      settings.type === 'amazon-roundup-rewrite' || settings.type === 'amazon-review-rewrite'
-        ? `Preserve every Amazon affiliate tag from the source. If this section recommends a product, end with this exact button HTML: ${buildCheckPriceButton('', { asin: extractAsin(sourceText), language: settings.language, partnerTag: process.env.AMAZON_PARTNER_TAG || settings.partnerTag || '' })}`
+      isAmazonRewriteType(settings.type)
+        ? `Preserve every Amazon affiliate tag from the source. Never invent a new tag. If this section recommends a product, end with this exact button HTML (or omit the button if the HTML is empty): ${buildCheckPriceButton(amazonRewriteOptions(settings, sourceText).url, amazonRewriteOptions(settings, sourceText))}`
         : ''
     }
   `
@@ -410,9 +433,15 @@ export async function generateRewriteSection(body, genAI) {
     result = { response: { text: () => alt.text } }
   }
 
+  let text = result.response.text()
+
+  if (isAmazonRewriteType(settings.type)) {
+    text = withRequiredCheckPrice(text, amazonRewriteOptions(settings, sourceText, text))
+  }
+
   return {
     success: true,
-    text: result.response.text(),
+    text,
     mediaHtml: assignedMediaElement,
     mediaUrl: mediaUrl,
     internalLinkUrl: internalLinkUrl

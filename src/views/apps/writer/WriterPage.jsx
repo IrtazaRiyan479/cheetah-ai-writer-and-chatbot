@@ -51,6 +51,17 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
   }, [draftId, setStep])
 
   const handleCreateArticle = async () => {
+    const isRewriteType =
+      settings.type === 'rewrite' ||
+      settings.type === 'amazon-roundup-rewrite' ||
+      settings.type === 'amazon-review-rewrite'
+
+    if (isRewriteType && !String(settings.articleUrlToRewrite || '').trim()) {
+      toast.error('Please provide an article URL to rewrite.')
+
+      return
+    }
+
     if (!settings.targetKeyword || settings.targetKeyword.trim() === '') {
       if (settings.type === 'amazon-review') {
         if (!settings.amazonProductUrl) {
@@ -64,17 +75,7 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
 
           return
         }
-      } else if (
-        settings.type === 'rewrite' ||
-        settings.type === 'amazon-roundup-rewrite' ||
-        settings.type === 'amazon-review-rewrite'
-      ) {
-        if (!settings.articleUrlToRewrite) {
-          toast.error('Please provide an article URL to rewrite.')
-
-          return
-        }
-      } else {
+      } else if (!isRewriteType) {
         toast.error('Target Keyword is required for this template.')
 
         return
@@ -220,16 +221,19 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
               const lines = window.prompt('Pro/admin batch: one keyword per line')
 
               if (!lines) return
+
               const articles = lines
                 .split('\n')
                 .map(keyword => keyword.trim())
                 .filter(Boolean)
                 .map(keyword => ({ settings: { ...settings, targetKeyword: keyword } }))
+
               const res = await fetch('/api/generate/batch', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ articles })
               })
+
               const data = await res.json()
 
               if (!data.success) toast.error(serializeError(data.error))

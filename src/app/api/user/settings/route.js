@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
+
 import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
+
+import { authOptions } from '@/libs/auth';
 
 const prisma = new PrismaClient();
 
 export async function GET(request) {
-  const session = await getServerSession();
+  const session = await getServerSession(authOptions);
 
   if (!session || !session.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -14,17 +17,43 @@ export async function GET(request) {
   try {
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
-      select: { id: true, email: true, supportPin: true, name: true }
+      select: {
+        id: true,
+        email: true,
+        supportPin: true,
+        name: true,
+        role: true,
+        plan: true,
+        subscriptionStatus: true,
+        wordsUsed: true,
+        wordsLimit: true,
+        stripeCustomerId: true
+      }
     });
 
-    return NextResponse.json({ user });
+    return NextResponse.json({
+      user: user
+        ? {
+            id: user.id,
+            email: user.email,
+            supportPin: user.supportPin,
+            name: user.name,
+            role: user.role,
+            plan: user.plan,
+            subscriptionStatus: user.subscriptionStatus,
+            wordsUsed: user.wordsUsed,
+            wordsLimit: user.wordsLimit,
+            hasStripeCustomer: Boolean(user.stripeCustomerId)
+          }
+        : null
+    })
   } catch (error) {
     return NextResponse.json({ error: "Failed to fetch user data" }, { status: 500 });
   }
 }
 
 export async function PATCH(request) {
-  const session = await getServerSession();
+  const session = await getServerSession(authOptions);
 
   if (!session || !session.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -45,9 +74,12 @@ export async function PATCH(request) {
     return NextResponse.json({ success: true, user: updatedUser });
   } catch (error) {
     console.error(error);
+
     if (error.code === 'P2002') {
         return NextResponse.json({ error: "Email is already in use by another account" }, { status: 400 });
     }
-    return NextResponse.json({ error: "Failed to update email" }, { status: 500 });
+
+
+return NextResponse.json({ error: "Failed to update email" }, { status: 500 });
   }
 }
