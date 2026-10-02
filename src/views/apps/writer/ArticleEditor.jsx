@@ -45,8 +45,8 @@ import Alert from '@mui/material/Alert'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Checkbox from '@mui/material/Checkbox'
 
-import { finalizeArticleHtml, getAffigenieArticleCss, prepareArticleHtml } from '@/app/api/generate/utils/articleHtml'
 import { serializeError } from '@/utils/serializeError'
+import { toast } from 'react-toastify'
 
 function mediaKey(item) {
   if (!item) return ''
@@ -721,6 +721,15 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
   }
 
   const handlePublishToWP = async (status = 'draft', metaTitle, metaDescription) => {
+    const contentToPublish = editor?.getHTML() || ''
+    const plainContent = contentToPublish.replace(/<h1[^>]*>[\s\S]*?<\/h1>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]*>/g, '').replace(/&nbsp;|&#160;/gi, ' ').trim()
+
+    if (!plainContent) {
+      toast.error('Add article content before publishing.')
+      return
+    }
+
+    if (isPublishing) return
     setIsPublishing(true)
     setPublishSuccessData(null)
 
@@ -841,17 +850,20 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           type: result.status === 'draft' ? 'wp-draft-success' : 'wp-publish-success'
         })
       } else {
-        alert(`Error: ${result.error}`)
+        const statusCode = res.status
+        if (statusCode === 401) toast.error('Sign in to continue.')
+        else if ([402, 403].includes(statusCode)) toast.error(serializeError(result.error) || 'You are not allowed to publish this article.')
+        else toast.error(serializeError(result.error))
       }
     } catch (error) {
-      console.error(error)
-      alert('An error occurred while publishing.')
+      toast.error(serializeError(error))
     } finally {
       setIsPublishing(false)
     }
   }
 
   const handleSaveDraftToDB = async () => {
+    if (isPublishing) return
     setIsPublishing(true)
 
     try {
@@ -882,11 +894,12 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       if (data.success) {
         setPublishSuccessData({ type: 'draft-success' })
       } else {
-        alert('Error saving draft: ' + serializeError(data.error))
+        if (res.status === 401) toast.error('Sign in to continue.')
+        else if ([402, 403].includes(res.status)) toast.error(serializeError(data?.error) || 'You are not allowed to save this draft.')
+        else toast.error(serializeError(data?.error || data))
       }
     } catch (error) {
-      console.error(error)
-      alert('An unexpected error occurred while saving.')
+      toast.error(serializeError(error))
     } finally {
       setIsPublishing(false)
     }
@@ -1504,8 +1517,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           }
         }
       } catch (error) {
-        console.error('Failed to load draft:', error)
-        alert('Could not load your draft.')
+        toast.error(serializeError(error))
       } finally {
         setIsGenerating(false)
         setWaitBanner('')

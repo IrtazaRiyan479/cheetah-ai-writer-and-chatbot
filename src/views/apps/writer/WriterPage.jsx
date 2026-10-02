@@ -11,6 +11,11 @@ import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import Divider from '@mui/material/Divider'
 import CircularProgress from '@mui/material/CircularProgress'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
+import TextField from '@mui/material/TextField'
 
 import { toast } from 'react-toastify'
 
@@ -28,6 +33,10 @@ import ProductComparisonFields from './fields/ProductComparisonFields'
 const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [usage, setUsage] = useState(null)
+  const [batchOpen, setBatchOpen] = useState(false)
+  const [batchKeywords, setBatchKeywords] = useState('')
+  const [isBatching, setIsBatching] = useState(false)
   const searchParams = useSearchParams()
   const draftId = searchParams.get('draftId')
 
@@ -47,6 +56,61 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
   const ActiveFields = ComponentMap[settings.type] || BlogFields
 
   useEffect(() => {
+    let active = true
+
+    fetch('/api/user/settings')
+      .then(response => response.json())
+      .then(data => {
+        if (
+          active &&
+          data.user &&
+          Number.isFinite(Number(data.user.wordsUsed)) &&
+          Number.isFinite(Number(data.user.wordsLimit))
+        ) {
+          setUsage({ wordsUsed: Number(data.user.wordsUsed), wordsLimit: Number(data.user.wordsLimit) })
+        }
+      })
+      .catch(() => {})
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const runBatch = async () => {
+    const keywords = batchKeywords
+      .split('\n')
+      .map(keyword => keyword.trim())
+      .filter(Boolean)
+
+    if (!keywords.length) return
+    setIsBatching(true)
+
+    try {
+      const articles = keywords.map(keyword => ({ settings: { ...settings, targetKeyword: keyword } }))
+      const response = await fetch('/api/generate/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ articles })
+      })
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        if ([402, 403].includes(response.status)) throw new Error('Upgrade to Pro to use batch generation.')
+        throw new Error(serializeError(data?.error || data))
+      }
+
+      toast.success(`Batch ${data.batch.status}: ${data.batch.nextIndex}/${data.batch.total}`)
+      setBatchOpen(false)
+      setBatchKeywords('')
+    } catch (error) {
+      toast.error(serializeError(error))
+    } finally {
+      setIsBatching(false)
+    }
+  }
+
+  useEffect(() => {
     if (draftId) {
       setStep(2)
     }
@@ -59,12 +123,23 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
       settings.type === 'amazon-review-rewrite'
 
     if (settings.type === 'product-comparison') {
-      const links = Array.isArray(settings.productComparisonUrls) ? settings.productComparisonUrls.map(value => String(value || '').trim()).filter(Boolean) : []
+      const links = Array.isArray(settings.productComparisonUrls)
+        ? settings.productComparisonUrls.map(value => String(value || '').trim()).filter(Boolean)
+        : []
 
-      if (links.length < 2 || links.length > 3 || links.some(value => {
-        try { return !['http:', 'https:'].includes(new URL(value).protocol) } catch { return true }
-      })) {
+      if (
+        links.length < 2 ||
+        links.length > 3 ||
+        links.some(value => {
+          try {
+            return !['http:', 'https:'].includes(new URL(value).protocol)
+          } catch {
+            return true
+          }
+        })
+      ) {
         toast.error('Provide two or three valid Amazon product URLs.')
+
         return
       }
     }
@@ -141,6 +216,7 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
         if (data.heroImageSource) {
           updateSetting('heroImageSource', data.heroImageSource)
         }
+
         if (data.comparisonShared) updateSetting('comparisonShared', data.comparisonShared)
         if (data.metaTitle) updateSetting('metaTitle', data.metaTitle)
         if (data.metaDescription) updateSetting('metaDescription', data.metaDescription)
@@ -161,9 +237,7 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
       if (settings.type === 'product-comparison') {
         toast.error(`Failed to generate outline: ${msg}`, { autoClose: 6000 })
       } else if (/RATE_LIMIT|429|quota|resource.?exhausted/i.test(msg)) {
-        toast.error('Gemini free rate limit hit. Wait ~60s, or reduce concurrent usage. Outline was not generated.', {
-          autoClose: 8000
-        })
+        toast.error('The writing provider hit a limit and will retry the next key/provider.', { autoClose: 8000 })
       } else if (/OUTLINE_PARSE_FAILED/i.test(msg)) {
         toast.error('Outline generation returned invalid data after retries. Try again, or shorten the topic.', {
           autoClose: 7000
@@ -205,12 +279,11 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
                 Current Usage:
               </Typography>
             </div>
-            <Typography variant='caption' className='text-sm'>
-              0 / 0 words
-            </Typography>
-            <Typography variant='caption' className='text-sm'>
-              0 / 0 messages
-            </Typography>
+            {usage ? (
+              <Typography variant='caption' className='text-sm'>
+                {usage.wordsUsed.toLocaleString()} / {usage.wordsLimit.toLocaleString()} words
+              </Typography>
+            ) : null}
           </div>
 
           <Button
@@ -221,44 +294,36 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
             onClick={handleCreateArticle}
             disabled={isGenerating}
           >
-            {isGenerating ? (
-              <CircularProgress size={24} color='inherit' />
-            ) : settings.useOutlineEditor ? (
-              'Create Outline'
-            ) : (
-              'Create Article'
-            )}
+            {isGenerating ? 'Generating outline…' : settings.useOutlineEditor ? 'Create Outline' : 'Create Article'}
           </Button>
-          <Button
-            variant='outlined'
-            disabled={isGenerating}
-            onClick={async () => {
-              const lines = window.prompt('Pro/admin batch: one keyword per line')
-
-              if (!lines) return
-
-              const articles = lines
-                .split('\n')
-                .map(keyword => keyword.trim())
-                .filter(Boolean)
-                .map(keyword => ({ settings: { ...settings, targetKeyword: keyword } }))
-
-              const res = await fetch('/api/generate/batch', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ articles })
-              })
-
-              const data = await res.json()
-
-              if (!data.success) toast.error(serializeError(data.error))
-              else toast.success(`Batch ${data.batch.status}: ${data.batch.nextIndex}/${data.batch.total}`)
-            }}
-          >
+          <Button variant='outlined' disabled={isGenerating || isBatching} onClick={() => setBatchOpen(true)}>
             Batch
           </Button>
         </div>
       </CardContent>
+      <Dialog open={batchOpen} onClose={() => !isBatching && setBatchOpen(false)} fullWidth maxWidth='sm'>
+        <DialogTitle>Batch generation</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            minRows={6}
+            label='Keywords, one per line'
+            value={batchKeywords}
+            onChange={event => setBatchKeywords(event.target.value)}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBatchOpen(false)} disabled={isBatching}>
+            Cancel
+          </Button>
+          <Button variant='contained' onClick={runBatch} disabled={isBatching || !batchKeywords.trim()}>
+            {isBatching ? <CircularProgress size={20} color='inherit' /> : 'Run batch'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   )
 }

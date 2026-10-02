@@ -77,7 +77,7 @@ const Login = ({ mode }) => {
 
     if (res?.error) {
       // Invalid credentials
-      setError(res.error)
+      setError('Email or password is incorrect.')
       setIsLoading(false)
     } else {
       // Login successful! Redirect to the main app page (e.g., your writer tool)

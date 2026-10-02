@@ -1,5 +1,7 @@
 import { GoogleGenAI } from '@google/genai'
 
+import { withGeminiKey } from '../utils/geminiKeys'
+
 import {
   fetchSerperOutlineData,
   getLinkInstruction,
@@ -343,12 +345,13 @@ export async function generateStandardBlogSection(body, genAI) {
       `
 
   if (deepSearch) {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_FREE_API_KEY })
-
-    const interaction = await ai.interactions.create({
-      agent: 'deep-research-preview-04-2026',
-      input: `${baseSystemInstruction}\n\nYou are an expert researcher. Conduct a deep web search based on the following instructions. \n\nCRITICAL RULE: DO NOT output your research notes, search queries, or internal reasoning. Your FINAL output MUST strictly be the final, ready-to-publish Markdown text adhering exactly to the layout requirements provided below.\n\n---\n\n${sectionPrompt}`,
-      background: true
+    const interaction = await withGeminiKey(async apiKey => {
+      const ai = new GoogleGenAI({ apiKey })
+      return ai.interactions.create({
+        agent: 'deep-research-preview-04-2026',
+        input: `${baseSystemInstruction}\n\nYou are an expert researcher. Conduct a deep web search based on the following instructions. \n\nCRITICAL RULE: DO NOT output your research notes, search queries, or internal reasoning. Your FINAL output MUST strictly be the final, ready-to-publish Markdown text adhering exactly to the layout requirements provided below.\n\n---\n\n${sectionPrompt}`,
+        background: true
+      })
     })
 
     return {

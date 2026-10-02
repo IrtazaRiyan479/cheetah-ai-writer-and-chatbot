@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { serializeError } from '@/utils/serializeError'
+import { withGeminiKey } from '@/app/api/generate/utils/geminiKeys'
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_FREE_API_KEY)
 
 export async function POST(req) {
   try {
@@ -12,9 +12,13 @@ export async function POST(req) {
     if (action === 'create') {
       if (!prompt) return NextResponse.json({ error: 'Please provide a description.' }, { status: 400 })
 
-      const model = genAI.getGenerativeModel({
-        model: 'gemini-3.1-flash-lite',
-        generationConfig: { responseMimeType: 'application/json' }
+      const result = await withGeminiKey(async apiKey => {
+        const client = new GoogleGenerativeAI(apiKey)
+        const model = client.getGenerativeModel({
+          model: 'gemini-3.1-flash-lite',
+          generationConfig: { responseMimeType: 'application/json' }
+        })
+        return model.generateContent(aiPrompt)
       })
 
       const aiPrompt = `
@@ -46,9 +50,11 @@ export async function POST(req) {
     }
 
     if (action === 'execute') {
-      const model = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
-
-      const executionPrompt = `
+      const result = await withGeminiKey(async apiKey => {
+        const client = new GoogleGenerativeAI(apiKey)
+        const model = client.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
+        return model.generateContent(executionPrompt)
+      })
         You are the execution engine for a specialized web tool. Provide a direct, helpful, user-friendly, and concise response formatted cleanly. Do not explain how you generated the result.
 
         SYSTEM INSTRUCTIONS FOR THIS TOOL:
@@ -67,6 +73,6 @@ export async function POST(req) {
   } catch (error) {
     console.error('AffiGenieMagnets API Error:', error)
 
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+    return NextResponse.json({ success: false, error: serializeError(error) }, { status: 500 })
   }
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { GoogleGenAI } from '@google/genai'
+import { withGeminiKey } from '@/app/api/generate/utils/geminiKeys'
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
@@ -9,8 +9,10 @@ export async function GET(request) {
   if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 })
 
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_FREE_API_KEY })
-    const interaction = await ai.interactions.get(id)
+    const interaction = await withGeminiKey(async apiKey => {
+      const ai = new GoogleGenAI({ apiKey })
+      return ai.interactions.get(id)
+    })
 
     if (interaction.status === 'completed') {
       return NextResponse.json({ status: 'completed', text: interaction.output_text })

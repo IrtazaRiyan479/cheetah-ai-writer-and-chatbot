@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { withGeminiKey } from '@/app/api/generate/utils/geminiKeys';
 import * as cheerio from 'cheerio';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_FREE_API_KEY);
 
 const browserHeaders = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -202,11 +201,6 @@ return res.ok ? url : null;
         return NextResponse.json({ error: 'Could not extract text.' }, { status: 400 });
       }
 
-      const model = genAI.getGenerativeModel({
-        model: 'gemini-3.1-flash-lite',
-        generationConfig: { responseMimeType: "application/json", maxOutputTokens: 8192 }
-      });
-
       const encoder = new TextEncoder();
 
       const stream = new ReadableStream({
@@ -249,7 +243,14 @@ return res.ok ? url : null;
               ]
               `;
 
-              const result = await model.generateContent(prompt);
+              const result = await withGeminiKey(async apiKey => {
+                const client = new GoogleGenerativeAI(apiKey)
+                const model = client.getGenerativeModel({
+                  model: 'gemini-3.1-flash-lite',
+                  generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 8192 }
+                })
+                return model.generateContent(prompt)
+              });
 
               if (req.signal.aborted) break;
 

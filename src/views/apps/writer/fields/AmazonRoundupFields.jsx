@@ -60,6 +60,7 @@ const AmazonRoundupFields = ({ settings, updateSetting }) => {
           <MenuItem value='top-pick'>Top Pick</MenuItem>
         </Select>
       </FormControl>
+      <Typography variant='caption' color='text.secondary'>One layout per article. Product Table is the default. Top Pick is ranked cards, not a table.</Typography>
     </Grid>
     <Grid size={{ xs: 12, sm: 6 }}>
       <Typography variant='subtitle2' className='font-medium mbe-1'>Amazon Tracking ID (Optional)</Typography>

@@ -1,5 +1,7 @@
 import { YoutubeTranscript } from 'youtube-transcript'
 
+import { geminiGenerateContent, listGeminiApiKeys } from './geminiKeys'
+
 import { callLightLLM, parseJsonSafe } from './lightLLM'
 
 export function mediaKey(item) {
@@ -727,7 +729,7 @@ export function calculateRelevanceScore(altText, query, topic) {
 }
 
 export async function generateFallbackImage(prompt) {
-  if (!process.env.GEMINI_FREE_API_KEY) return null
+  if (!listGeminiApiKeys().length) return null
 
   try {
     const finalPrompt = `photorealistic style, landscape orientation, highly detailed. ${prompt}`
@@ -737,16 +739,7 @@ export async function generateFallbackImage(prompt) {
       generationConfig: { imageConfig: { aspectRatio: '16:9' } }
     }
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent?key=${process.env.GEMINI_FREE_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
-      }
-    )
-
-    const data = await res.json()
+    const data = await geminiGenerateContent({ model: 'gemini-3-pro-image', body: requestBody })
     let originalBase64 = null
 
     data.candidates?.forEach(candidate => {

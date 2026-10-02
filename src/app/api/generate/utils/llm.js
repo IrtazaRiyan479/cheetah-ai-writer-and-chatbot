@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import { serializeError } from '@/utils/serializeError'
 
 import { callGroq, callMistral, parseJsonSafe } from './lightLLM'
+import { geminiGenerateContent, listGeminiApiKeys } from './geminiKeys'
 
 /**
  * Default xAI model. Override with XAI_MODEL.
@@ -88,17 +89,10 @@ async function callXai({ system, prompt, json, maxTokens, temperature }) {
 }
 
 async function callGemini({ system, prompt, json, maxTokens, temperature, model }) {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_FREE_API_KEY
-
-  if (!apiKey) return null
-
   const modelName = model || 'gemini-3.1-flash-lite'
-  const url = `${GEMINI_URL}/${encodeURIComponent(modelName)}:generateContent?key=${apiKey}`
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const data = await geminiGenerateContent({
+    model: modelName,
+    body: {
       systemInstruction: { parts: [{ text: system }] },
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
@@ -106,18 +100,9 @@ async function callGemini({ system, prompt, json, maxTokens, temperature, model 
         maxOutputTokens: maxTokens,
         ...(json ? { responseMimeType: 'application/json' } : {})
       }
-    }),
-    signal: AbortSignal.timeout(90000)
+    },
+    timeoutMs: 90000
   })
-
-  if (!res.ok) {
-    const detail = await readProviderError(res)
-
-    console.error('[llm] gemini failed', res.status, detail.slice(0, 180))
-    throw new Error(detail)
-  }
-
-  const data = await res.json()
   const text = (data.candidates?.[0]?.content?.parts || []).map(part => part.text || '').join('').trim()
 
   if (!text) throw new Error('Gemini returned an empty response')
@@ -247,7 +232,7 @@ export function createTextModel({ systemInstruction, model, json = false, maxTok
 
 /** Compatibility wrapper. Existing services still call genAI.getGenerativeModel(). */
 export function createProviderGenAI() {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_FREE_API_KEY || 'unused'
+  const apiKey = listGeminiApiKeys()[0] || 'unused'
   const native = new GoogleGenerativeAI(apiKey)
 
   return {

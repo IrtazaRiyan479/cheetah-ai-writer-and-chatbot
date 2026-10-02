@@ -70,7 +70,7 @@ const WriterHeader = ({
           <Grid container spacing={5} alignItems='flex-end'>
 
             <Grid size={{ xs: 12, sm: 6 }}>
-              <Typography variant='subtitle2' className='mbe-2 font-medium'>AI Model</Typography>
+              <Typography variant='subtitle2' className='mbe-2 font-medium'>AI Model <Tooltip title='Routing is server-side (Grok, then fallbacks).'><i className='ri-information-line' /></Tooltip></Typography>
               <FormControl fullWidth size='small'>
                 <Select value={settings.model} onChange={handleModelChange}>
                   {availableModels.map((model) => (

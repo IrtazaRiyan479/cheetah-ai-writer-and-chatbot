@@ -31,10 +31,10 @@ export default function UnlockGate() {
 
   return (
     <Box component='form' onSubmit={unlock} sx={{ maxWidth: 440, mx: 'auto', mt: 10, p: 4, border: 1, borderColor: 'divider', borderRadius: 3 }}>
-      <Typography variant='h4' sx={{ mb: 1 }}>Admin console locked</Typography>
-      <Typography color='text.secondary' sx={{ mb: 3 }}>Enter the operator key to continue.</Typography>
+      <Typography variant='h4' sx={{ mb: 1, fontWeight: 700 }}>Welcome back</Typography>
+      <Typography color='text.secondary' sx={{ mb: 3 }}>This area is restricted to authorized operators. Enter your access key to continue.</Typography>
       {error ? <Alert severity='error' sx={{ mb: 2 }}>{error}</Alert> : null}
-      <TextField fullWidth autoFocus type='password' label='Unlock key' value={key} onChange={event => setKey(event.target.value)} />
+      <TextField fullWidth autoFocus type='password' label='Access key' value={key} onChange={event => setKey(event.target.value)} autoComplete='current-password' />
       <Button fullWidth type='submit' variant='contained' disabled={!key || busy} sx={{ mt: 2 }}>{busy ? 'Unlocking…' : 'Unlock'}</Button>
     </Box>
   )

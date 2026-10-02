@@ -3,7 +3,9 @@ import { getServerSession } from 'next-auth'
 import { PrismaClient } from '@prisma/client'
 
 import { authOptions } from '@/libs/auth'
-import { assertCanGenerate } from '@/libs/entitlement'
+import { assertCanGenerate, getDbUser } from '@/libs/entitlement'
+import { geminiGenerateContent } from '@/app/api/generate/utils/geminiKeys'
+import { serializeError } from '@/utils/serializeError'
 
 const prisma = global.prisma || new PrismaClient()
 
@@ -11,23 +13,40 @@ if (process.env.NODE_ENV !== 'production') global.prisma = prisma
 
 export async function GET() {
   try {
+    const session = await getServerSession(authOptions)
+
+    if (!session?.user?.id) {
+      return NextResponse.json({ success: false, error: serializeError(new Error('Sign in required.')) }, { status: 401 })
+    }
+
     const history = await prisma.generatedImage.findMany({
+      where: { userId: session.user.id },
       orderBy: { createdAt: 'desc' }
     })
 
     return NextResponse.json({ success: true, images: history })
   } catch (error) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+    return NextResponse.json({ success: false, error: serializeError(error) }, { status: 500 })
   }
 }
 
 export async function DELETE() {
   try {
+    const session = await getServerSession(authOptions)
+    const user = await getDbUser({ userId: session?.user?.id, email: session?.user?.email })
+
+    if (!user) {
+      return NextResponse.json({ success: false, error: serializeError(new Error('Sign in required.')) }, { status: 401 })
+    }
+    if (user.role !== 'admin') {
+      return NextResponse.json({ success: false, error: serializeError(new Error('Admin access required.')) }, { status: 403 })
+    }
+
     await prisma.generatedImage.deleteMany({})
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+    return NextResponse.json({ success: false, error: serializeError(error) }, { status: 500 })
   }
 }
 
@@ -40,7 +59,7 @@ export async function POST(req) {
     estimatedWords: 0
   })
 
-  if (!gate.ok) return NextResponse.json({ success: false, error: gate.error }, { status: gate.status })
+  if (!gate.ok) return NextResponse.json({ success: false, error: serializeError(gate.error) }, { status: gate.status })
 
   const body = await req.json()
   const { prompt, model, style, size, numImages, lossless, uploadedImage } = body
@@ -50,8 +69,6 @@ export async function POST(req) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const GEMINI_API_KEY = process.env.GEMINI_FREE_API_KEY
-
         const modelMapping = {
           'nano-banana': 'gemini-3-pro-image',
           'gpt-2-fast': 'gemini-3.1-flash-image',
@@ -90,19 +107,11 @@ export async function POST(req) {
             ]
           }
 
-          const flashRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${GEMINI_FREE_API_KEY}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(visionPayload)
-            }
-          )
-
-          if (flashRes.ok) {
-            const flashData = await flashRes.json()
-
+          try {
+            const flashData = await geminiGenerateContent({ model: 'gemini-3.1-flash-lite', body: visionPayload })
             finalPrompt = flashData.candidates?.[0]?.content?.parts?.[0]?.text || finalPrompt
+          } catch {
+            // Retain the user's original prompt when image analysis is unavailable.
           }
         }
 
@@ -125,18 +134,7 @@ export async function POST(req) {
 
         const fetchPromises = Array.from({ length: Number(numImages) || 1 }).map(async () => {
           try {
-            const res = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/${backendModel}:generateContent?key=${GEMINI_FREE_API_KEY}`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody)
-              }
-            )
-
-            const data = await res.json()
-
-            if (!res.ok) throw new Error(data.error?.message || 'Error from Gemini API')
+            const data = await geminiGenerateContent({ model: backendModel, body: requestBody })
 
             let originalBase64 = null
 
@@ -171,12 +169,13 @@ export async function POST(req) {
                   finalBase64 = `data:image/png;base64,${Buffer.from(compBuffer).toString('base64')}`
                 }
               } catch (compressionError) {
-                console.error('TinyPNG Error, falling back to original:', compressionError)
+                console.error('TinyPNG request failed', compressionError?.status || compressionError?.statusCode || 'unknown', serializeError(compressionError).slice(0, 180))
               }
             }
 
             const dbRecord = await prisma.generatedImage.create({
               data: {
+                userId: session.user.id,
                 image: finalBase64,
                 prompt: finalPrompt,
                 title: `Model: ${displayNames[model]}`,
@@ -188,7 +187,7 @@ export async function POST(req) {
 
             controller.enqueue(encoder.encode(`data: ${successPayload}\n\n`))
           } catch (err) {
-            const errorPayload = JSON.stringify({ success: false, error: err.message })
+            const errorPayload = JSON.stringify({ success: false, error: serializeError(err) })
 
             controller.enqueue(encoder.encode(`data: ${errorPayload}\n\n`))
           }
@@ -199,8 +198,8 @@ export async function POST(req) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`))
         controller.close()
       } catch (error) {
-        console.error('Global Generation Error:', error)
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ success: false, error: error.message })}\n\n`))
+        console.error('Global Generation Error', error?.status || error?.statusCode || 'unknown', serializeError(error).slice(0, 180))
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ success: false, error: serializeError(error) })}\n\n`))
         controller.close()
       }
     }

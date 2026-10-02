@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 
 import { useSession } from 'next-auth/react'
+import { toast } from 'react-toastify'
 
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
@@ -26,17 +27,22 @@ import Alert from '@mui/material/Alert'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 
+import { serializeError } from '@/utils/serializeError'
+
 const AccountSettings = () => {
   const { data: session, update: updateSession } = useSession()
   const pathname = usePathname()
   const locale = pathname?.split('/').filter(Boolean)[0] || 'en'
   const [isLoading, setIsLoading] = useState(true)
-  const [tooltipText, setTooltipText] = useState("Copy ID")
+  const [tooltipText, setTooltipText] = useState('Copy ID')
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [newEmail, setNewEmail] = useState('')
   const [updateError, setUpdateError] = useState('')
   const [isUpdating, setIsUpdating] = useState(false)
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
 
   const [userData, setUserData] = useState({
     name: '',
@@ -73,7 +79,7 @@ const AccountSettings = () => {
             }))
           }
         } catch (error) {
-          console.error("Failed to fetch user data:")
+          console.error('Failed to fetch user data:')
         } finally {
           setIsLoading(false)
         }
@@ -86,8 +92,8 @@ const AccountSettings = () => {
   const handleCopyId = () => {
     if (userData.userId) {
       navigator.clipboard.writeText(userData.userId)
-      setTooltipText("Copied!")
-      setTimeout(() => setTooltipText("Copy ID"), 2000)
+      setTooltipText('Copied!')
+      setTimeout(() => setTooltipText('Copy ID'), 2000)
     }
   }
 
@@ -103,6 +109,32 @@ const AccountSettings = () => {
       window.location.assign(data.url)
     } catch (error) {
       setUpdateError(error?.message || 'Could not open billing management.')
+      setIsUpdating(false)
+    }
+  }
+
+  const handlePasswordChange = async () => {
+    setIsUpdating(true)
+    setUpdateError('')
+
+    try {
+      const response = await fetch('/api/user/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) throw new Error(serializeError(data?.error || data))
+      toast.success('Password updated successfully.')
+      setPasswordDialogOpen(false)
+      setCurrentPassword('')
+      setNewPassword('')
+    } catch (error) {
+      setUpdateError(serializeError(error))
+      toast.error(serializeError(error))
+    } finally {
       setIsUpdating(false)
     }
   }
@@ -147,45 +179,75 @@ const AccountSettings = () => {
 
   return (
     <Box sx={{ maxWidth: '900px', p: { xs: 2, md: 4 } }}>
-      <Typography variant="h4" component="h2" sx={{ fontWeight: 'bold', mb: 5 }}>
+      <Typography variant='h4' component='h2' sx={{ fontWeight: 'bold', mb: 5 }}>
         Account Settings
       </Typography>
 
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-
         {/* Profile Section */}
         <Box>
-          <Typography variant="h6" component="h3" sx={{ fontWeight: 600, mb: 2 }}>
+          <Typography variant='h6' component='h3' sx={{ fontWeight: 600, mb: 2 }}>
             Profile
           </Typography>
-          <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
-
+          <Paper variant='outlined' sx={{ borderRadius: 3, overflow: 'hidden' }}>
             {/* Name Row */}
-            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, p: 3, gap: 2 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                p: 3,
+                gap: 2
+              }}
+            >
               <Box>
-                <Typography variant="body2" color="text.secondary" fontWeight={500} mb={0.5}>
+                <Typography variant='body2' color='text.secondary' fontWeight={500} mb={0.5}>
                   Name
                 </Typography>
-                <Typography variant="body1" fontWeight={600}>
+                <Typography variant='body1' fontWeight={600}>
                   {userData.name}
                 </Typography>
               </Box>
             </Box>
 
             {/* Email Row */}
-            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, p: 3, gap: 2 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                p: 3,
+                gap: 2
+              }}
+            >
               <Box>
-                <Typography variant="body2" color="text.secondary" fontWeight={500} mb={0.5}>
+                <Typography variant='body2' color='text.secondary' fontWeight={500} mb={0.5}>
                   Email Address
                 </Typography>
-                <Typography variant="body1" fontWeight={600}>
+                <Typography variant='body1' fontWeight={600}>
                   {userData.email}
                 </Typography>
               </Box>
               <Button
-                variant="contained"
+                variant='contained'
                 disableElevation
-                onClick={() => setIsDialogOpen(true)}
+                onClick={() => {
+                  setUpdateError('')
+                  setPasswordDialogOpen(true)
+                }}
+                sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
+              >
+                Change Password
+              </Button>
+              <Button
+                variant='contained'
+                disableElevation
+                onClick={() => {
+                  setUpdateError('')
+                  setIsDialogOpen(true)
+                }}
                 sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
               >
                 Update Email
@@ -195,18 +257,37 @@ const AccountSettings = () => {
             <Divider />
 
             {/* User ID Row */}
-            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, p: 3, gap: 2 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                p: 3,
+                gap: 2
+              }}
+            >
               <Box>
-                <Typography variant="body2" color="text.secondary" fontWeight={500} mb={0.5}>
+                <Typography variant='body2' color='text.secondary' fontWeight={500} mb={0.5}>
                   User ID
                 </Typography>
-                <Typography variant="body1" sx={{ fontFamily: 'monospace', fontWeight: 500, bgcolor: 'action.hover', px: 1, py: 0.5, borderRadius: 1 }}>
+                <Typography
+                  variant='body1'
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontWeight: 500,
+                    bgcolor: 'action.hover',
+                    px: 1,
+                    py: 0.5,
+                    borderRadius: 1
+                  }}
+                >
                   {userData.userId}
                 </Typography>
               </Box>
-              <Tooltip title={tooltipText} placement="top">
-                <IconButton color="primary" onClick={handleCopyId} sx={{ bgcolor: 'primary.50' }}>
-                  <ContentCopyIcon fontSize="small" />
+              <Tooltip title={tooltipText} placement='top'>
+                <IconButton color='primary' onClick={handleCopyId} sx={{ bgcolor: 'primary.50' }}>
+                  <ContentCopyIcon fontSize='small' />
                 </IconButton>
               </Tooltip>
             </Box>
@@ -214,33 +295,52 @@ const AccountSettings = () => {
             <Divider />
 
             {/* Support PIN Row */}
-            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, p: 3, gap: 2 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                p: 3,
+                gap: 2
+              }}
+            >
               <Box>
-                <Typography variant="body2" color="text.secondary" fontWeight={500} mb={0.5}>
+                <Typography variant='body2' color='text.secondary' fontWeight={500} mb={0.5}>
                   Support PIN
                 </Typography>
-                <Typography variant="body1" fontWeight={600}>
+                <Typography variant='body1' fontWeight={600}>
                   {userData.supportPin}
                 </Typography>
               </Box>
             </Box>
-
           </Paper>
         </Box>
 
         {/* Beta Features Section (Unchanged) */}
         <Box>
-          <Typography variant="h6" component="h3" sx={{ fontWeight: 600, mb: 2 }}>
+          <Typography variant='h6' component='h3' sx={{ fontWeight: 600, mb: 2 }}>
             Beta Features
           </Typography>
-          <Paper variant="outlined" sx={{ borderRadius: 3, p: 3, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 2 }}>
+          <Paper
+            variant='outlined'
+            sx={{
+              borderRadius: 3,
+              p: 3,
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              justifyContent: 'space-between',
+              alignItems: { xs: 'flex-start', sm: 'center' },
+              gap: 2
+            }}
+          >
             <Box>
-              <Typography variant="body2" color="text.secondary" fontWeight={500} mb={1}>
+              <Typography variant='body2' color='text.secondary' fontWeight={500} mb={1}>
                 Program Status
               </Typography>
-              <Chip label="Disabled" size="small" sx={{ fontWeight: 600, borderRadius: 1.5 }} />
+              <Chip label='Disabled' size='small' sx={{ fontWeight: 600, borderRadius: 1.5 }} />
             </Box>
-            <Button variant="outlined" sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}>
+            <Button variant='outlined' sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}>
               Manage Features
             </Button>
           </Paper>
@@ -248,67 +348,83 @@ const AccountSettings = () => {
 
         {/* Subscription Section (Unchanged) */}
         <Box>
-          <Typography variant="h6" component="h3" sx={{ fontWeight: 600, mb: 2 }}>
+          <Typography variant='h6' component='h3' sx={{ fontWeight: 600, mb: 2 }}>
             Subscription
           </Typography>
-          <Paper variant="outlined" sx={{ borderRadius: 3, p: 3, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 2 }}>
+          <Paper
+            variant='outlined'
+            sx={{
+              borderRadius: 3,
+              p: 3,
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              justifyContent: 'space-between',
+              alignItems: { xs: 'flex-start', sm: 'center' },
+              gap: 2
+            }}
+          >
             <Box>
-              <Typography variant="body2" color="text.secondary" fontWeight={500} mb={1}>
+              <Typography variant='body2' color='text.secondary' fontWeight={500} mb={1}>
                 Current Plan
               </Typography>
               <Chip
-                label={userData.plan === 'admin' ? 'Admin' : userData.plan === 'pro' ? `Pro · ${userData.subscriptionStatus}` : 'Free plan'}
-                size="small"
+                label={
+                  userData.plan === 'admin'
+                    ? 'Admin'
+                    : userData.plan === 'pro'
+                      ? `Pro · ${userData.subscriptionStatus}`
+                      : 'Free plan'
+                }
+                size='small'
                 color={userData.plan === 'pro' || userData.plan === 'admin' ? 'success' : 'default'}
                 sx={{ fontWeight: 600, borderRadius: 1.5 }}
               />
             </Box>
             {userData.hasStripeCustomer ? (
               <Button
-                variant="contained"
-                color="primary"
+                variant='contained'
+                color='primary'
                 disableElevation
                 onClick={handleManageBilling}
                 disabled={isUpdating}
                 sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
               >
-                {isUpdating ? <CircularProgress size={20} color="inherit" /> : 'Manage Billing'}
+                {isUpdating ? <CircularProgress size={20} color='inherit' /> : 'Manage Billing'}
               </Button>
             ) : (
               <Button
-                component="a"
+                component='a'
                 href={`/${locale}/pricing`}
-                variant="contained"
-                color="primary"
+                variant='contained'
+                color='primary'
                 disableElevation
                 sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
               >
                 View Pricing
               </Button>
             )}
-            {updateError ? <Alert severity="error">{updateError}</Alert> : null}
+            {updateError ? <Alert severity='error'>{updateError}</Alert> : null}
           </Paper>
         </Box>
 
         {/* Usage Section (Unchanged) */}
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h6" component="h3" sx={{ fontWeight: 600, mb: 2 }}>
+          <Typography variant='h6' component='h3' sx={{ fontWeight: 600, mb: 2 }}>
             Current Usage
           </Typography>
-          <Paper variant="outlined" sx={{ borderRadius: 3, p: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
-
+          <Paper variant='outlined' sx={{ borderRadius: 3, p: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {/* Words Progress */}
             <Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                <Typography variant="subtitle2" fontWeight={600}>
+                <Typography variant='subtitle2' fontWeight={600}>
                   Words Generated
                 </Typography>
-                <Typography variant="body2" color="text.secondary" fontWeight={500}>
+                <Typography variant='body2' color='text.secondary' fontWeight={500}>
                   {`${Number(userData.wordsUsed).toLocaleString()} / ${Number(userData.wordsLimit).toLocaleString()} words`}
                 </Typography>
               </Box>
               <LinearProgress
-                variant="determinate"
+                variant='determinate'
                 value={userData.wordsLimit ? Math.min(100, (userData.wordsUsed / userData.wordsLimit) * 100) : 0}
                 color={userData.wordsUsed >= userData.wordsLimit ? 'error' : 'primary'}
                 sx={{ height: 8, borderRadius: 4, bgcolor: 'action.hover' }}
@@ -319,56 +435,105 @@ const AccountSettings = () => {
             <Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="subtitle2" fontWeight={600}>
+                  <Typography variant='subtitle2' fontWeight={600}>
                     Active Chats
                   </Typography>
-                  <Tooltip title="Total chat threads initiated this billing cycle">
+                  <Tooltip title='Total chat threads initiated this billing cycle'>
                     <InfoOutlinedIcon sx={{ fontSize: 18, color: 'text.secondary', cursor: 'pointer' }} />
                   </Tooltip>
                 </Box>
-                <Typography variant="body2" color="text.secondary" fontWeight={500}>
+                <Typography variant='body2' color='text.secondary' fontWeight={500}>
                   {userData.chatsLimit}
                 </Typography>
               </Box>
               <LinearProgress
-                variant="determinate"
+                variant='determinate'
                 value={100}
-                color="error"
+                color='error'
                 sx={{ height: 8, borderRadius: 4, bgcolor: 'action.hover' }}
               />
             </Box>
-
           </Paper>
         </Box>
-
       </Box>
 
-      {/* Update Email Modal Dialog */}
-      <Dialog open={isDialogOpen} onClose={() => setIsDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Update Email Address</DialogTitle>
+      {/* Change Password Dialog */}
+      <Dialog
+        open={passwordDialogOpen}
+        onClose={() => !isUpdating && setPasswordDialogOpen(false)}
+        maxWidth='xs'
+        fullWidth
+      >
+        <DialogTitle>Change Password</DialogTitle>
         <DialogContent>
-          <Box sx={{ mt: 1 }}>
-            {updateError && <Alert severity="error" sx={{ mb: 2 }}>{updateError}</Alert>}
+          <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {updateError ? <Alert severity='error'>{updateError}</Alert> : null}
             <TextField
               autoFocus
-              margin="dense"
-              label="New Email Address"
-              type="email"
+              required
               fullWidth
-              variant="outlined"
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
+              type='password'
+              label='Current password'
+              autoComplete='current-password'
+              value={currentPassword}
+              onChange={event => setCurrentPassword(event.target.value)}
+            />
+            <TextField
+              required
+              fullWidth
+              type='password'
+              label='New password'
+              autoComplete='new-password'
+              inputProps={{ minLength: 8 }}
+              helperText='Use at least 8 characters.'
+              value={newPassword}
+              onChange={event => setNewPassword(event.target.value)}
             />
           </Box>
         </DialogContent>
         <DialogActions sx={{ p: 2, pt: 0 }}>
-          <Button onClick={() => setIsDialogOpen(false)} color="inherit">Cancel</Button>
+          <Button onClick={() => setPasswordDialogOpen(false)} disabled={isUpdating} color='inherit'>
+            Cancel
+          </Button>
           <Button
-            onClick={handleEmailUpdate}
-            variant="contained"
-            disabled={!newEmail || isUpdating}
+            onClick={handlePasswordChange}
+            variant='contained'
+            disabled={isUpdating || !currentPassword || newPassword.length < 8}
           >
-            {isUpdating ? <CircularProgress size={24} color="inherit" /> : 'Save Changes'}
+            {isUpdating ? <CircularProgress size={24} color='inherit' /> : 'Save Password'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Update Email Modal Dialog */}
+
+      <Dialog open={isDialogOpen} onClose={() => setIsDialogOpen(false)} maxWidth='xs' fullWidth>
+        <DialogTitle>Update Email Address</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 1 }}>
+            {updateError && (
+              <Alert severity='error' sx={{ mb: 2 }}>
+                {updateError}
+              </Alert>
+            )}
+            <TextField
+              autoFocus
+              margin='dense'
+              label='New Email Address'
+              type='email'
+              fullWidth
+              variant='outlined'
+              value={newEmail}
+              onChange={e => setNewEmail(e.target.value)}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 0 }}>
+          <Button onClick={() => setIsDialogOpen(false)} color='inherit'>
+            Cancel
+          </Button>
+          <Button onClick={handleEmailUpdate} variant='contained' disabled={!newEmail || isUpdating}>
+            {isUpdating ? <CircularProgress size={24} color='inherit' /> : 'Save Changes'}
           </Button>
         </DialogActions>
       </Dialog>
