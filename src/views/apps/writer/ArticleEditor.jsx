@@ -45,8 +45,11 @@ import Alert from '@mui/material/Alert'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Checkbox from '@mui/material/Checkbox'
 
-import { serializeError } from '@/utils/serializeError'
 import { toast } from 'react-toastify'
+
+import { serializeError } from '@/utils/serializeError'
+
+import { getAffigenieArticleCss, prepareArticleHtml, finalizeArticleHtml } from '@/app/api/generate/utils/articleHtml'
 
 function mediaKey(item) {
   if (!item) return ''
@@ -722,10 +725,16 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
   const handlePublishToWP = async (status = 'draft', metaTitle, metaDescription) => {
     const contentToPublish = editor?.getHTML() || ''
-    const plainContent = contentToPublish.replace(/<h1[^>]*>[\s\S]*?<\/h1>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]*>/g, '').replace(/&nbsp;|&#160;/gi, ' ').trim()
+    const plainContent = contentToPublish
+      .replace(/<h1[^>]*>[\s\S]*?<\/h1>/gi, '')
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;|&#160;/gi, ' ')
+      .trim()
 
     if (!plainContent) {
       toast.error('Add article content before publishing.')
+
       return
     }
 
@@ -851,8 +860,10 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         })
       } else {
         const statusCode = res.status
+
         if (statusCode === 401) toast.error('Sign in to continue.')
-        else if ([402, 403].includes(statusCode)) toast.error(serializeError(result.error) || 'You are not allowed to publish this article.')
+        else if ([402, 403].includes(statusCode))
+          toast.error(serializeError(result.error) || 'You are not allowed to publish this article.')
         else toast.error(serializeError(result.error))
       }
     } catch (error) {
@@ -895,7 +906,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         setPublishSuccessData({ type: 'draft-success' })
       } else {
         if (res.status === 401) toast.error('Sign in to continue.')
-        else if ([402, 403].includes(res.status)) toast.error(serializeError(data?.error) || 'You are not allowed to save this draft.')
+        else if ([402, 403].includes(res.status))
+          toast.error(serializeError(data?.error) || 'You are not allowed to save this draft.')
         else toast.error(serializeError(data?.error || data))
       }
     } catch (error) {
@@ -1266,6 +1278,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           })
 
           const prep = await prepRes.json()
+
           if (prep?.success) shared = prep.shared
           console.info(`[writer] prepare ms=${Date.now() - prepStarted}`)
         } catch (error) {

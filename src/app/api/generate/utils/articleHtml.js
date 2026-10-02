@@ -1,5 +1,5 @@
 /** English CTA. Non-English articles use the map below; unknown languages keep this exact string. */
-export const CHECK_PRICE_LABEL_EN = 'Check Price on Amazon.'
+export const CHECK_PRICE_LABEL_EN = 'Check Price on Amazon'
 
 const CHECK_PRICE_LABELS = {
   ar: 'تحقق من السعر على أمازون.',
@@ -44,6 +44,7 @@ export function escapeHtml(value) {
 
 export function extractAsin(value) {
   const raw = String(value || '')
+
   const match =
     raw.match(/(?:dp|gp\/product|o|v|item|ASIN|product)\/([A-Z0-9]{10})(?:[/?]|$)/i) ||
     raw.match(/\/([A-Z0-9]{10})(?:[/?]|$)/i)
@@ -100,7 +101,12 @@ export function resolveAffiliateUrl({ url, asin, domain = 'www.amazon.com', part
     }
   }
 
-  const foundAsin = extractAsin(raw) || extractAsin(asin) || String(asin || '').trim().toUpperCase()
+  const foundAsin =
+    extractAsin(raw) ||
+    extractAsin(asin) ||
+    String(asin || '')
+      .trim()
+      .toUpperCase()
   const existingTag = parsed?.searchParams.get('tag') || ''
   const tag = forceTag || existingTag || partnerTag || ''
 
@@ -110,6 +116,7 @@ export function resolveAffiliateUrl({ url, asin, domain = 'www.amazon.com', part
     const host = String(domain || 'www.amazon.com')
       .replace(/^https?:\/\//, '')
       .replace(/\/.*$/, '')
+
     const built = new URL(`https://${host}/dp/${foundAsin}`)
 
     if (parsed) {
@@ -175,18 +182,24 @@ export function renderResponsiveTable({ headers = [], rows = [] } = {}) {
 }
 
 export function renderTopPickCards(products = [], options = {}) {
-  const cards = products.map((product, index) => {
-    const name = escapeHtml(product.productName || 'Amazon Product')
-    const image = product.imageUrl ? `<img src="${escapeHtml(protectUrl(product.imageUrl))}" alt="${name}" style="display:block;width:100%;max-width:420px;height:auto;object-fit:contain;border-radius:10px;margin:12px auto;" />` : ''
-    const rating = product.rating ? `<p><strong>Rating:</strong> ${escapeHtml(product.rating)}</p>` : ''
-    const features = Array.isArray(product.features) ? product.features.slice(0, 3) : []
-    const pros = features.length ? `<p><strong>Pros:</strong> ${features.map(escapeHtml).join(' · ')}</p>` : '<p><strong>Pros:</strong> Amazon-listed details are available for review.</p>'
-    const cons = '<p><strong>Cons:</strong> Confirm product limitations and fit on the Amazon listing.</p>'
-    const verdict = `<p>${index === 0 ? 'Our leading option based on its relevance to this roundup and the available listing details.' : 'A worthwhile alternative; compare its listing details against your needs.'}</p>`
-    const button = buildCheckPriceButton(product.amazonUrl, { ...options, asin: product.asin })
+  const cards = products
+    .map((product, index) => {
+      const name = escapeHtml(product.productName || 'Amazon Product')
+      const image = product.imageUrl
+        ? `<img src="${escapeHtml(protectUrl(product.imageUrl))}" alt="${name}" style="display:block;width:100%;max-width:420px;height:auto;object-fit:contain;border-radius:10px;margin:12px auto;" />`
+        : ''
+      const rating = product.rating ? `<p><strong>Rating:</strong> ${escapeHtml(product.rating)}</p>` : ''
+      const features = Array.isArray(product.features) ? product.features.slice(0, 3) : []
+      const pros = features.length
+        ? `<p><strong>Pros:</strong> ${features.map(escapeHtml).join(' · ')}</p>`
+        : '<p><strong>Pros:</strong> Amazon-listed details are available for review.</p>'
+      const cons = '<p><strong>Cons:</strong> Confirm product limitations and fit on the Amazon listing.</p>'
+      const verdict = `<p>${index === 0 ? 'Our leading option based on its relevance to this roundup and the available listing details.' : 'A worthwhile alternative; compare its listing details against your needs.'}</p>`
+      const button = buildCheckPriceButton(product.amazonUrl, { ...options, asin: product.asin })
 
-    return `<article class="affigenie-product-card" style="box-sizing:border-box;width:100%;max-width:100%;margin:20px 0;padding:16px;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">${index === 0 ? '<div style="display:inline-block;background:#eef2ff;color:#3730a3;font-weight:700;padding:6px 10px;border-radius:999px;margin-bottom:8px;">Top Pick</div>' : ''}${image}<h3>${name}</h3>${rating}${verdict}${pros}${cons}<div style="width:100%;max-width:100%;">${button}</div></article>`
-  }).join('')
+      return `<article class="affigenie-product-card" style="box-sizing:border-box;width:100%;max-width:100%;margin:20px 0;padding:16px;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">${index === 0 ? '<div style="display:inline-block;background:#eef2ff;color:#3730a3;font-weight:700;padding:6px 10px;border-radius:999px;margin-bottom:8px;">Top Pick</div>' : ''}${image}<h3>${name}</h3>${rating}${verdict}${pros}${cons}<div style="width:100%;max-width:100%;">${button}</div></article>`
+    })
+    .join('')
 
   return `<div class="affigenie-product-cards" style="width:100%;max-width:100%;">${cards}</div>`
 }
@@ -226,7 +239,7 @@ function stripTags(value) {
 function attrValue(tag, name) {
   const match = String(tag || '').match(new RegExp(`${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s"'=<>]+))`, 'i'))
 
-  return match ? match[2] ?? match[3] ?? match[4] ?? '' : ''
+  return match ? (match[2] ?? match[3] ?? match[4] ?? '') : ''
 }
 
 function findAmazonHref(html) {
@@ -305,6 +318,7 @@ function upgradeTables(html, options) {
 
     const parsed = rows.map(row => cellsOf(row.inner))
     const headerIndex = parsed.findIndex(cells => cells.length && cells.every(cell => cell.tag === 'th'))
+
     const headers =
       headerIndex >= 0 ? parsed[headerIndex].map(cell => stripTags(cell.html)) : parsed[0]?.map(() => '') || []
 

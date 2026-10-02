@@ -46,21 +46,19 @@ Configure these server-side environment variables in local development and in yo
 
 Register `POST /api/billing/webhook` as a Stripe webhook endpoint and subscribe to `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, and `customer.deleted`. The app only changes subscription access after validating Stripe's webhook signature. Configure the Stripe Customer Portal in the Stripe Dashboard before using Manage Billing.
 
-
-
 # AffiGenie Operator Documentation
 
 ## 1. Overview
 
 AffiGenie is an AI writing and affiliate-publishing web application.
 
-| Area              | Implementation                                               |
-| ----------------- | ------------------------------------------------------------ |
-| Web framework     | Next.js App Router, including localized routes under `src/app/[lang]`. |
-| Language          | JavaScript and JSX.                                          |
-| UI                | MUI with Vuexy layout/components and local utility classes.  |
-| Data access       | Prisma ORM. The checked Prisma datasource is MySQL.          |
-| Authentication    | NextAuth credentials and Google providers (`src/libs/auth.js`). |
+| Area              | Implementation                                                                                                  |
+| ----------------- | --------------------------------------------------------------------------------------------------------------- |
+| Web framework     | Next.js App Router, including localized routes under `src/app/[lang]`.                                          |
+| Language          | JavaScript and JSX.                                                                                             |
+| UI                | MUI with Vuexy layout/components and local utility classes.                                                     |
+| Data access       | Prisma ORM. The checked Prisma datasource is MySQL.                                                             |
+| Authentication    | NextAuth credentials and Google providers (`src/libs/auth.js`).                                                 |
 | Main product flow | Select a writer type → configure article → generate outline → generate sections → edit → save draft or publish. |
 
 The application also includes Amazon-focused writing, affiliate links, image generation, WordPress publishing, Stripe billing, newsletter signup, and a private admin console.
@@ -69,10 +67,10 @@ The application also includes Amazon-focused writing, affiliate links, image gen
 
 Server-side entitlement uses the Prisma user record. `getDbUser` loads that record; `assertCanGenerate` checks the user and the requested feature (`src/libs/entitlement.js`). A client-supplied role is not authoritative.
 
-| Database role/plan | Entitlement behavior                                         |
-| ------------------ | ------------------------------------------------------------ |
-| `free`             | Uses feature access mode and the applicable free word limit. |
-| `pro`              | Considered paid by generation entitlement checks.            |
+| Database role/plan | Entitlement behavior                                                                                                                    |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `free`             | Uses feature access mode and the applicable free word limit.                                                                            |
+| `pro`              | Considered paid by generation entitlement checks.                                                                                       |
 | `admin`            | Considered paid by generation entitlement checks. Admin-console access additionally requires DB role `admin` and a valid unlock cookie. |
 
 Feature access modes are `free`, `pro`, and `off`. `off` is a kill switch: entitlement denies that feature, including for admins. `free` permits free users; `pro` requires paid access. The Top Pick roundup layout is not a feature flag.
@@ -144,7 +142,7 @@ The Gemini key pool is implemented in `src/app/api/generate/utils/geminiKeys.js`
 
 Shared utilities in `src/app/api/generate/utils/articleHtml.js` include:
 
-- English affiliate CTA label: **Check Price on Amazon.**
+- English affiliate CTA label: **Check Price on Amazon**
 - Amazon affiliate URL resolution and ASIN-based URL construction.
 - `renderResponsiveTable` and `.affigenie-table` mobile-card CSS.
 - `renderTopPickCards` for the roundup Top Pick layout.
@@ -171,10 +169,10 @@ The standalone image page is `src/views/apps/images/ImageGeneratorBoard.jsx`; it
 
 The billing integration uses direct Stripe REST requests in `src/libs/stripe.js`.
 
-| Route                        | Purpose                                                      |
-| ---------------------------- | ------------------------------------------------------------ |
-| `POST /api/billing/checkout` | Starts the configured Pro subscription checkout flow.        |
-| `POST /api/billing/portal`   | Opens the signed-in customer’s existing Stripe billing portal. |
+| Route                        | Purpose                                                                                                     |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `POST /api/billing/checkout` | Starts the configured Pro subscription checkout flow.                                                       |
+| `POST /api/billing/portal`   | Opens the signed-in customer’s existing Stripe billing portal.                                              |
 | `POST /api/billing/webhook`  | Verifies Stripe webhook signatures and synchronizes supported subscription/customer events to user records. |
 
 Environment names referenced by the billing implementation include `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_PRO_PRICE_ID`. `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` may be used by other deployment/client code; necessity in the checked server-side REST billing path.
@@ -191,49 +189,49 @@ The private admin console contains Overview, Users, Feature flags, Limits, and P
 - **Pricing copy:** display text only; it does not update Stripe products, prices, IDs, checkout, or webhooks.
 - **Billing status:** sourced from the user row; the existing portal endpoint is used rather than creating another checkout path.
 
-Overview/statistics depend on the admin stats endpoint and current database schema. 
+Overview/statistics depend on the admin stats endpoint and current database schema.
 
 ## 10. Environment-variable reference (names only)
 
 Actual values are secrets and intentionally omitted. Which values are required depends on the enabled feature and deployment.
 
-| Group                              | Environment variable names                                   | Notes                                                        |
-| ---------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| Database/auth                      | `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`            | Prisma datasource and NextAuth deployment. The checked Prisma datasource provider is MySQL. |
-| OAuth                              | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                   | Google sign-in provider.                                     |
-| Admin                              | `ADMIN_PANEL_KEY`                                            | Server-only admin unlock key; never prefix with `NEXT_PUBLIC_`. |
-| LLM providers                      | `XAI_API_KEY`, `XAI_MODEL`, `MISTRAL_API_KEY`, `GROQ_API_KEY` | LLM provider configuration; provider order is code-controlled. |
-| Gemini key pool                    | `GEMINI_API_KEYS`, `GEMINI_API_KEY_1` … `GEMINI_API_KEY_10`  | Optional ordered multi-key pool sources.                     |
-| Gemini legacy keys                 | `GEMINI_API_KEY`, `GEMINI_FREE_API_KEY`, `GEMINI_PAID_API_KEY` | Preserved as pool sources for compatibility.                 |
-| Stripe                             | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRO_PRICE_ID`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe secret/webhook/price are used by billing routes; publishable-key usage in the checked server billing path is not confirmed. |
-| Amazon product API                 | `AMAZON_CLIENT_ID`, `AMAZON_CLIENT_SECRET`, `AMAZON_PARTNER_TAG` | Product lookup and affiliate tagging, subject to provider configuration. |
-| Stock images/compression           | `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `UNSPLASH_API_KEY`, `TINYPNG_API_KEY` | Optional image providers and compression.                    |
-| Search/data                        | `SERPER_API_KEY`, `SERP_API_KEY`, `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD` | Service-specific search/keyword integrations; exact usage varies by helper. |
-| Mail                               | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`                        | Newsletter/mail configuration.                               |
-| Other integration/deployment names | `MAPBOX_ACCESS_TOKEN`, `RAPIDAPI_KEY`, `YOUTUBE_API_KEY`, `API_URL`, `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_DOCS_URL`, `BASEPATH`, `NEXTAUTH_BASEPATH`, `PREDEFINED_WP_SITES`, `VERCEL_URL`, `NODE_ENV` | Feature/deployment-specific. Requirement for each must be checked against the deployment and its enabled features. |
+| Group                              | Environment variable names                                                                                                                                                                                                  | Notes                                                                                                                              |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Database/auth                      | `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`                                                                                                                                                                           | Prisma datasource and NextAuth deployment. The checked Prisma datasource provider is MySQL.                                        |
+| OAuth                              | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                                                                                                                                                                  | Google sign-in provider.                                                                                                           |
+| Admin                              | `ADMIN_PANEL_KEY`                                                                                                                                                                                                           | Server-only admin unlock key; never prefix with `NEXT_PUBLIC_`.                                                                    |
+| LLM providers                      | `XAI_API_KEY`, `XAI_MODEL`, `MISTRAL_API_KEY`, `GROQ_API_KEY`                                                                                                                                                               | LLM provider configuration; provider order is code-controlled.                                                                     |
+| Gemini key pool                    | `GEMINI_API_KEYS`, `GEMINI_API_KEY_1` … `GEMINI_API_KEY_10`                                                                                                                                                                 | Optional ordered multi-key pool sources.                                                                                           |
+| Gemini legacy keys                 | `GEMINI_API_KEY`, `GEMINI_FREE_API_KEY`, `GEMINI_PAID_API_KEY`                                                                                                                                                              | Preserved as pool sources for compatibility.                                                                                       |
+| Stripe                             | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRO_PRICE_ID`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`                                                                                                                   | Stripe secret/webhook/price are used by billing routes; publishable-key usage in the checked server billing path is not confirmed. |
+| Amazon product API                 | `AMAZON_CLIENT_ID`, `AMAZON_CLIENT_SECRET`, `AMAZON_PARTNER_TAG`                                                                                                                                                            | Product lookup and affiliate tagging, subject to provider configuration.                                                           |
+| Stock images/compression           | `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `UNSPLASH_API_KEY`, `TINYPNG_API_KEY`                                                                                                                                                  | Optional image providers and compression.                                                                                          |
+| Search/data                        | `SERPER_API_KEY`, `SERP_API_KEY`, `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD`                                                                                                                                                 | Service-specific search/keyword integrations; exact usage varies by helper.                                                        |
+| Mail                               | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`                                                                                                                                                                                       | Newsletter/mail configuration.                                                                                                     |
+| Other integration/deployment names | `MAPBOX_ACCESS_TOKEN`, `RAPIDAPI_KEY`, `YOUTUBE_API_KEY`, `API_URL`, `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_DOCS_URL`, `BASEPATH`, `NEXTAUTH_BASEPATH`, `PREDEFINED_WP_SITES`, `VERCEL_URL`, `NODE_ENV` | Feature/deployment-specific. Requirement for each must be checked against the deployment and its enabled features.                 |
 
 ## 11. Main API map
 
-| Path                    | Method(s)                | Purpose                                                      |
-| ----------------------- | ------------------------ | ------------------------------------------------------------ |
+| Path                    | Method(s)                | Purpose                                                                                              |
+| ----------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------- |
 | `/api/generate`         | POST                     | Chat, prepare, outline, and section generation modes; entitlement and serialization are server-side. |
-| `/api/generate/batch`   | POST, GET                | Start/continue batch work and retrieve batch state.          |
-| `/api/generate-image`   | GET, POST, DELETE        | User-scoped image history, SSE generation, admin-only global delete. |
-| `/api/amazon`           | POST                     | Existing Amazon product lookup used by product-writing flows. |
-| `/api/publish`          | POST                     | Publish article to configured WordPress; featured media and serialized errors. |
-| `/api/drafts`           | GET, POST, DELETE        | Authenticated draft operations.                              |
-| `/api/user/password`    | POST                     | Change password using current and new password.              |
-| `/api/user/settings`    | GET, PATCH               | Account settings and supported profile update.               |
-| `/api/billing/checkout` | POST                     | Create subscription checkout session.                        |
-| `/api/billing/portal`   | POST                     | Create customer portal session.                              |
-| `/api/billing/webhook`  | POST                     | Process signed Stripe events.                                |
-| `/api/subscribe`        | POST                     | Newsletter subscription; not Stripe.                         |
-| `/api/admin/unlock`     | POST                     | Validate unlock key for a DB admin and set cookie.           |
-| `/api/admin/lock`       | POST                     | Clear admin unlock cookie.                                   |
-| `/api/admin/users`      | GET, POST, PATCH, DELETE | Prisma user administration.                                  |
-| `/api/admin/flags`      | GET, PATCH               | Seed/read/update feature flags.                              |
-| `/api/admin/stats`      | GET, PATCH               | Overview data and global free word cap.                      |
-| `/api/admin/settings`   | GET, PUT                 | Persist display-only pricing copy.                           |
-| `/api/links`            | POST                     | Link-crawl/analyze operations.                               |
-| `/api/magnets`          | POST                     | Lead-magnet configuration/execution flow.                    |
-| `/api/poll`             | GET                      | Poll an existing Gemini interaction.                         |
+| `/api/generate/batch`   | POST, GET                | Start/continue batch work and retrieve batch state.                                                  |
+| `/api/generate-image`   | GET, POST, DELETE        | User-scoped image history, SSE generation, admin-only global delete.                                 |
+| `/api/amazon`           | POST                     | Existing Amazon product lookup used by product-writing flows.                                        |
+| `/api/publish`          | POST                     | Publish article to configured WordPress; featured media and serialized errors.                       |
+| `/api/drafts`           | GET, POST, DELETE        | Authenticated draft operations.                                                                      |
+| `/api/user/password`    | POST                     | Change password using current and new password.                                                      |
+| `/api/user/settings`    | GET, PATCH               | Account settings and supported profile update.                                                       |
+| `/api/billing/checkout` | POST                     | Create subscription checkout session.                                                                |
+| `/api/billing/portal`   | POST                     | Create customer portal session.                                                                      |
+| `/api/billing/webhook`  | POST                     | Process signed Stripe events.                                                                        |
+| `/api/subscribe`        | POST                     | Newsletter subscription; not Stripe.                                                                 |
+| `/api/admin/unlock`     | POST                     | Validate unlock key for a DB admin and set cookie.                                                   |
+| `/api/admin/lock`       | POST                     | Clear admin unlock cookie.                                                                           |
+| `/api/admin/users`      | GET, POST, PATCH, DELETE | Prisma user administration.                                                                          |
+| `/api/admin/flags`      | GET, PATCH               | Seed/read/update feature flags.                                                                      |
+| `/api/admin/stats`      | GET, PATCH               | Overview data and global free word cap.                                                              |
+| `/api/admin/settings`   | GET, PUT                 | Persist display-only pricing copy.                                                                   |
+| `/api/links`            | POST                     | Link-crawl/analyze operations.                                                                       |
+| `/api/magnets`          | POST                     | Lead-magnet configuration/execution flow.                                                            |
+| `/api/poll`             | GET                      | Poll an existing Gemini interaction.                                                                 |
