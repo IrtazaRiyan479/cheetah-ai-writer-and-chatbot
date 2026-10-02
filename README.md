@@ -121,15 +121,13 @@ The article-type IDs are presented in `src/views/apps/writer/ArticleTypeMenu.jsx
 
 The form has two required product URL inputs and an optional third. The server validates that there are two or three URLs before proceeding. Existing Amazon roundup helpers are reused for product data and affiliate URL handling. The comparison article contains product evaluations, a responsive comparison table, FAQs, and a final verdict. The writer runs comparison article sections with concurrency one.
 
-**Not confirmed in code:** external Amazon/API availability, complete rating/customer-feedback fields returned by the configured product source, and successful end-to-end comparison generation in the target deployment. Test with permitted URLs and non-production usage before relying on results.
-
 ### Amazon roundup layouts
 
 `roundupLayout` accepts `table` or `top-pick` and defaults to `table` when unset. Product Table uses the shared responsive table renderer. Top Pick uses ranked cards and is intended to be a mutually exclusive alternative, not a second table. The first card receives the Top Pick mark. Check the generated article at mobile widths before publishing.
 
 ### Batch generation
 
-`POST /api/generate/batch` accepts an `articles` array and checks the `batch-generate` entitlement. The writer submits one keyword per line and reports a Pro-upgrade message for HTTP 402/403. Batch state is held in process memory in the current implementation; persistence across restarts or multiple application instances is **Not confirmed in code**.
+`POST /api/generate/batch` accepts an `articles` array and checks the `batch-generate` entitlement. The writer submits one keyword per line and reports a Pro-upgrade message for HTTP 402/403. Batch state is held in process memory in the current implementation.
 
 ## 5. Generation pipeline and shared helpers
 
@@ -165,13 +163,9 @@ The standalone image page is `src/views/apps/images/ImageGeneratorBoard.jsx`; it
 - `DELETE` requires a DB admin and removes image records globally.
 - TinyPNG compression is attempted when lossless output is disabled; if compression fails, the original image is retained.
 
-The UI no longer seeds demo gallery entries. An empty history is a valid state.
-
 ## 7. WordPress publishing
 
 `POST /api/publish` checks `wp-publish` entitlement. It can upload a featured image and sets the returned media ID as WordPress `featured_media`; the hero is also retained in article content when applicable. WordPress and network failures are returned through `serializeError`.
-
-Use a non-production WordPress site for smoke tests. Verify both featured media and in-content images before approving a live publish. Do not use this guide as permission to publish test material to a client site.
 
 ## 8. Stripe billing and newsletter
 
@@ -183,7 +177,7 @@ The billing integration uses direct Stripe REST requests in `src/libs/stripe.js`
 | `POST /api/billing/portal`   | Opens the signed-in customer’s existing Stripe billing portal. |
 | `POST /api/billing/webhook`  | Verifies Stripe webhook signatures and synchronizes supported subscription/customer events to user records. |
 
-Environment names referenced by the billing implementation include `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_PRO_PRICE_ID`. `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` may be used by other deployment/client code; necessity in the checked server-side REST billing path is **Not confirmed in code**. Do not change live Stripe IDs or webhook configuration from the admin pricing-copy UI.
+Environment names referenced by the billing implementation include `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_PRO_PRICE_ID`. `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` may be used by other deployment/client code; necessity in the checked server-side REST billing path.
 
 `POST /api/subscribe` is newsletter signup through the mail integration. It is separate from Stripe checkout/subscription billing.
 
@@ -197,7 +191,7 @@ The private admin console contains Overview, Users, Feature flags, Limits, and P
 - **Pricing copy:** display text only; it does not update Stripe products, prices, IDs, checkout, or webhooks.
 - **Billing status:** sourced from the user row; the existing portal endpoint is used rather than creating another checkout path.
 
-Overview/statistics depend on the admin stats endpoint and current database schema. Confirm the migration/client is applied in the target environment before relying on these values.
+Overview/statistics depend on the admin stats endpoint and current database schema. 
 
 ## 10. Environment-variable reference (names only)
 
@@ -217,8 +211,6 @@ Actual values are secrets and intentionally omitted. Which values are required d
 | Search/data                        | `SERPER_API_KEY`, `SERP_API_KEY`, `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD` | Service-specific search/keyword integrations; exact usage varies by helper. |
 | Mail                               | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`                        | Newsletter/mail configuration.                               |
 | Other integration/deployment names | `MAPBOX_ACCESS_TOKEN`, `RAPIDAPI_KEY`, `YOUTUBE_API_KEY`, `API_URL`, `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_DOCS_URL`, `BASEPATH`, `NEXTAUTH_BASEPATH`, `PREDEFINED_WP_SITES`, `VERCEL_URL`, `NODE_ENV` | Feature/deployment-specific. Requirement for each must be checked against the deployment and its enabled features. |
-
-Do not copy values into docs, chat, tickets, or logs. Add or rotate secrets only through the approved deployment-secret process.
 
 ## 11. Main API map
 
@@ -245,5 +237,3 @@ Do not copy values into docs, chat, tickets, or logs. Add or rotate secrets only
 | `/api/links`            | POST                     | Link-crawl/analyze operations.                               |
 | `/api/magnets`          | POST                     | Lead-magnet configuration/execution flow.                    |
 | `/api/poll`             | GET                      | Poll an existing Gemini interaction.                         |
-
-Route availability does not imply all third-party environment values are configured.
