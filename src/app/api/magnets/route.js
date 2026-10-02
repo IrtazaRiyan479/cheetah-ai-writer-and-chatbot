@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 import { serializeError } from '@/utils/serializeError'
 import { withGeminiKey } from '@/app/api/generate/utils/geminiKeys'
-
 
 export async function POST(req) {
   try {
@@ -11,15 +11,6 @@ export async function POST(req) {
 
     if (action === 'create') {
       if (!prompt) return NextResponse.json({ error: 'Please provide a description.' }, { status: 400 })
-
-      const result = await withGeminiKey(async apiKey => {
-        const client = new GoogleGenerativeAI(apiKey)
-        const model = client.getGenerativeModel({
-          model: 'gemini-3.1-flash-lite',
-          generationConfig: { responseMimeType: 'application/json' }
-        })
-        return model.generateContent(aiPrompt)
-      })
 
       const aiPrompt = `
         You are an expert software architect building custom interactive web tools (Lead Magnets).
@@ -43,18 +34,21 @@ export async function POST(req) {
         Keep it to 1-4 highly relevant input fields.
       `
 
-      const result = await model.generateContent(aiPrompt)
-      const magnetConfig = JSON.parse(result.response.text())
+      const result = await withGeminiKey(async apiKey => {
+        const client = new GoogleGenerativeAI(apiKey)
+        const model = client.getGenerativeModel({
+          model: 'gemini-3.1-flash-lite',
+          generationConfig: { responseMimeType: 'application/json' }
+        })
+        return model.generateContent(aiPrompt)
+      })
 
+      const magnetConfig = JSON.parse(result.response.text())
       return NextResponse.json({ success: true, magnetConfig })
     }
 
     if (action === 'execute') {
-      const result = await withGeminiKey(async apiKey => {
-        const client = new GoogleGenerativeAI(apiKey)
-        const model = client.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
-        return model.generateContent(executionPrompt)
-      })
+      const executionPrompt = `
         You are the execution engine for a specialized web tool. Provide a direct, helpful, user-friendly, and concise response formatted cleanly. Do not explain how you generated the result.
 
         SYSTEM INSTRUCTIONS FOR THIS TOOL:
@@ -64,7 +58,11 @@ export async function POST(req) {
         ${JSON.stringify(userInputs, null, 2)}
       `
 
-      const result = await model.generateContent(executionPrompt)
+      const result = await withGeminiKey(async apiKey => {
+        const client = new GoogleGenerativeAI(apiKey)
+        const model = client.getGenerativeModel({ model: 'gemini-3.1-flash-lite' })
+        return model.generateContent(executionPrompt)
+      })
 
       return NextResponse.json({ success: true, result: result.response.text() })
     }
@@ -72,7 +70,6 @@ export async function POST(req) {
     return NextResponse.json({ error: 'Invalid Action' }, { status: 400 })
   } catch (error) {
     console.error('AffiGenieMagnets API Error:', error)
-
     return NextResponse.json({ success: false, error: serializeError(error) }, { status: 500 })
   }
 }

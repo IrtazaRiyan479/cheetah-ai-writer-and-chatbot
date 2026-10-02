@@ -504,19 +504,19 @@ export async function generateAmazonRoundupSection(body, genAI) {
     result = { response: { text: () => alt.text } }
   }
 
-  let text = result.response.text()
+  let sectionText = result.response.text()
 
   if (activeSectionType === 'intro' && typeof topPicksTable === 'string' && topPicksTable) {
     if (settings.roundupLayout === 'top-pick') {
-      text = text.replace(/<table\b[\s\S]*?<\/table>/gi, '')
-      if (!/affigenie-product-cards/i.test(text)) text += `\n\n${topPicksTable}`
-    } else if (!/<table[\s>]/i.test(text)) {
-      text += `\n\n${topPicksTable}`
+      sectionText = sectionText.replace(/<table\b[\s\S]*?<\/table>/gi, '')
+      if (!/affigenie-product-cards/i.test(sectionText)) sectionText += `\n\n${topPicksTable}`
+    } else if (!/<table[\s>]/i.test(sectionText)) {
+      sectionText += `\n\n${topPicksTable}`
     }
   }
 
   if (activeSectionType === 'product' && matchedProduct?.amazonUrl) {
-    text = withRequiredCheckPrice(text, {
+    sectionText = withRequiredCheckPrice(sectionText, {
       url: matchedProduct.amazonUrl,
       asin: matchedProduct.asin,
       language: settings.language,
@@ -525,5 +525,5 @@ export async function generateAmazonRoundupSection(body, genAI) {
     })
   }
 
-  return { success: true, text, mediaHtml: null, internalLinkUrl: internalLinkUrl }
+  return { success: true, text: sectionText, mediaHtml: null, internalLinkUrl: internalLinkUrl }
 }
