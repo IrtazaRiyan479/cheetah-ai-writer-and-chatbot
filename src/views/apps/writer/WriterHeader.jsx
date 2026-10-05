@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Grid from '@mui/material/Grid'
@@ -23,18 +23,18 @@ const availableModels = [
   { label: 'Gemini 3.5 Flash', value: 'gemini-3.5-flash', isPaid: false },
   { label: 'Gemini 3.1 Flash-Lite', value: 'gemini-3.1-flash-lite', isPaid: false },
   { label: 'Gemini 3.1 Pro ⭐', value: 'gemini-3.1-pro-preview-customtools', isPaid: false },
-  { label: 'GPT-5.2 ⭐', value: 'gemini-2.5-pro', isPaid: false },
-  { label: 'GPT-5 Mini', value: 'gemini-2.5-flash', isPaid: false },
-  { label: 'Claude 4.5 Sonnet ⭐', value: 'gemini-3.1-pro-preview', isPaid: false }
+  { label: 'GPT-5.2 ⭐', value: 'gpt-5.2', isPaid: false },
+  { label: 'GPT-5 Mini', value: 'gpt-5-mini', isPaid: false },
+  { label: 'Claude 4.5 Sonnet ⭐', value: 'claude-4.5-sonnet', isPaid: false }
 ]
 
 const WriterHeader = ({
   settings, updateSetting, presets, selectedPresetId,
   onLoadPreset, onCreatePreset, onUpdatePreset, onDeletePreset
 }) => {
-  const router = useRouter()
-  const params = useParams()
-  const lang = params.lang || 'en'
+
+
+
 
   const [openCreate, setOpenCreate] = useState(false)
   const [openDelete, setOpenDelete] = useState(false)
@@ -44,7 +44,7 @@ const WriterHeader = ({
     const val = e.target.value
     const targetModel = availableModels.find(m => m.value === val)
     if (targetModel?.isPaid) {
-      router.push(`/${lang}/pricing`)
+            updateSetting('model', val)
     } else {
       updateSetting('model', val)
     }
@@ -70,7 +70,7 @@ const WriterHeader = ({
           <Grid container spacing={5} alignItems='flex-end'>
 
             <Grid size={{ xs: 12, sm: 6 }}>
-              <Typography variant='subtitle2' className='mbe-2 font-medium'>AI Model <Tooltip title='Routing is server-side (Grok, then fallbacks).'><i className='ri-information-line' /></Tooltip></Typography>
+              <Typography variant='subtitle2' className='mbe-2 font-medium'>AI Model <Tooltip title='Uses the selected provider. Keys rotate on quota.'><i className='ri-information-line' /></Tooltip></Typography>
               <FormControl fullWidth size='small'>
                 <Select value={settings.model} onChange={handleModelChange}>
                   {availableModels.map((model) => (

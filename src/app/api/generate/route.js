@@ -169,7 +169,8 @@ export async function POST(request) {
     const result = await callLLM({
       system: getBaseSystemInstruction(),
       prompt: historyText ? `${historyText}\n\nUser: ${prompt}` : prompt,
-      maxTokens: 2048
+      maxTokens: 2048,
+      model: settings.model || 'gemini-3.1-flash-lite'
     })
 
     return NextResponse.json({ success: true, text: result.text })

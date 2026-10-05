@@ -62,7 +62,8 @@ export async function generateProductComparisonOutline(body) {
     system: 'Create concise SEO metadata for a product comparison. Return JSON only and do not invent product facts.',
     prompt: `Create title, metaTitle, metaDescription for a comparison of ${validation.urls.map(productLabel).join(', ')}. Topic: ${keyword}. Return JSON.`,
     json: true,
-    maxTokens: 400
+    maxTokens: 400,
+    model: settings.model
   })
   const metadata = parseJsonSafe(metaResponse.text) || {}
   const title = metadata.title || `${validation.urls.map(productLabel).join(' vs ')}: Product Comparison`
@@ -70,7 +71,8 @@ export async function generateProductComparisonOutline(body) {
     system: 'Return JSON only. Create a concise article outline for a product comparison.',
     prompt: `For ${keyword}, return JSON {outline:[{type:"h2",text:"...",sectionType:"intro"}, {type:"h2",text:"...",sectionType:"comparison-article",subheadings:[{type:"h3",text:"...",sectionType:"product"}]}]}. There must be an intro, one comparison-article H2 containing H3s in this exact order: Product 1 features/pros/cons/customer feedback; Product 2 same; Product 3 same only if present; product comparison; FAQ; final verdict. Product names: ${validation.urls.map(productLabel).join(', ')}.`,
     json: true,
-    maxTokens: 900
+    maxTokens: 900,
+    model: settings.model
   })
   const outlineData = parseJsonSafe(outlineResponse.text) || {}
   const [products, serp, relevantImages] = await Promise.all([
@@ -109,10 +111,10 @@ function cta(product, settings) {
   return buildCheckPriceButton(product.amazonUrl, { language: settings.language, asin: product.asin, domain: amazonDomain(product.amazonUrl, settings), partnerTag: settings.amazonTrackingId || process.env.AMAZON_PARTNER_TAG || '' })
 }
 
-async function generateWithOneRetry(prompt, system, json = false, maxTokens = 900) {
+async function generateWithOneRetry(prompt, system, json = false, maxTokens = 900, model) {
   let firstError
   for (let attempt = 0; attempt < 2; attempt++) {
-    try { return await callLLM({ system, prompt, json, maxTokens }) } catch (error) { firstError ||= error }
+    try { return await callLLM({ system, prompt, json, maxTokens, model }) } catch (error) { firstError ||= error }
   }
   throw firstError || new Error('Section generation failed.')
 }
@@ -133,7 +135,7 @@ export async function generateProductComparisonSection(body) {
   if (products.length < 2 || products.length > 3) throw new Error('Product comparison data must contain two or three products.')
   const keyword = body.targetKeyword || settings.targetKeyword || body.heading || ''
   if (section.sectionType === 'intro') {
-    const response = await generateWithOneRetry(`Write a concise introduction for ${keyword}, introducing a factual comparison of ${products.map(product => product.productName).join(', ')}. Do not invent facts or include cards/tables.`, 'Write only the article introduction.', false, 500)
+    const response = await generateWithOneRetry(`Write a concise introduction for ${keyword}, introducing a factual comparison of ${products.map(product => product.productName).join(', ')}. Do not invent facts or include cards/tables.`, 'Write only the article introduction.', false, 500, settings.model)
     return { success: true, text: response.text }
   }
   const subheadings = comparisonSection.subheadings || body.subheadings || []
@@ -144,7 +146,7 @@ export async function generateProductComparisonSection(body) {
     const heading = subheadings[index]?.text || `${index + 1}. ${product.productName}`
     const prompt = `Evaluate ${product.productName} for ${keyword}. Facts: price ${product.price}; listed features ${product.features.join(' | ') || 'not provided'}; rating ${product.rating || 'not provided'}; rating count ${product.ratingCount || 'not provided'}. Do not invent reviews or product data. Return JSON: features[], pros[], cons[], customerFeedback, shortVerdict. Feedback must be based only on provided review/rating data; otherwise say unavailable.`
     try {
-      const response = await generateWithOneRetry(prompt, 'Return factual product evaluation JSON only.', true)
+      const response = await generateWithOneRetry(prompt, 'Return factual product evaluation JSON only.', true, 850, settings.model)
       const data = parseJsonSafe(response.text) || {}
       const features = Array.isArray(data.features) && data.features.length ? data.features : product.features.slice(0, 4)
       const pros = Array.isArray(data.pros) ? data.pros : []
@@ -159,7 +161,7 @@ export async function generateProductComparisonSection(body) {
 
   const comparisonHeading = subheadings[products.length]?.text || 'Side-by-Side Comparison'
   try {
-    const response = await generateWithOneRetry(`Compare these products only using supplied facts. Return JSON {rows:[{keyFeatures,strengths,tradeoffs}]}. ${JSON.stringify(products.map(product => ({ name: product.productName, price: product.price, features: product.features, rating: product.rating })))}`, 'Return factual comparison JSON only.', true, 1000)
+    const response = await generateWithOneRetry(`Compare these products only using supplied facts. Return JSON {rows:[{keyFeatures,strengths,tradeoffs}]}. ${JSON.stringify(products.map(product => ({ name: product.productName, price: product.price, features: product.features, rating: product.rating })))}`, 'Return factual comparison JSON only.', true, 1000, settings.model)
     const result = parseJsonSafe(response.text) || {}
     const rows = products.map((product, index) => {
       const row = result.rows?.[index] || {}
@@ -170,13 +172,13 @@ export async function generateProductComparisonSection(body) {
 
   const faqHeading = subheadings[products.length + 1]?.text || `Frequently Asked Questions About ${keyword}`
   try {
-    const response = await generateWithOneRetry(`Write four FAQs in HTML about ${products.map(product => product.productName).join(', ')}. Use only these facts and mark unavailable information: ${JSON.stringify(products.map(product => ({ name: product.productName, price: product.price, features: product.features, rating: product.rating })))}`, 'Write factual FAQ HTML with h4 questions and p answers.', false, 900)
+    const response = await generateWithOneRetry(`Write four FAQs in HTML about ${products.map(product => product.productName).join(', ')}. Use only these facts and mark unavailable information: ${JSON.stringify(products.map(product => ({ name: product.productName, price: product.price, features: product.features, rating: product.rating })))}`, 'Write factual FAQ HTML with h4 questions and p answers.', false, 900, settings.model)
     html.push(`<h3>${escapeHtml(faqHeading)}</h3>${response.text}`)
   } catch { html.push(`<h3>${escapeHtml(faqHeading)}</h3><p>FAQ generation failed. Retry this section to try again.</p>`) }
 
   const verdictHeading = subheadings[products.length + 2]?.text || `Final Verdict: ${keyword}`
   try {
-    const response = await generateWithOneRetry(`Return JSON {winnerIndex,verdict,bestFor[]} for these products, based only on the supplied facts. ${JSON.stringify(products.map(product => ({ name: product.productName, price: product.price, features: product.features, rating: product.rating })))}`, 'Return factual final verdict JSON only.', true, 700)
+    const response = await generateWithOneRetry(`Return JSON {winnerIndex,verdict,bestFor[]} for these products, based only on the supplied facts. ${JSON.stringify(products.map(product => ({ name: product.productName, price: product.price, features: product.features, rating: product.rating })))}`, 'Return factual final verdict JSON only.', true, 700, settings.model)
     const verdict = parseJsonSafe(response.text) || {}
     const winnerIndex = Math.max(0, Math.min(products.length - 1, Number(verdict.winnerIndex) || 0))
     html.push(`<h3>${escapeHtml(verdictHeading)}</h3><p>${escapeHtml(verdict.verdict || 'Compare the listed product information against your needs.')}</p><ul>${products.map((product, index) => `<li><strong>${escapeHtml(product.productName)}:</strong> ${escapeHtml(verdict.bestFor?.[index] || 'Review the listed features and price.')}</li>`).join('')}</ul><div style="width:100%;max-width:100%;">${cta(products[winnerIndex], settings)}</div>`)
