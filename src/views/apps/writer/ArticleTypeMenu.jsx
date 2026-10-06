@@ -10,14 +10,49 @@ import classnames from 'classnames'
 const articleTypes = [
   { id: 'blog', title: 'Blog Post', caption: 'Standard article from a keyword', icon: 'ri-article-line' },
   { id: 'listicle', title: 'Listicle', caption: 'Structured list with useful takeaways', icon: 'ri-list-check-2' },
-  { id: 'local-roundup', title: 'Local Places Roundup', caption: 'Curated local businesses and places', icon: 'ri-map-pin-2-line' },
-  { id: 'amazon-roundup', title: 'Amazon Product Roundup', caption: 'Product table or ranked Top Pick cards', icon: 'ri-shopping-cart-line' },
-  { id: 'amazon-review', title: 'Amazon Single Product Review', caption: 'In-depth review of one Amazon product', icon: 'ri-star-line' },
-  { id: 'product-comparison', title: 'Product Comparison', caption: 'Compare 2 or 3 Amazon products side by side', icon: 'ri-scales-3-line' },
-  { id: 'youtube-blog', title: 'YouTube Video to Blog Post', caption: 'Turn a video into a readable article', icon: 'ri-youtube-line' },
+  {
+    id: 'local-roundup',
+    title: 'Local Places Roundup',
+    caption: 'Curated local businesses and places',
+    icon: 'ri-map-pin-2-line'
+  },
+  {
+    id: 'amazon-roundup',
+    title: 'Amazon Product Roundup',
+    caption: 'Product table or ranked Top Pick cards',
+    icon: 'ri-shopping-cart-line'
+  },
+  {
+    id: 'amazon-review',
+    title: 'Amazon Single Product Review',
+    caption: 'In-depth review of one Amazon product',
+    icon: 'ri-star-line'
+  },
+  {
+    id: 'product-comparison',
+    title: 'Product Comparison',
+    caption: 'Compare 2 or 3 Amazon products side by side',
+    icon: 'ri-scales-3-line'
+  },
+  {
+    id: 'youtube-blog',
+    title: 'YouTube Video to Blog Post',
+    caption: 'Turn a video into a readable article',
+    icon: 'ri-youtube-line'
+  },
   { id: 'rewrite', title: 'Rewrite Blog Post', caption: 'Refresh an existing article', icon: 'ri-edit-2-line' },
-  { id: 'amazon-roundup-rewrite', title: 'Rewrite Amazon Product Roundup', caption: 'Refresh an existing product roundup', icon: 'ri-shopping-bag-3-line' },
-  { id: 'amazon-review-rewrite', title: 'Rewrite Amazon Single Product Review', caption: 'Refresh an existing single-product review', icon: 'ri-star-smile-line' }
+  {
+    id: 'amazon-roundup-rewrite',
+    title: 'Rewrite Amazon Roundup',
+    caption: 'Refresh an existing roundup',
+    icon: 'ri-shopping-bag-3-line'
+  },
+  {
+    id: 'amazon-review-rewrite',
+    title: 'Rewrite Amazon Single Product Review',
+    caption: 'Refresh an existing single-product review',
+    icon: 'ri-star-smile-line'
+  }
 ]
 
 const ArticleTypeMenu = ({ selectedType, setSelectedType }) => {
