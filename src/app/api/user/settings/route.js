@@ -27,9 +27,24 @@ export async function GET(request) {
         subscriptionStatus: true,
         wordsUsed: true,
         wordsLimit: true,
+        wordsLimitCustomized: true,
         stripeCustomerId: true
       }
-    });
+    })
+
+    const paid = Boolean(
+      user && (user.role === 'pro' || user.role === 'admin' || user.plan === 'pro' || user.plan === 'admin')
+    )
+    const capSetting = await prisma.appSetting.findUnique({ where: { key: 'globalFreeWordCap' } }).catch(() => null)
+    const globalCap = capSetting ? Math.max(0, Number(capSetting.value) || 0) : 5000
+    const wordsLimit = user?.wordsLimitCustomized ? user.wordsLimit : globalCap
+    const flags = await prisma.featureFlag.findMany().catch(() => [])
+    const featureModes = {}
+    flags.forEach(flag => {
+      if (flag.mode === 'off' || flag.enabled === false) featureModes[flag.key] = 'off'
+      else if (flag.mode) featureModes[flag.key] = flag.mode
+      else featureModes[flag.key] = flag.free ? 'free' : 'pro'
+    })
 
     return NextResponse.json({
       user: user
@@ -42,10 +57,12 @@ export async function GET(request) {
             plan: user.plan,
             subscriptionStatus: user.subscriptionStatus,
             wordsUsed: user.wordsUsed,
-            wordsLimit: user.wordsLimit,
+            wordsLimit,
+            paid,
             hasStripeCustomer: Boolean(user.stripeCustomerId)
           }
-        : null
+        : null,
+      featureModes
     })
   } catch (error) {
     return NextResponse.json({ error: "Failed to fetch user data" }, { status: 500 });

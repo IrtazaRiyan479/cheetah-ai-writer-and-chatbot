@@ -11,6 +11,7 @@ import WriterHeader from '@views/apps/writer/WriterHeader'
 import WriterPage from '@views/apps/writer/WriterPage'
 import OutlineEditor from '@views/apps/writer/OutlineEditor'
 import ArticleEditor from '@views/apps/writer/ArticleEditor'
+import { FeatureAccessProvider } from '@views/apps/writer/FeatureAccessContext'
 
 const defaultSettings = {
   model: 'gemini-3.1-flash-lite',
@@ -149,6 +150,7 @@ const AffiGenieWriter = () => {
   }
 
   return (
+    <FeatureAccessProvider>
     <Container maxWidth='md' className='p-0'>
       {step === 0 && (
         <Grid container spacing={6}>
@@ -201,6 +203,7 @@ const AffiGenieWriter = () => {
         />
       )}
     </Container>
+    </FeatureAccessProvider>
   )
 }
 

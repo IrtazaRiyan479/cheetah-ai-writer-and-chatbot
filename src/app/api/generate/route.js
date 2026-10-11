@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 
 import { authOptions } from '@/libs/auth'
-import { assertCanGenerate, featureKeyForType } from '@/libs/entitlement'
+import { resolveGenerationAccess, recordGeneratedWords } from '@/libs/entitlement'
 import { serializeError } from '@/utils/serializeError'
 
 import { generateLocalRoundupOutline, generateLocalRoundupSection } from './services/localRoundup'
@@ -34,19 +34,25 @@ export async function POST(request) {
     }
 
     const session = await getServerSession(authOptions)
-    const gate = await assertCanGenerate({
+    const gate = await resolveGenerationAccess({
       userId: session?.user?.id,
       email: session?.user?.email,
-      featureKey: type === 'product-comparison' ? 'product-comparison' : featureKeyForType(type),
-      estimatedWords: mode === 'section' ? 0 : 1
+      settings,
+      type,
+      model: settings.model || body.model,
+      estimatedWords: 1
     })
 
     if (!gate.ok) {
-      return NextResponse.json({ success: false, error: serializeError(gate.error) }, { status: gate.status })
+      return NextResponse.json(
+        { success: false, error: serializeError(gate.error), code: gate.code || null },
+        { status: gate.status }
+      )
     }
 
-    const genAI = createProviderGenAI()
+    const genAI = createProviderGenAI({ paid: Boolean(gate.usePaidKeys) })
     const started = Date.now()
+    console.info(`[generate] keys=${gate.usePaidKeys ? 'paid' : 'free'} features=${(gate.activeKeys || []).join(',')}`)
 
     if (mode === 'prepare' && type === 'product-comparison') return NextResponse.json({ success: true, shared: {} })
 
@@ -154,6 +160,11 @@ export async function POST(request) {
 
       logStage('section', started, type)
 
+      const sectionText = result?.text || result?.content || result?.html || ''
+      if (sectionText && gate.user?.id) {
+        await recordGeneratedWords(gate.user.id, sectionText)
+      }
+
       return NextResponse.json(result)
     }
 
@@ -170,13 +181,21 @@ export async function POST(request) {
       system: getBaseSystemInstruction(),
       prompt: historyText ? `${historyText}\n\nUser: ${prompt}` : prompt,
       maxTokens: 2048,
-      model: settings.model || 'gemini-3.1-flash-lite'
+      model: settings.model || 'gemini-3.1-flash-lite',
+      paid: Boolean(gate.usePaidKeys)
     })
+
+    if (result?.text && gate.user?.id) {
+      await recordGeneratedWords(gate.user.id, result.text)
+    }
 
     return NextResponse.json({ success: true, text: result.text })
   } catch (error) {
     const msg = serializeError(error)
-
+    const isPaidKeys = error?.code === 'PAID_KEYS_FAILED' || /Paid API keys failed/i.test(msg)
+    if (isPaidKeys) {
+      return NextResponse.json({ success: false, error: msg, code: 'PAID_KEYS_FAILED' }, { status: 502 })
+    }
     const isCapacity =
       /429|quota|rate.?limit|503|high demand|unavailable|overloaded|OUTLINE_PARSE_FAILED|RATE_LIMIT/i.test(msg)
 

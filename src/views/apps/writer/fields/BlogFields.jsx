@@ -16,7 +16,15 @@ import MediaUploader from '../MediaUploader'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 
-const BlogFields = ({ settings, updateSetting }) => (
+import { ProLabel, useFeatureAccess } from '../FeatureAccessContext'
+
+const BlogFields = ({ settings, updateSetting }) => {
+  const { requireFeature } = useFeatureAccess()
+  const gatedToggle = (featureKey, settingKey, checked) => {
+    if (checked && !requireFeature(featureKey)) return
+    updateSetting(settingKey, Boolean(checked))
+  }
+  return (
   <>
     {/* Top Section */}
     <Grid size={{ xs: 12 }}>
@@ -266,8 +274,8 @@ const BlogFields = ({ settings, updateSetting }) => (
           {/* REAL-TIME DATA & EXTERNAL LINKS */}
     <Grid size={{ xs: 12, sm: 6 }}>
       <FormControlLabel
-        control={<Switch checked={settings.useRealTimeSearchData} onChange={(e) => updateSetting('useRealTimeSearchData', e.target.checked)} />}
-        label={<Typography className='font-medium text-textPrimary'>Real-Time Data</Typography>}
+        control={<Switch checked={settings.useRealTimeSearchData} onChange={e => gatedToggle('real-time-data', 'useRealTimeSearchData', e.target.checked)} />}
+        label={<Typography className='font-medium text-textPrimary'><ProLabel featureKey='real-time-data'>Real-Time Data</ProLabel></Typography>}
       />
       {settings.useRealTimeSearchData && (
         <FormControl fullWidth size='small' className='mt-2 mbe-3'>
@@ -282,8 +290,8 @@ const BlogFields = ({ settings, updateSetting }) => (
 
     <Grid size={{ xs: 12, sm: 12 }}>
       <FormControlLabel
-        control={<Switch checked={settings.automaticExternalLinks} onChange={(e) => updateSetting('automaticExternalLinks', e.target.checked)} />}
-        label={<Typography className='font-medium text-textPrimary'>Automatic External Links</Typography>}
+        control={<Switch checked={settings.automaticExternalLinks} onChange={e => gatedToggle('automatic-external-links', 'automaticExternalLinks', e.target.checked)} />}
+        label={<Typography className='font-medium text-textPrimary'><ProLabel featureKey='automatic-external-links'>Automatic External Links</ProLabel></Typography>}
       />
       <Typography variant='caption' color='text.secondary' className='ml-[42px] -mt-1 block mbe-2'>
         Finds and embeds highly relevant, authoritative outbound links via Google Search.
@@ -292,30 +300,31 @@ const BlogFields = ({ settings, updateSetting }) => (
 
       <div className='flex flex-col'>
         <FormControlLabel
-          control={<Switch checked={settings.deepSearch} onChange={(e) => updateSetting('deepSearch', e.target.checked)} />}
-          label={<Typography className='font-medium text-textPrimary'>Deep Search ⭐</Typography>}
+          control={<Switch checked={settings.deepSearch} onChange={e => gatedToggle('deep-search', 'deepSearch', e.target.checked)} />}
+          label={<Typography className='font-medium text-textPrimary'><ProLabel featureKey='deep-search'>Deep Search</ProLabel></Typography>}
         />
         <Typography variant='caption' color='text.secondary' className='ml-[42px] -mt-1 block mbe-2'>
           Uses up to 300% more credits, but significantly improves article quality by gathering more web sources.
         </Typography>
       </div>
 
-      <FormControlLabel control={<Switch checked={settings.useOutlineEditor} onChange={(e) => updateSetting('useOutlineEditor', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Outline Editor</Typography>} />
+      <FormControlLabel control={<Switch checked={settings.useOutlineEditor} onChange={e => gatedToggle('outline-editor', 'useOutlineEditor', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'><ProLabel featureKey='outline-editor'>Use Outline Editor</ProLabel></Typography>} />
 
       <FormControlLabel
-        control={<Switch checked={settings.includeFaq} onChange={(e) => updateSetting('includeFaq', e.target.checked)} />}
-        label={<Typography className='font-medium text-textPrimary'>Include FAQ Section</Typography>}
+        control={<Switch checked={settings.includeFaq} onChange={e => gatedToggle('include-faq', 'includeFaq', e.target.checked)} />}
+        label={<Typography className='font-medium text-textPrimary'><ProLabel featureKey='include-faq'>Include FAQ Section</ProLabel></Typography>}
       />
       <FormControlLabel
-        control={<Switch checked={settings.includeKeyTakeaways} onChange={(e) => updateSetting('includeKeyTakeaways', e.target.checked)} />}
-        label={<Typography className='font-medium text-textPrimary'>Include Key Takeaways</Typography>}
+        control={<Switch checked={settings.includeKeyTakeaways} onChange={e => gatedToggle('include-key-takeaways', 'includeKeyTakeaways', e.target.checked)} />}
+        label={<Typography className='font-medium text-textPrimary'><ProLabel featureKey='include-key-takeaways'>Include Key Takeaways</ProLabel></Typography>}
       />
       <FormControlLabel
-        control={<Switch checked={settings.improveReadability} onChange={(e) => updateSetting('improveReadability', e.target.checked)} />}
-        label={<Typography className='font-medium text-textPrimary'>Improve Readability</Typography>}
+        control={<Switch checked={settings.improveReadability} onChange={e => gatedToggle('improve-readability', 'improveReadability', e.target.checked)} />}
+        label={<Typography className='font-medium text-textPrimary'><ProLabel featureKey='improve-readability'>Improve Readability</ProLabel></Typography>}
       />
     </Grid>
   </>
-)
+  )
+}
 
 export default BlogFields

@@ -18,7 +18,9 @@ export async function GET(request) {
 
     for (const key of FEATURE_KEYS) {
       if (!byKey.has(key)) {
-        const flag = await prisma.featureFlag.create({ data: { key, enabled: true, free: ['standard', 'rewrite'].includes(key), mode: ['standard', 'rewrite'].includes(key) ? 'free' : 'pro' } })
+        const freeDefaults = ['standard', 'rewrite', 'model-gemini-flash-lite', 'outline-editor', 'include-faq', 'include-key-takeaways', 'improve-readability']
+        const isFree = freeDefaults.includes(key)
+        const flag = await prisma.featureFlag.create({ data: { key, enabled: true, free: isFree, mode: isFree ? 'free' : 'pro' } })
         byKey.set(key, flag)
       }
     }

@@ -17,6 +17,7 @@ import InputAdornment from '@mui/material/InputAdornment'
 import Checkbox from '@mui/material/Checkbox'
 import Button from '@mui/material/Button'
 import FormControlLabel from '@mui/material/FormControlLabel'
+import Divider from '@mui/material/Divider'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import { signIn } from 'next-auth/react'
@@ -55,40 +56,53 @@ const Register = ({ mode }) => {
 
   const handleClickShowPassword = () => setIsPasswordShown(show => !show)
 
+  const handleGoogleLogin = () => {
+    signIn('google', { callbackUrl: getLocalizedUrl('/account', locale) })
+  }
+
   useEffect(() => {
     if (status === 'authenticated') {
       router.replace('/account')
     }
   }, [status, router])
 
-  // --- SUBMISSION HANDLER ---
-  const handleSubmit = async (e) => {
+  const isValidEmail = value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim())
+  const isStrongPassword = value =>
+    String(value || '').length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /[0-9]/.test(value)
+
+  const handleSubmit = async e => {
     e.preventDefault()
     setError('')
-
-    // <-- ADDED: Mandatory Checkbox Validation
     if (!agreedToTerms) {
       setError('You must agree to the privacy policy & terms to register.')
       return
     }
-
+    if (!username.trim() || username.trim().length < 2) {
+      setError('Username must be at least 2 characters.')
+      return
+    }
+    if (!isValidEmail(email)) {
+      setError('Enter a valid email address (example: name@company.com).')
+      return
+    }
+    if (!isStrongPassword(password)) {
+      setError('Password must be at least 8 characters and include uppercase, lowercase, and a number.')
+      return
+    }
     setIsLoading(true)
-
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, email, password })
+        body: JSON.stringify({ username: username.trim(), email: email.trim(), password })
       })
-
       const data = await res.json()
-
       if (res.ok) {
-        // 2. Account created! Now Auto-Login
         const signInRes = await signIn('credentials', {
           redirect: false,
-          email: email,
-          password: password,
+          email: email.trim(),
+          password,
+          remember: 'true'
         })
 
         if (signInRes?.error) {
@@ -197,6 +211,17 @@ const Register = ({ mode }) => {
                   Sign in instead
                 </Typography>
               </div>
+              <Divider className='gap-3'>or</Divider>
+              <Button
+                color='secondary'
+                className='self-center text-textPrimary'
+                type='button'
+                startIcon={<img src='/images/logos/google.png' alt='Google' width={22} />}
+                sx={{ '& .MuiButton-startIcon': { marginInlineEnd: 3 } }}
+                onClick={handleGoogleLogin}
+              >
+                Sign up with Google
+              </Button>
             </form>
           </div>
         </CardContent>

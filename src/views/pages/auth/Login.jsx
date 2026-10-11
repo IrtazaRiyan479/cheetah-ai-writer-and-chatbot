@@ -44,6 +44,7 @@ const Login = ({ mode }) => {
   // Form States
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(false)
 
   // Vars
   const darkImg = '/images/pages/auth-v1-mask-1-dark.png'
@@ -62,31 +63,35 @@ const Login = ({ mode }) => {
 
   const handleClickShowPassword = () => setIsPasswordShown(show => !show)
 
-  // --- SUBMISSION HANDLER ---
-  const handleSubmit = async (e) => {
+  const isValidEmail = value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim())
+
+  const handleSubmit = async e => {
     e.preventDefault()
     setError('')
+    const trimmedEmail = email.trim()
+    if (!isValidEmail(trimmedEmail)) {
+      setError('Enter a valid email address (example: name@company.com).')
+      return
+    }
+    if (!password || password.length < 8) {
+      setError('Password must be at least 8 characters.')
+      return
+    }
     setIsLoading(true)
-
-    // Call NextAuth signIn with 'credentials' provider
     const res = await signIn('credentials', {
       redirect: false,
-      email,
+      email: trimmedEmail,
       password,
+      remember: rememberMe ? 'true' : 'false'
     })
-
     if (res?.error) {
-      // Invalid credentials
       setError('Email or password is incorrect.')
       setIsLoading(false)
     } else {
-      // Login successful! Redirect to the main app page (e.g., your writer tool)
-      // Update '/writer' to whatever your main dashboard URL is
       router.push(getLocalizedUrl('/account', locale))
     }
   }
 
-  // Optional: Handler for Google Login
   const handleGoogleLogin = () => {
     signIn('google', { callbackUrl: getLocalizedUrl('/account', locale) })
   }
@@ -140,7 +145,7 @@ const Login = ({ mode }) => {
                 }}
               />
               <div className='flex justify-between items-center gap-x-3 gap-y-1 flex-wrap'>
-                <FormControlLabel control={<Checkbox />} label='Remember Me' />
+                <FormControlLabel control={<Checkbox checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} />} label='Remember Me' />
                 <Typography className='text-end' color='primary' component={Link} href='/pages/misc/under-maintenance'>
                   Forgot password?
                 </Typography>
@@ -162,9 +167,10 @@ const Login = ({ mode }) => {
               <Button
                 color='secondary'
                 className='self-center text-textPrimary'
+                type='button'
                 startIcon={<img src='/images/logos/google.png' alt='Google' width={22} />}
                 sx={{ '& .MuiButton-startIcon': { marginInlineEnd: 3 } }}
-                onClick={() => signIn('google')}
+                onClick={handleGoogleLogin}
               >
                 Sign in with Google
               </Button>

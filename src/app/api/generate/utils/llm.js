@@ -150,23 +150,44 @@ async function runProvider(config, request) {
 const FALLBACK_ORDER = ['xai', 'mistral', 'groq', 'gemini']
 
 /** The selected Writer model runs first; exhausted configured providers use legacy fallbacks. */
-export async function callLLM({ system, prompt, json = false, maxTokens = 2048, temperature = 0.4, model, geminiModel }) {
+export async function callLLM({
+  system,
+  prompt,
+  json = false,
+  maxTokens = 2048,
+  temperature = 0.4,
+  model,
+  geminiModel,
+  paid = false
+}) {
   const requested = resolveModel(model || geminiModel || 'gemini-3.1-flash-lite')
+  requested.paid = Boolean(paid)
   const stableSystem = `${STABLE_SYSTEM_PREFIX}\n\n${system || ''}`.trim()
   const userPrompt = json ? `${prompt || ''}${OUTLINE_JSON_SUFFIX}` : prompt || ''
   const request = { system: stableSystem, prompt: userPrompt, json, maxTokens, temperature }
   const selectedKeys = keysFor(requested.provider, requested.paid)
-  if (!selectedKeys.length) throw new Error(`Selected provider ${requested.provider} is not configured for model ${requested.requested}.`)
+  if (!selectedKeys.length) {
+    throw new Error(
+      requested.paid
+        ? `Paid API keys are not configured for ${requested.provider}. Add GEMINI_PAID_API_KEYS in .env.`
+        : `Selected provider ${requested.provider} is not configured for model ${requested.requested}.`
+    )
+  }
 
   const failures = []
   try {
     const selected = await runProvider(requested, request)
-    if (selected?.text) return selected
+    if (selected?.text) return { ...selected, usedPaidKeys: requested.paid }
     throw new Error(`Selected provider ${requested.provider} returned no response.`)
   } catch (error) {
     const message = serializeError(error)
-    failures.push({ name: requested.provider, message })
-    console.error(`[llm] selected ${requested.provider} failed:`, message.slice(0, 220))
+    failures.push({ name: requested.provider, message, paid: requested.paid })
+    console.error(`[llm] selected ${requested.provider} failed (paid=${requested.paid}):`, message.slice(0, 220))
+    if (requested.paid) {
+      const paidError = new Error(`Paid API keys failed: ${message}. Check GEMINI_PAID_API_KEYS / quota.`)
+      paidError.code = 'PAID_KEYS_FAILED'
+      throw paidError
+    }
     console.warn(`[llm] fallback after selected provider exhausted: ${requested.provider}`)
   }
 
@@ -176,7 +197,7 @@ export async function callLLM({ system, prompt, json = false, maxTokens = 2048, 
     if (!keysFor(provider, false).length) continue
     try {
       const result = await runProvider(fallback, request)
-      if (result?.text) return result
+      if (result?.text) return { ...result, usedPaidKeys: false }
       failures.push({ name: provider, message: 'empty response' })
     } catch (error) {
       const message = serializeError(error)
@@ -196,24 +217,38 @@ export async function callLLMJson(options) {
   return { ...result, parsed }
 }
 
-export function createTextModel({ systemInstruction, model, json = false, maxTokens = 4096 }) {
+export function createTextModel({ systemInstruction, model, json = false, maxTokens = 4096, paid = false }) {
   return {
     async generateContent(prompt) {
-      const result = await callLLM({ system: systemInstruction || '', prompt: typeof prompt === 'string' ? prompt : JSON.stringify(prompt), json, maxTokens, model })
-      return { response: { text: () => result.text }, provider: result.provider }
+      const result = await callLLM({
+        system: systemInstruction || '',
+        prompt: typeof prompt === 'string' ? prompt : JSON.stringify(prompt),
+        json,
+        maxTokens,
+        model,
+        paid
+      })
+      return { response: { text: () => result.text }, provider: result.provider, usedPaidKeys: result.usedPaidKeys }
     }
   }
 }
 
 /** Compatibility wrapper for service code expecting Google's model interface. */
-export function createProviderGenAI() {
-  const apiKey = listGeminiApiKeys()[0] || 'unused'
+export function createProviderGenAI({ paid = false } = {}) {
+  const apiKey = listGeminiApiKeys({ paid })[0] || 'unused'
   const native = new GoogleGenerativeAI(apiKey)
 
   return {
+    paid,
     getGenerativeModel(config = {}) {
       const wantsJson = config.generationConfig?.responseMimeType === 'application/json'
-      return createTextModel({ systemInstruction: config.systemInstruction || '', model: config.model || 'gemini-3.1-flash-lite', json: wantsJson, maxTokens: 4096 })
+      return createTextModel({
+        systemInstruction: config.systemInstruction || '',
+        model: config.model || 'gemini-3.1-flash-lite',
+        json: wantsJson,
+        maxTokens: 4096,
+        paid
+      })
     },
     getNativeModel(config = {}) { return native.getGenerativeModel(config) }
   }

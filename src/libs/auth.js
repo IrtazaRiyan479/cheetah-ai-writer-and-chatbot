@@ -46,19 +46,21 @@ export const authOptions = {
           email: user.email,
           image: user.image,
           role: user.role,
-          plan: user.plan
+          plan: user.plan,
+          remember: credentials.remember === 'true' || credentials.remember === true
         }
       }
     }),
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      allowDangerousEmailAccountLinking: true
     })
   ],
 
   session: {
     strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60 // 30 days
+    maxAge: 30 * 24 * 60 * 60
   },
 
   pages: {
@@ -70,14 +72,22 @@ export const authOptions = {
       if (user) {
         token.name = user.name
         token.id = user.id
+        token.remember = Boolean(user.remember)
+        const maxAge = token.remember ? 30 * 24 * 60 * 60 : 12 * 60 * 60
+        token.exp = Math.floor(Date.now() / 1000) + maxAge
+      }
+      if (token.exp && token.exp * 1000 < Date.now()) {
+        return {}
       }
       return token
     },
     async session({ session, token }) {
+      if (!token?.id && !token?.name) {
+        return { ...session, user: null, expires: new Date(0).toISOString() }
+      }
       if (session.user) {
         session.user.name = token.name
         const dbUser = await prisma.user.findUnique({ where: { email: session.user.email || '' } })
-
         if (dbUser) {
           session.user.id = dbUser.id
           session.user.role = dbUser.role

@@ -34,6 +34,10 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [usage, setUsage] = useState(null)
+  const [isPaid, setIsPaid] = useState(false)
+  const [featureModes, setFeatureModes] = useState({})
+  const [premiumOpen, setPremiumOpen] = useState(false)
+  const [premiumMessage, setPremiumMessage] = useState('')
   const [batchOpen, setBatchOpen] = useState(false)
   const [batchKeywords, setBatchKeywords] = useState('')
   const [isBatching, setIsBatching] = useState(false)
@@ -61,12 +65,10 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
     fetch('/api/user/settings')
       .then(response => response.json())
       .then(data => {
-        if (
-          active &&
-          data.user &&
-          Number.isFinite(Number(data.user.wordsUsed)) &&
-          Number.isFinite(Number(data.user.wordsLimit))
-        ) {
+        if (!active || !data.user) return
+        setIsPaid(Boolean(data.user.paid))
+        setFeatureModes(data.featureModes || {})
+        if (Number.isFinite(Number(data.user.wordsUsed)) && Number.isFinite(Number(data.user.wordsLimit))) {
           setUsage({ wordsUsed: Number(data.user.wordsUsed), wordsLimit: Number(data.user.wordsLimit) })
         }
       })
@@ -227,6 +229,11 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
         } else {
           setStep(2)
         }
+      } else if (res.status === 402 || data?.code === 'PRO_REQUIRED' || data?.code === 'WORD_LIMIT') {
+        setPremiumMessage(serializeError(data?.error || data) || 'This requires a Pro plan or more free words.')
+        setPremiumOpen(true)
+      } else if (data?.code === 'PAID_KEYS_FAILED') {
+        toast.error(serializeError(data?.error) || 'Paid API keys failed. Check quota.')
       } else {
         throw new Error(serializeError(data?.error || data))
       }
@@ -234,7 +241,10 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
       console.error('Error generating outline:', serializeError(error))
       const msg = serializeError(error)
 
-      if (settings.type === 'product-comparison') {
+      if (/Pro plan|word limit|402/i.test(msg)) {
+        setPremiumMessage(msg)
+        setPremiumOpen(true)
+      } else if (settings.type === 'product-comparison') {
         toast.error(`Failed to generate outline: ${msg}`, { autoClose: 6000 })
       } else if (/RATE_LIMIT|429|quota|resource.?exhausted/i.test(msg)) {
         toast.error('The writing provider hit a limit and will retry the next key/provider.', { autoClose: 8000 })
@@ -273,16 +283,20 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
 
         <div className='flex items-center justify-between flex-wrap gap-4'>
           <div className='flex items-center gap-4 text-textSecondary'>
-            <div className='flex items-center gap-1'>
-              <i className='ri-line-chart-line text-lg' />
-              <Typography variant='caption' className='font-medium text-sm'>
-                Current Usage:
-              </Typography>
-            </div>
-            {usage ? (
-              <Typography variant='caption' className='text-sm'>
-                {usage.wordsUsed.toLocaleString()} / {usage.wordsLimit.toLocaleString()} words
-              </Typography>
+            {!isPaid ? (
+              <>
+                <div className='flex items-center gap-1'>
+                  <i className='ri-line-chart-line text-lg' />
+                  <Typography variant='caption' className='font-medium text-sm'>
+                    Current Usage:
+                  </Typography>
+                </div>
+                {usage ? (
+                  <Typography variant='caption' className='text-sm'>
+                    {usage.wordsUsed.toLocaleString()} / {usage.wordsLimit.toLocaleString()} words
+                  </Typography>
+                ) : null}
+              </>
             ) : null}
           </div>
 
@@ -296,7 +310,19 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
           >
             {isGenerating ? 'Generating outline…' : settings.useOutlineEditor ? 'Create Outline' : 'Create Article'}
           </Button>
-          <Button variant='outlined' disabled={isGenerating || isBatching} onClick={() => setBatchOpen(true)}>
+          <Button
+            variant='outlined'
+            disabled={isGenerating || isBatching}
+            onClick={() => {
+              if (!isPaid && (featureModes['batch-generate'] || 'pro') === 'pro') {
+                setPremiumMessage('Batch generation is a Pro feature. Upgrade to generate multiple outlines at once.')
+                setPremiumOpen(true)
+                return
+              }
+              setBatchOpen(true)
+            }}
+          >
+            {(featureModes['batch-generate'] || 'pro') === 'pro' && !isPaid ? '⭐ ' : ''}
             Batch
           </Button>
         </div>
@@ -321,6 +347,24 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
           </Button>
           <Button variant='contained' onClick={runBatch} disabled={isBatching || !batchKeywords.trim()}>
             {isBatching ? <CircularProgress size={20} color='inherit' /> : 'Run batch'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={premiumOpen} onClose={() => setPremiumOpen(false)} maxWidth='xs' fullWidth>
+        <DialogTitle>Pro feature</DialogTitle>
+        <DialogContent>
+          <Typography variant='body2'>{premiumMessage || 'This feature requires a Pro plan.'}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPremiumOpen(false)}>Close</Button>
+          <Button
+            variant='contained'
+            onClick={() => {
+              setPremiumOpen(false)
+              window.location.href = '/en/home#pricing'
+            }}
+          >
+            View pricing
           </Button>
         </DialogActions>
       </Dialog>
