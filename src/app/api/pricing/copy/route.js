@@ -15,10 +15,11 @@ export async function GET() {
       key,
       label: FEATURE_META[key]?.label || key,
       group: FEATURE_META[key]?.group || 'Other',
-      mode: featureModes[key]
-    })).filter(feature => feature.mode !== 'off')
+      mode: featureModes[key],
+      pricing: FEATURE_META[key]?.pricing !== false
+    })).filter(feature => feature.mode !== 'off' && feature.pricing)
 
-    return Response.json({ success: true, pricing: setting ? JSON.parse(setting.value) : null, features })
+    return Response.json({ success: true, pricing: setting ? JSON.parse(setting.value) : null, features, modes: featureModes })
   } catch (error) {
     return Response.json({ success: false, error: serializeError(error) }, { status: 500 })
   }

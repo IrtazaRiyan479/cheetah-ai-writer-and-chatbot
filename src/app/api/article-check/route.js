@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { fetchArticleData } from '../generate/utils/helpers';
+import { detectSourceArticleType } from '../generate/services/rewrite';
 
 export async function POST(request) {
   try {
@@ -14,7 +15,8 @@ export async function POST(request) {
     if (data.success && data.text && data.text.trim().length > 100) {
       return NextResponse.json({
         success: true,
-        title: data.title || 'Article extracted successfully'
+        title: data.title || 'Article extracted successfully',
+        detectedType: detectSourceArticleType(data.text || data.html || '')
       });
     } else {
       return NextResponse.json({

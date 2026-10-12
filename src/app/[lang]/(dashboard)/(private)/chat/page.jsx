@@ -1,8 +1,12 @@
-// Component Imports
+import ModuleGate from '@/components/access/ModuleGate'
 import ChatWrapper from '@views/apps/chat'
 
 const ChatApp = () => {
-  return <ChatWrapper />
+  return (
+    <ModuleGate featureKey='module-chat'>
+      <ChatWrapper />
+    </ModuleGate>
+  )
 }
 
 export default ChatApp

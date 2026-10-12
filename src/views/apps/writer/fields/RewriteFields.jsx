@@ -46,9 +46,19 @@ const RewriteFields = ({ settings, updateSetting }) => {
         const data = await res.json();
 
         if (res.ok && data.success) {
-          setStatusText(`Successfully fetched: ${data.title}`);
-          setStatusColor('text-success');
-          updateSetting('targetKeyword', data.title);
+          const type = data.detectedType || ''
+          updateSetting('sourceArticleType', type)
+          if (settings.type === 'amazon-roundup-rewrite' && type === 'amazon-review') {
+            setStatusText('This looks like a single-product review. Switch to Amazon review rewrite.')
+            setStatusColor('text-error')
+          } else if (settings.type === 'amazon-review-rewrite' && type === 'amazon-roundup') {
+            setStatusText('This looks like an Amazon roundup. Switch to Amazon roundup rewrite.')
+            setStatusColor('text-error')
+          } else {
+            setStatusText(`Successfully fetched: ${data.title}${type ? ` (${type})` : ''}`)
+            setStatusColor('text-success')
+            if (data.title) updateSetting('targetKeyword', data.title)
+          }
         } else {
           setStatusText('Failed to fetch article data. Check URL or try another.');
           setStatusColor('text-error');
@@ -100,6 +110,35 @@ const RewriteFields = ({ settings, updateSetting }) => {
           onChange={(e) => updateSetting('targetKeyword', e.target.value)}
         />
       </Grid>
+
+      <Grid size={{ xs: 12, sm: 6 }}>
+        <Typography variant='subtitle2' className='font-medium mbe-1'>Article Length</Typography>
+        <FormControl fullWidth size='small' className={settings.articleLength === 'custom' ? 'mbe-3' : ''}>
+          <Select
+            value={settings.articleLength || 'default'}
+            onChange={(e) => updateSetting('articleLength', e.target.value)}
+          >
+            <MenuItem value='default'>Default (match source)</MenuItem>
+            <MenuItem value='custom'>Custom Number of Sections</MenuItem>
+            <MenuItem value='shorter'>Shorter (2-3 Sections)</MenuItem>
+            <MenuItem value='short'>Short (3-5 Sections)</MenuItem>
+            <MenuItem value='medium'>Medium (5-7 Sections)</MenuItem>
+            <MenuItem value='long'>Long Form (7-10 Sections)</MenuItem>
+            <MenuItem value='longer'>Longer (10-12 Sections)</MenuItem>
+          </Select>
+        </FormControl>
+        {settings.articleLength === 'custom' ? (
+          <TextField
+            fullWidth
+            size='small'
+            type='number'
+            label='Number of sections'
+            value={settings.customSectionCount || ''}
+            onChange={(e) => updateSetting('customSectionCount', e.target.value)}
+          />
+        ) : null}
+      </Grid>
+
 
     {/* <Grid size={{ xs: 12 }}>
       <FormControlLabel control={<Switch checked={settings.enableRewriting} onChange={(e) => updateSetting('enableRewriting', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable Rewriting</Typography>} />

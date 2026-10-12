@@ -34,19 +34,42 @@ async function fetchProduct(url, index, settings) {
   const asin = extractAsin(url)
   const keyword = asin || productLabel(url, index)
   const domain = amazonDomain(url, settings)
-  const raw = await fetchInternalAmazonData(keyword, { ...settings, amazonDomain: domain })
+  let raw
+  try {
+    raw = await fetchInternalAmazonData(keyword, { ...settings, amazonDomain: domain })
+  } catch (error) {
+    const msg = String(error?.message || error)
+    if (/credits|quota|429/i.test(msg)) {
+      throw new Error(`Amazon API out of credits while loading product ${index + 1}. Wait and try again.`)
+    }
+    throw new Error(`Could not load product ${index + 1} from Amazon (${msg.slice(0, 160)}).`)
+  }
   const candidates = formatAmazonProducts(raw, { ...settings, numberOfProducts: 20, amazonDomain: domain }) || []
-  const result = candidates.find(item => asin && String(item.asin || '').toUpperCase() === asin.toUpperCase()) || candidates[0]
-  if (!result) throw new Error(`No Amazon product matched comparison URL ${index + 1}.`)
-  const rating = raw?.data?.searchResult?.items?.find(item => String(item.asin || '').toUpperCase() === String(result.asin || '').toUpperCase())?.customerReviews?.starRating || null
-  const source = raw?.data?.searchResult?.items?.find(item => String(item.asin || '').toUpperCase() === String(result.asin || '').toUpperCase())
+  const result =
+    candidates.find(item => asin && String(item.asin || '').toUpperCase() === asin.toUpperCase()) || candidates[0]
+  if (!result) {
+    throw new Error(
+      `No Amazon product matched comparison URL ${index + 1}${asin ? ` (ASIN ${asin})` : ''}. Check the link and marketplace domain.`
+    )
+  }
+  const source =
+    raw?.data?.searchResult?.items?.find(
+      item => String(item.asin || '').toUpperCase() === String(result.asin || '').toUpperCase()
+    ) || null
+  const rating = source?.customerReviews?.starRating || result.rating || null
   const image = result.imageUrl || ''
   const partnerTag = settings.amazonTrackingId || process.env.AMAZON_PARTNER_TAG || ''
 
   return {
     ...result,
     imageUrl: image,
-    amazonUrl: resolveAffiliateUrl({ url: result.amazonUrl || url, asin: result.asin || asin, domain, partnerTag, forceTag: settings.amazonTrackingId || '' }),
+    amazonUrl: resolveAffiliateUrl({
+      url: result.amazonUrl || url,
+      asin: result.asin || asin,
+      domain,
+      partnerTag,
+      forceTag: settings.amazonTrackingId || ''
+    }),
     rating,
     ratingCount: source?.customerReviews?.count || null,
     features: Array.isArray(result.features) ? result.features : []
@@ -75,8 +98,8 @@ export async function generateProductComparisonOutline(body) {
     model: settings.model
   })
   const outlineData = parseJsonSafe(outlineResponse.text) || {}
-  const [products, serp, relevantImages] = await Promise.all([
-    Promise.all(validation.urls.map((url, index) => fetchProduct(url, index, settings))),
+  const products = await Promise.all(validation.urls.map((url, index) => fetchProduct(url, index, settings)))
+  const [serp, relevantImages] = await Promise.all([
     fetchSerperOutlineData(keyword).catch(() => null),
     pickRelevantImages(title, keyword, 5).catch(() => [])
   ])
@@ -89,10 +112,11 @@ export async function generateProductComparisonOutline(body) {
   ]
   const outline = Array.isArray(outlineData.outline) ? outlineData.outline : []
   const intro = outline.find(item => item.sectionType === 'intro') || { type: 'h2', text: `Introduction to ${keyword}`, sectionType: 'intro' }
-  const comparison = { type: 'h2', text: `Product Comparison: ${keyword}`, sectionType: 'comparison-article', subheadings: orderedSubheadings, comparisonData: { products, serp, images: relevantImages.slice(1, 1 + extraImagesNeeded) } }
-  const heroImage = await buildBrandedHero({ title, siteName: settings.siteName || settings.clientSite || settings.website || 'AffiGenie', backgroundUrl: relevantImages[0]?.url || '' }).catch(() => '')
   const productImageCount = products.filter(product => product.imageUrl).length
   const extraImagesNeeded = Math.max(0, Math.min(2, 4 - productImageCount - 1))
+  const extraImages = relevantImages.slice(1, 1 + extraImagesNeeded)
+  const comparison = { type: 'h2', text: `Product Comparison: ${keyword}`, sectionType: 'comparison-article', subheadings: orderedSubheadings, comparisonData: { products, serp, images: extraImages } }
+  const heroImage = await buildBrandedHero({ title, siteName: settings.siteName || settings.clientSite || settings.website || 'AffiGenie', backgroundUrl: relevantImages[0]?.url || '' }).catch(() => '')
 
   return {
     success: true,
@@ -103,7 +127,7 @@ export async function generateProductComparisonOutline(body) {
     heroImage,
     heroImageId: null,
     heroImageSource: relevantImages[0] ? 'branded-photo' : 'branded-gradient',
-    comparisonShared: { products, serp, images: relevantImages.slice(1, 1 + extraImagesNeeded) }
+    comparisonShared: { products, serp, images: extraImages }
   }
 }
 
@@ -184,7 +208,5 @@ export async function generateProductComparisonSection(body) {
     html.push(`<h3>${escapeHtml(verdictHeading)}</h3><p>${escapeHtml(verdict.verdict || 'Compare the listed product information against your needs.')}</p><ul>${products.map((product, index) => `<li><strong>${escapeHtml(product.productName)}:</strong> ${escapeHtml(verdict.bestFor?.[index] || 'Review the listed features and price.')}</li>`).join('')}</ul><div style="width:100%;max-width:100%;">${cta(products[winnerIndex], settings)}</div>`)
   } catch { html.push(`<h3>${escapeHtml(verdictHeading)}</h3><p>Final verdict generation failed. Retry this section to try again.</p>`) }
 
-  const extraImages = body.shared?.images || settings.comparisonShared?.images || []
-  const imageMarkup = extraImages.slice(0, 2).map(image => `<img src="${escapeHtml(image.url)}" alt="${escapeHtml(image.alt || keyword)}" style="width:100%;max-width:100%;height:auto;border-radius:12px;margin:18px 0;display:block;" />`).join('')
-  return { success: true, text: `${imageMarkup}${html.join('\n')}` }
+  return { success: true, text: html.join('\n') }
 }

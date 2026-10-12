@@ -254,7 +254,7 @@ export async function generateAmazonReviewOutline(body, genAI) {
     outline: parsedData.outline,
     metaTitle: parsedData.metaTitle,
     metaDescription: parsedData.metaDescription,
-    heroImage: product?.imageUrl || '',
+    heroImage: '',
     heroImageId: null,
     heroImageSource: null,
     externalLinks: fetchedExternalLinks
@@ -415,28 +415,40 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     partnerTag: settings.amazonTrackingId || settings.partnerTag || process.env.AMAZON_PARTNER_TAG || 'babiescarrier-20'
   })
 
+  const productImageHtml = product?.imageUrl
+    ? `<div align="center" style="margin:20px 0;"><img src="${product.imageUrl}" alt="${String(product.productName || targetKeyword || 'Product').replace(/"/g, '')}" style="max-width:420px;width:100%;height:auto;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.08);" /></div>`
+    : ''
+
   if (activeSectionType === 'intro' && priceButton) {
     sectionPrompt += `
-      TASK: Write a highly engaging introduction.
+      TASK: Write a highly engaging introduction for this single-product review.
+      CRITICAL: Do NOT repeat the article H1/H2 heading in the body.
 
-      STRICT LAYOUT REQUIREMENT (Image & CTA):
-      Immediately following your introductory text, you MUST insert this EXACT HTML block. Do not change the link or the label:
+      STRICT LAYOUT REQUIREMENT:
+      1. Write 2-3 intro paragraphs.
+      2. Then insert this product image HTML exactly (if present):
+      ${productImageHtml || '[no product image]'}
+      3. Then insert this EXACT CTA HTML (do not change the link or label):
       <div class="affigenie-cta" style="display:block;width:100%;max-width:100%;text-align:center;margin:25px 0;">
         ${priceButton}
       </div>
     `
   } else if (activeSectionType === 'intro') {
     sectionPrompt += `
-      TASK: Write a highly engaging introduction.
+      TASK: Write a highly engaging introduction for this single-product review.
+      CRITICAL: Do NOT repeat the article heading in the body.
+      ${productImageHtml ? `After the intro paragraphs, insert this product image HTML exactly:\n${productImageHtml}` : ''}
     `
   } else if (activeSectionType === 'pros_cons') {
     sectionPrompt += `
       TASK: Write a Pros and Cons section for this product.
       STRICT REQUIREMENT: Use a strictly formatted Markdown table with "Pros" and "Cons" columns.
+      Do NOT repeat the section heading in the body.
     `
   } else if (activeSectionType === 'conclusion') {
     sectionPrompt += `
       TASK: Write a compelling conclusion and final verdict.
+      Do NOT repeat the section heading in the body.
       ${
         priceButton
           ? `STRICT LAYOUT REQUIREMENT (Final CTA):
@@ -451,6 +463,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
   } else if (activeSectionType === 'faq') {
     sectionPrompt += `
       TASK: Write a comprehensive FAQ section containing 3 to 5 commonly asked questions regarding this product.
+      Do NOT repeat the FAQ heading in the body.
 
       STRICT REQUIREMENT (Schema Markup):
       You MUST wrap the questions and answers in valid JSON-LD FAQPage schema markup. Place the schema inside a <script type="application/ld+json"> tag at the very end of the section. Do NOT use markdown code blocks around the script tag.
@@ -458,6 +471,7 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
   } else {
     sectionPrompt += `
       TASK: Write a comprehensive section analyzing this specific aspect of the product.
+      CRITICAL: Do NOT output the section heading again — start with paragraphs only.
     `
   }
 
@@ -500,25 +514,25 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
   }
 
   let text = result.response.text()
-  const firstFeature = (outlineContext || []).find(section => section.sectionType === 'features')
 
-  const headingText = String(heading || '')
-  const featureText = String(firstFeature?.text || '')
+  const insertAfterFirstBlock = (body, snippet) => {
+    if (!snippet || body.includes(snippet.slice(0, 80))) return body
+    const parts = String(body || '').split(/\n\n+/)
+    if (parts.length > 1) return [parts[0], snippet, ...parts.slice(1)].join('\n\n')
+    return `${body}\n\n${snippet}`
+  }
 
-  if (activeSectionType === 'features' && featureText && (headingText === featureText || headingText.includes(featureText) || featureText.includes(headingText))) {
-    const extras = await pickRelevantImages(articleTitle || targetKeyword, targetKeyword || product?.productName, 4)
-    const images = [
-      ...(product?.imageUrl ? [{ url: product.imageUrl, alt: product.productName }] : []),
-      ...extras
-    ]
+  if (activeSectionType === 'intro' && productImageHtml) {
+    text = insertAfterFirstBlock(text, productImageHtml)
+  }
 
-    if (images.length) {
-      text += `\n\n${images
-        .map(
-          image =>
-            `<img src="${image.url}" alt="${image.alt || targetKeyword || 'Product'}" style="width:100%;max-width:100%;height:auto;border-radius:12px;margin:24px 0;display:block;" />`
-        )
-        .join('\n')}`
+  const slot = Number(sectionIndex)
+  if ((slot === 2 || slot === 3) && activeSectionType !== 'intro') {
+    const extras = await pickRelevantImages(heading || articleTitle || targetKeyword, targetKeyword || product?.productName || heading, 4)
+    const chosen = (extras || []).find(image => image?.url && image.url !== product?.imageUrl)
+    if (chosen?.url) {
+      const figure = `<figure style="margin:28px 0;text-align:center;"><img src="${chosen.url}" alt="${String(chosen.alt || heading || 'Product').replace(/"/g, '')}" style="width:100%;max-width:560px;height:auto;border-radius:12px;display:inline-block;box-shadow:0 4px 12px rgba(0,0,0,0.06);" /></figure>`
+      text = `${text}\n\n${figure}`
     }
   }
 

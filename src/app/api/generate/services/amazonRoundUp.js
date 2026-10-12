@@ -31,31 +31,53 @@ export async function fetchInternalAmazonData(keyword, settings) {
     process.env.NEXT_PUBLIC_APP_URL ||
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
 
-  const response = await fetch(`${baseUrl}/api/amazon`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      keyword: keyword,
-      domain: settings.amazonDomain || 'www.amazon.com',
-      partnerTag: process.env.AMAZON_PARTNER_TAG
-    })
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    let errorDetails = errorText
-
+  let lastError = null
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const parsed = JSON.parse(errorText)
+      const response = await fetch(`${baseUrl}/api/amazon`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keyword: keyword,
+          domain: settings.amazonDomain || 'www.amazon.com',
+          partnerTag: process.env.AMAZON_PARTNER_TAG
+        }),
+        signal: AbortSignal.timeout(45000)
+      })
 
-      errorDetails = parsed.details ? JSON.stringify(parsed.details) : errorText
-    } catch (e) {}
+      if (!response.ok) {
+        const errorText = await response.text()
+        let errorDetails = errorText
+        try {
+          const parsed = JSON.parse(errorText)
+          errorDetails = parsed.details ? JSON.stringify(parsed.details) : parsed.error || errorText
+        } catch (e) {}
+        const message = String(errorDetails || '')
+        lastError = new Error(`Amazon API ${response.status}: ${message.slice(0, 300)}`)
+        // Retry transient failures
+        if (response.status >= 500 || response.status === 429 || /timeout|fetch failed|credits|throttl/i.test(message)) {
+          console.warn(`[amazon] attempt ${attempt}/3 failed:`, message.slice(0, 180))
+          await new Promise(r => setTimeout(r, 800 * attempt))
+          continue
+        }
+        console.error('Amazon Route Failed:', errorDetails)
+        throw lastError
+      }
 
-    console.error('Amazon Route Failed:', errorDetails)
-    throw new Error(`Amazon API 400: ${errorDetails}`)
+      return await response.json()
+    } catch (error) {
+      lastError = error
+      const msg = String(error?.message || error)
+      if (/timeout|abort|fetch failed|ECONN|network/i.test(msg) && attempt < 3) {
+        console.warn(`[amazon] network attempt ${attempt}/3:`, msg.slice(0, 180))
+        await new Promise(r => setTimeout(r, 800 * attempt))
+        continue
+      }
+      if (attempt >= 3) break
+      throw error
+    }
   }
-
-  return await response.json()
+  throw lastError || new Error('Amazon API failed after retries.')
 }
 
 export function formatAmazonProducts(apiData, settings) {
@@ -308,7 +330,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
     usedInternalLinks = []
   } = body
 
-  const { model, enableFirstHandExperience, improveReadability, pointOfView, toneOfVoice } = settings
+  const { model, enableFirstHandExperience, improveReadability, pointOfView, toneOfVoice, customToneOfVoice } = settings
 
   const amazonApiData = body.shared?.amazon || (await fetchInternalAmazonData(targetKeyword || articleTitle, settings))
   const formattedProducts = formatAmazonProducts(amazonApiData, settings)
@@ -328,7 +350,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
 
   const sectionModel = genAI.getGenerativeModel({ model: model || 'gemini-3.1-flash-lite' })
 
-  const toneInstruction = getToneInstruction(toneOfVoice)
+  const toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice)
   const povInstruction = getPovInstruction(pointOfView)
   const readabilityInstruction = getReadabilityInstruction(improveReadability)
   const seoInstruction = await getSeoInstruction(targetKeyword)
@@ -425,7 +447,8 @@ export async function generateAmazonRoundupSection(body, genAI) {
 
     sectionPrompt += `
       TASK: Write a comprehensive product review for "${product.productName}".
-      CRITICAL: Start writing directly from the review body paragraphs. Do NOT output a heading or title for the product, as the editor handles this automatically.
+      CRITICAL: Start writing directly from the review body paragraphs. Do NOT output any H1/H2/H3 heading or repeat the product title/heading text at the start — the editor already renders the heading.
+      Do NOT invent a second "Final Thoughts" or duplicate section title.
       ${experienceInstruction}
 
       PRODUCT CONTEXT (DO NOT INVENT PRICING):
@@ -461,7 +484,9 @@ export async function generateAmazonRoundupSection(body, genAI) {
     `
   } else {
     sectionPrompt += `
-      TASK: Write a comprehensive section for "${activeHeadingText}". Ensure the formatting is clean, engaging, and directly answers the user's intent.
+      TASK: Write a comprehensive section for "${activeHeadingText}".
+      CRITICAL: Do NOT repeat the heading text as an H2/H3 inside the body. Start with paragraphs only.
+      Keep formatting clean and avoid duplicating titles that already exist in the outline.
     `
   }
 

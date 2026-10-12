@@ -8,6 +8,172 @@ if (process.env.NODE_ENV !== 'production') global.prisma = prisma
 
 export const FREE_WORD_CAP = 5000
 
+export const FEATURE_MODES = ['free', 'pro', 'max', 'off']
+
+const toneOptions = [
+  ['seo', 'SEO Optimized (Confident, Knowledgeable, Neutral, and Clear)', 'menu-tone-seo'],
+  ['excited', 'Excited', 'menu-tone-excited'],
+  ['professional', 'Professional', 'menu-tone-professional'],
+  ['friendly', 'Friendly', 'menu-tone-friendly'],
+  ['formal', 'Formal', 'menu-tone-formal'],
+  ['casual', 'Casual', 'menu-tone-casual'],
+  ['humorous', 'Humorous', 'menu-tone-humorous'],
+  ['custom', 'Custom', 'menu-tone-custom']
+]
+
+const povOptions = [
+  ['first', 'First Person (I, me, my)', 'menu-pov-first'],
+  ['first-plural', 'First Person Plural (We, us, our)', 'menu-pov-first-plural'],
+  ['second', 'Second Person (You, your)', 'menu-pov-second'],
+  ['third', 'Third Person (he, she, it, they)', 'menu-pov-third']
+]
+
+const amazonDomains = [
+  'amazon.ae', 'amazon.com', 'amazon.com.au', 'amazon.com.be', 'amazon.com.br', 'amazon.ca', 'amazon.cn',
+  'amazon.de', 'amazon.eg', 'amazon.es', 'amazon.fr', 'amazon.in', 'amazon.it', 'amazon.co.jp',
+  'amazon.com.mx', 'amazon.nl', 'amazon.pl', 'amazon.sa', 'amazon.sg', 'amazon.se', 'amazon.com.tr', 'amazon.co.uk'
+]
+
+const asOptions = rows => rows.map(([value, label, featureKey]) => ({ value, label, featureKey }))
+
+export const MODULE_FEATURES = [
+  { key: 'module-chat', label: 'AffiGenie Chat', href: '/chat' },
+  { key: 'module-writer', label: 'AffiGenie Writer', href: '/writer' },
+  { key: 'module-images', label: 'AffiGenie Images', href: '/images' },
+  { key: 'module-links', label: 'AffiGenie Links', href: '/links' },
+  { key: 'module-magnets', label: 'AffiGenie Magnets', href: '/magnets' },
+  { key: 'module-drafts', label: 'AffiGenie Drafts', href: '/drafts' }
+]
+
+export const WRITER_MENUS = [
+  {
+    key: 'menu-seo-optimization',
+    label: 'SEO Optimization',
+    setting: 'seoOptimization',
+    defaultValue: 'default',
+    options: asOptions([
+      ['default', 'Default', 'menu-seo-default'],
+      ['manual', 'Manual', 'menu-seo-manual'],
+      ['ai', 'AI-Powered', 'menu-seo-ai']
+    ])
+  },
+  {
+    key: 'menu-royalty-media',
+    label: 'Royalty Free Images & YouTube Videos',
+    setting: 'aiImagesAndVideos',
+    defaultValue: 'none',
+    options: asOptions([
+      ['none', 'None', 'menu-media-none'],
+      ['auto', 'Royalty Free Images & Videos', 'menu-media-auto'],
+      ['upload-images', 'Upload Custom Images', 'menu-media-upload-images']
+    ])
+  },
+  {
+    key: 'menu-article-length',
+    label: 'Article Length',
+    setting: 'articleLength',
+    defaultValue: 'default',
+    options: asOptions([
+      ['default', 'Default', 'menu-length-default'],
+      ['custom', 'Custom Number of Sections', 'menu-length-custom'],
+      ['shorter', 'Shorter (2-3 Sections)', 'menu-length-shorter'],
+      ['short', 'Short (3-5 Sections)', 'menu-length-short'],
+      ['medium', 'Medium (5-7 Sections)', 'menu-length-medium'],
+      ['long', 'Long Form (7-10 Sections)', 'menu-length-long'],
+      ['longer', 'Longer (10-12 Sections)', 'menu-length-longer']
+    ])
+  },
+  {
+    key: 'menu-tone',
+    label: 'Tone of Voice',
+    setting: 'toneOfVoice',
+    defaultValue: 'seo',
+    options: asOptions(toneOptions)
+  },
+  {
+    key: 'menu-point-of-view',
+    label: 'Point of View',
+    setting: 'pointOfView',
+    defaultValue: 'third',
+    options: asOptions(povOptions)
+  },
+  {
+    key: 'menu-realtime-source',
+    label: 'Real-Time Data Source',
+    setting: 'realTimeDataSource',
+    defaultValue: 'search',
+    options: asOptions([
+      ['search', 'Web', 'menu-realtime-web'],
+      ['news', 'Google News', 'menu-realtime-news'],
+      ['scholar', 'Google Scholar', 'menu-realtime-scholar']
+    ])
+  },
+  {
+    key: 'menu-roundup-layout',
+    label: 'Roundup Layout',
+    setting: 'roundupLayout',
+    defaultValue: 'table',
+    options: asOptions([
+      ['table', 'Product Table', 'menu-roundup-table'],
+      ['top-pick', 'Top Pick', 'menu-roundup-top-pick']
+    ])
+  },
+  {
+    key: 'menu-list-numbering',
+    label: 'List Numbering Format',
+    setting: 'listNumberingFormat',
+    defaultValue: '1.',
+    options: asOptions([
+      ['1)', '1), 2), 3)', 'menu-list-number-paren'],
+      ['1.', '1., 2., 3.', 'menu-list-number-dot'],
+      ['1:', '1:, 2:, 3:', 'menu-list-number-colon'],
+      ['none', 'None', 'menu-list-number-none']
+    ])
+  },
+  {
+    key: 'menu-amazon-domain',
+    label: 'Amazon Domain',
+    setting: 'amazonDomain',
+    defaultValue: 'amazon.com',
+    options: amazonDomains.map(domain => ({
+      value: domain,
+      label: domain,
+      featureKey: `menu-domain-${domain.replaceAll('.', '-')}`
+    }))
+  },
+  {
+    key: 'menu-language',
+    label: 'Language',
+    setting: 'language',
+    defaultValue: 'en',
+    options: []
+  },
+  {
+    key: 'menu-country',
+    label: 'Country',
+    setting: 'country',
+    defaultValue: 'US',
+    options: []
+  }
+]
+
+const EXTRA_MENU_FLAGS = [
+  ['menu-image-limit', 'Image limit'],
+  ['menu-video-limit', 'YouTube video limit'],
+  ['menu-internal-linking', 'Automatic internal linking'],
+  ['menu-custom-internal-urls', 'Custom internal URLs'],
+  ['menu-list-item-prompt', 'List item custom prompt']
+]
+
+const menuFlagEntries = () => {
+  const entries = WRITER_MENUS.map(menu => [menu.key, menu.label])
+  WRITER_MENUS.forEach(menu => {
+    menu.options.forEach(option => entries.push([option.featureKey, `${menu.label}: ${option.label}`]))
+  })
+  EXTRA_MENU_FLAGS.forEach(entry => entries.push(entry))
+  return entries
+}
+
 export const FEATURE_KEYS = [
   'standard',
   'rewrite',
@@ -42,10 +208,12 @@ export const FEATURE_KEYS = [
   'model-gpt',
   'model-gpt-mini',
   'model-claude',
-  'model-grok'
+  'model-grok',
+  ...MODULE_FEATURES.map(item => item.key),
+  ...menuFlagEntries().map(([key]) => key)
 ]
 
-export const FEATURE_META = {
+const baseMeta = {
   standard: { label: 'Standard blog', group: 'Article types' },
   rewrite: { label: 'Rewrite', group: 'Article types' },
   'amazon-roundup': { label: 'Amazon roundup', group: 'Article types' },
@@ -82,6 +250,12 @@ export const FEATURE_META = {
   'model-grok': { label: 'Grok', group: 'Models' }
 }
 
+export const FEATURE_META = {
+  ...baseMeta,
+  ...Object.fromEntries(MODULE_FEATURES.map(item => [item.key, { label: item.label, group: 'App modules' }])),
+  ...Object.fromEntries(menuFlagEntries().map(([key, label]) => [key, { label, group: 'Writer menus', pricing: false }]))
+}
+
 export const OPTION_FEATURE_MAP = {
   deepSearch: 'deep-search',
   useRealTimeSearchData: 'real-time-data',
@@ -107,7 +281,9 @@ export const FREE_FEATURES = new Set([
   'outline-editor',
   'include-faq',
   'include-key-takeaways',
-  'improve-readability'
+  'improve-readability',
+  ...MODULE_FEATURES.map(item => item.key),
+  ...menuFlagEntries().map(([key]) => key)
 ])
 
 export function featureKeyForType(type) {
@@ -163,8 +339,21 @@ export function countWords(html) {
   return text ? text.split(' ').filter(Boolean).length : 0
 }
 
+export function planTier(user) {
+  if (user?.role === 'admin' || user?.plan === 'admin') return 'admin'
+  if (user?.role === 'max' || user?.plan === 'max') return 'max'
+  if (user?.role === 'pro' || user?.plan === 'pro') return 'pro'
+  return 'free'
+}
+
+export function isMax(user) {
+  const tier = planTier(user)
+  return tier === 'max' || tier === 'admin'
+}
+
 export function isPaid(user) {
-  return user?.role === 'pro' || user?.role === 'admin' || user?.plan === 'pro' || user?.plan === 'admin'
+  const tier = planTier(user)
+  return tier === 'pro' || tier === 'max' || tier === 'admin'
 }
 
 export async function getDbUser({ userId, email }) {
@@ -187,12 +376,31 @@ export async function getFeatureModes() {
   return modes
 }
 
+export function menuFeatureKeysFromSettings(settings = {}) {
+  const keys = []
+  for (const menu of WRITER_MENUS) {
+    const value = settings[menu.setting]
+    if (value == null || value === '') continue
+    const option = (menu.options || []).find(item => item.value === value)
+    if (option?.featureKey) keys.push(option.featureKey)
+    if (String(value) !== String(menu.defaultValue)) keys.push(menu.key)
+  }
+  if (settings.aiImagesAndVideos === 'auto' && String(settings.numberOfImages || '').trim()) keys.push('menu-image-limit')
+  if (settings.aiImagesAndVideos === 'auto' && String(settings.numberOfYoutubeVideos || '').trim()) keys.push('menu-video-limit')
+  if (Array.isArray(settings.internalLinking) && settings.internalLinking.length) keys.push('menu-internal-linking')
+  if (String(settings.customInternalLink || '').trim()) keys.push('menu-custom-internal-urls')
+  const prompt = String(settings.listItemPrompt || '').trim()
+  if (prompt && prompt !== 'only write a max of 200 words') keys.push('menu-list-item-prompt')
+  return keys
+}
+
 export function activeFeatureKeysFromSettings(settings = {}, type, model) {
-  const keys = [featureKeyForType(type || settings.type)]
+  const keys = [featureKeyForType(type || settings.type), 'module-writer']
   for (const [settingKey, featureKey] of Object.entries(OPTION_FEATURE_MAP)) {
     if (settings[settingKey]) keys.push(featureKey)
   }
   keys.push(featureKeyForModel(model || settings.model))
+  keys.push(...menuFeatureKeysFromSettings(settings))
   return [...new Set(keys)]
 }
 
@@ -218,19 +426,30 @@ export async function resolveGenerationAccess({ userId, email, settings = {}, ty
           code: 'FEATURE_OFF'
         }
       }
-      if (mode === 'pro') {
-        if (!isPaid(user)) blocked.push(FEATURE_META[key]?.label || key)
+      if (mode === 'max') {
+        if (!isMax(user)) blocked.push({ label: FEATURE_META[key]?.label || key, mode })
+        else usePaidKeys = true
+      } else if (mode === 'pro') {
+        if (!isPaid(user)) blocked.push({ label: FEATURE_META[key]?.label || key, mode })
         else usePaidKeys = true
       }
     }
 
     if (blocked.length) {
+      const needsMax = blocked.some(item => item.mode === 'max')
       return {
         ok: false,
         status: 402,
-        error: `${blocked[0]} requires a Pro plan.`,
-        code: 'PRO_REQUIRED',
-        features: blocked
+        error: needsMax ? `${blocked[0].label} requires a Max plan.` : `${blocked[0].label} requires a Pro plan.`,
+        code: needsMax ? 'MAX_REQUIRED' : 'PRO_REQUIRED',
+        features: blocked.map(item => item.label)
+      }
+    }
+
+    if (usePaidKeys) {
+      const freeKeysSetting = await prisma.appSetting.findUnique({ where: { key: 'allowFreeGeminiKeysForPro' } }).catch(() => null)
+      if (freeKeysSetting && (freeKeysSetting.value === '1' || freeKeysSetting.value === 'true')) {
+        usePaidKeys = false
       }
     }
 

@@ -124,7 +124,7 @@ export async function POST(request) {
     if (!gate.ok) return NextResponse.json({ success: false, error: gate.error }, { status: gate.status })
 
     const body = await request.json()
-    const { title, content, status, siteType, siteId, customSite, featuredImageUrl, metaTitle, metaDescription, language } =
+    const { title, content, status, siteType, siteId, customSite, featuredImageUrl, metaTitle, metaDescription, language, articleType } =
       body
 
     let siteUrl, wpUsername, wpPassword
@@ -180,9 +180,13 @@ export async function POST(request) {
         ? `<p class="affigenie-hero"><img class="affigenie-hero-img" src="${escapeHtml(heroSrc)}" alt="${escapeHtml(title || 'Featured image')}" style="width:100%;max-width:100%;height:auto;display:block;" /></p>`
         : ''
 
+    const typeMarker = articleType
+      ? `<div data-affigenie-type="${String(articleType).replace(/"/g, '')}" data-affigenie-marker="1" style="display:none!important;height:0;width:0;overflow:hidden;">affigenie-article-type:${String(articleType).replace(/</g, '')}</div>`
+      : ''
     const finalContent = `
   <div id="cheetah-article-wrapper">
     ${masterStyles}
+    ${typeMarker}
     ${heroHtml}
     ${articleHtml}
   </div>

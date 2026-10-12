@@ -383,26 +383,32 @@ export async function generateLocalRoundupSection(body, genAI) {
     const p = placeInfo.length > 0 ? placeInfo[0] : null
 
     if (p) {
+      const lat = Number(p.latitude ?? p.lat ?? p.gpsCoordinates?.latitude)
+      const lng = Number(p.longitude ?? p.lng ?? p.gpsCoordinates?.longitude)
+      const hasCoords = Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)
+      const placeLabel = `${p.title || heading}${p.address ? ', ' + p.address : ''}`.trim()
+      const query = encodeURIComponent(placeLabel)
       const mapLink = p.cid
-        ? `https://maps.google.com/?cid=${p.cid}`
-        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.title + ' ' + (p.address || ''))}`
+        ? `https://www.google.com/maps?cid=${encodeURIComponent(p.cid)}`
+        : hasCoords
+          ? `https://www.google.com/maps?q=${lat},${lng}+(${query})`
+          : `https://www.google.com/maps/search/?api=1&query=${query}`
 
       if (generateUniqueMapImages) {
-        const mapImgUrl =
-          p.latitude && p.longitude
-            ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${p.longitude},${p.latitude}&z=16&l=map&size=600,300&pt=${p.longitude},${p.latitude},pm2rdm`
-            : `https://placehold.co/800x400/ececec/555555?text=Map+Location:+${encodeURIComponent(p.title)}`
+        const mapImgUrl = hasCoords
+          ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=16&l=map&size=650,350&pt=${lng},${lat},pm2rdm`
+          : `https://placehold.co/800x400/e8eef7/1d4ed8?text=${encodeURIComponent('Open map: ' + (p.title || heading))}`
 
-        assignedMediaElement = `<a href="${mapLink}" target="_blank" rel="noopener noreferrer" style="display: block; width: 100%; margin: 24px 0;"><img src="${mapImgUrl}" alt="Map of ${p.title}" style="width: 100%; height: auto; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; object-fit: cover; aspect-ratio: 2/1;" /></a>`
-        mediaInstruction = `\n[NOTE: A map image has been automatically inserted. Do NOT output image HTML.]`
+        assignedMediaElement = `<a href="${mapLink}" target="_blank" rel="noopener noreferrer" style="display:block;width:100%;margin:24px 0;"><img src="${mapImgUrl}" alt="Map of ${String(p.title || heading).replace(/"/g, '')}" style="width:100%;height:auto;border-radius:12px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);border:1px solid #e5e7eb;object-fit:cover;aspect-ratio:2/1;" /></a>`
+        mediaInstruction = `\n[NOTE: A map image linking to this exact place has already been inserted. Do NOT output any map image HTML. The Location link MUST use this exact URL: ${mapLink}]`
       }
 
       placeDataStr = `
-          REAL LOCATION DATA TO USE:
-          - Ratings: ${p.rating ? `${p.rating} / 5 (${p.ratingCount} reviews)` : 'Not Available'}
+          REAL LOCATION DATA TO USE (do not invent different values):
+          - Ratings: ${p.rating ? `${p.rating} / 5 (${p.ratingCount || p.ratingCount === 0 ? p.ratingCount : 'n/a'} reviews)` : 'Not Available'}
           - Address: ${p.address || 'Address Not Available'}
-          - Map URL: ${mapLink}
-          - Phone: ${p.phoneNumber || 'Not Available'}
+          - Map URL (use this exact URL for the Location link): ${mapLink}
+          - Phone: ${p.phoneNumber || p.phone || 'Not Available'}
           - Website URL: ${p.website || 'Not Available'}
         `
     }

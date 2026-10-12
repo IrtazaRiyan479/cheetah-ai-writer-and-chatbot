@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
 
 import { authOptions } from '@/libs/auth';
+import { planTier } from '@/libs/entitlement';
 import { isValidEmail } from '@/utils/credentials';
 
 const prisma = new PrismaClient();
@@ -33,9 +34,9 @@ export async function GET(request) {
       }
     })
 
-    const paid = Boolean(
-      user && (user.role === 'pro' || user.role === 'admin' || user.plan === 'pro' || user.plan === 'admin')
-    )
+    const tier = planTier(user)
+    const paid = tier === 'pro' || tier === 'max' || tier === 'admin'
+    const isMax = tier === 'max' || tier === 'admin'
     const capSetting = await prisma.appSetting.findUnique({ where: { key: 'globalFreeWordCap' } }).catch(() => null)
     const globalCap = capSetting ? Math.max(0, Number(capSetting.value) || 0) : 5000
     const wordsLimit = user?.wordsLimitCustomized ? user.wordsLimit : globalCap
@@ -56,10 +57,12 @@ export async function GET(request) {
             name: user.name,
             role: user.role,
             plan: user.plan,
+            tier,
             subscriptionStatus: user.subscriptionStatus,
             wordsUsed: user.wordsUsed,
             wordsLimit,
             paid,
+            isMax,
             hasStripeCustomer: Boolean(user.stripeCustomerId)
           }
         : null,

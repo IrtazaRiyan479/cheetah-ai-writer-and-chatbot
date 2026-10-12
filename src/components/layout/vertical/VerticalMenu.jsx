@@ -31,6 +31,8 @@ import menuSectionStyles from '@core/styles/vertical/menuSectionStyles'
 
 // NextAuth Import
 import { useSession } from 'next-auth/react'
+import { useEffect, useState } from 'react'
+import { MODULE_FEATURES } from '@/libs/entitlement'
 
 const RenderExpandIcon = ({ open, transitionDuration }) => (
   <StyledVerticalNavExpandIcon open={open} transitionDuration={transitionDuration}>
@@ -46,6 +48,20 @@ const VerticalMenu = ({ dictionary, scrollMenu }) => {
 
   // --- FETCH USER SESSION ---
   const { data: session } = useSession()
+  const [hiddenHrefs, setHiddenHrefs] = useState([])
+
+  useEffect(() => {
+    let active = true
+    fetch('/api/pricing/copy')
+      .then(response => response.json())
+      .then(data => {
+        if (!active) return
+        const modes = data.modes || {}
+        setHiddenHrefs(MODULE_FEATURES.filter(item => modes[item.key] === 'off').map(item => item.href))
+      })
+      .catch(() => {})
+    return () => { active = false }
+  }, [])
 
   // Vars
   const { isBreakpointReached, transitionDuration } = verticalNavOptions
@@ -69,7 +85,7 @@ const VerticalMenu = ({ dictionary, scrollMenu }) => {
         menuSectionStyles={menuSectionStyles(verticalNavOptions, theme)}
       >
         {/* Pass the session to menuData so it can decide which links to render */}
-        <GenerateVerticalMenu menuData={menuData(session, dictionary, params)} />
+        <GenerateVerticalMenu menuData={menuData(session, dictionary, params).filter(item => !hiddenHrefs.includes(item.href))} />
       </Menu>
     </ScrollWrapper>
   )

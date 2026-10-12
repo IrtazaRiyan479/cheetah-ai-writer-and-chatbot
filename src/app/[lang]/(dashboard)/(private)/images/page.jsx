@@ -1,3 +1,4 @@
+import ModuleGate from '@/components/access/ModuleGate'
 // Third-party Imports
 import classnames from 'classnames'
 
@@ -12,15 +13,17 @@ import styles from '@views/apps/images/styles.module.css'
 
 const KanbanPage = () => {
   return (
-    <div
-      className={classnames(
-        commonLayoutClasses.contentHeightFixed,
-        styles.scroll,
-        'is-full overflow-auto pis-2 -mis-2'
-      )}
-    >
-      <ImageGeneratorBoard />
-    </div>
+    <ModuleGate featureKey='module-images'>
+      <div
+        className={classnames(
+          commonLayoutClasses.contentHeightFixed,
+          styles.scroll,
+          'is-full overflow-auto pis-2 -mis-2'
+        )}
+      >
+        <ImageGeneratorBoard />
+      </div>
+    </ModuleGate>
   )
 }
 

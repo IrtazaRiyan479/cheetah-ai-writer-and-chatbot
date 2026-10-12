@@ -14,6 +14,7 @@ import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 import { useEffect } from 'react'
 import { FlagSwitch } from '../FeatureAccessContext'
+import GatedSelect from '../GatedSelect'
 
 const AmazonRoundupFields = ({ settings, updateSetting }) => {
   useEffect(() => {
@@ -75,8 +76,12 @@ const AmazonRoundupFields = ({ settings, updateSetting }) => {
       {settings.articleLength === 'custom' ? <TextField fullWidth type='number' size='small' label='Custom Section Count' value={settings.customArticleLength || ''} inputProps={{ min: 1, max: 48 }} onChange={event => updateSetting('customArticleLength', Math.min(48, Math.max(1, Number(event.target.value) || 1)))} sx={{ mt: 2 }} /> : null}
     </Grid>
     <Grid size={{ xs: 12, sm: 6 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Tone of Voice</Typography>
-      <FormControl fullWidth size='small'><Select value={settings.toneOfVoice} onChange={event => updateSetting('toneOfVoice', event.target.value)}>{['seo','excited','professional','friendly','formal','casual','humorous','custom'].map(tone => <MenuItem key={tone} value={tone}>{tone}</MenuItem>)}</Select></FormControl>
+      <GatedSelect
+        menuKey='menu-tone'
+        value={settings.toneOfVoice}
+        onChange={value => updateSetting('toneOfVoice', value)}
+        className={settings.toneOfVoice === 'custom' ? 'mbe-3' : ''}
+      />
       {settings.toneOfVoice === 'custom' ? <TextField fullWidth size='small' label='Custom Tone' value={settings.customToneOfVoice || ''} onChange={event => updateSetting('customToneOfVoice', event.target.value)} sx={{ mt: 2 }} /> : null}
     </Grid>
     <Grid size={{ xs: 12, sm: 6 }}>

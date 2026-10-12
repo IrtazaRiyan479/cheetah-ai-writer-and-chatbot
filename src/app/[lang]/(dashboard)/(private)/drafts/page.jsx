@@ -1,3 +1,4 @@
+import ModuleGate from '@/components/access/ModuleGate'
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -137,6 +138,7 @@ export default function DraftsPage() {
   }
 
   return (
+    <ModuleGate featureKey='module-drafts'>
     <div className='p-6 max-w-6xl mx-auto'>
       <div className='flex justify-between items-center mb-8'>
         <Typography variant='h4' className='font-bold'>
@@ -283,5 +285,6 @@ export default function DraftsPage() {
         </DialogActions>
       </Dialog>
     </div>
+    </ModuleGate>
   )
 }

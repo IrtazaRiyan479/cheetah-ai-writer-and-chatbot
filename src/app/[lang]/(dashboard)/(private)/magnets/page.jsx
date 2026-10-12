@@ -1,3 +1,4 @@
+import ModuleGate from '@/components/access/ModuleGate'
 // Next Imports
 import dynamic from 'next/dynamic'
 
@@ -12,7 +13,11 @@ const ContentMain = () => ({
 })
 
 const MagnetsMainPage = () => {
-  return <MagnetsMain tabContentList={ContentMain()} />
+  return (
+    <ModuleGate featureKey='module-magnets'>
+      <MagnetsMain tabContentList={ContentMain()} />
+    </ModuleGate>
+  )
 }
 
 export default MagnetsMainPage

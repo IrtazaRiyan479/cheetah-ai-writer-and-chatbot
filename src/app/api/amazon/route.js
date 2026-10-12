@@ -11,6 +11,7 @@ export async function POST(request) {
 
     const tokenRes = await fetch('https://api.amazon.com/auth/o2/token', {
       method: 'POST',
+      signal: AbortSignal.timeout(25000),
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
       },
@@ -37,6 +38,7 @@ export async function POST(request) {
 
     const searchRes = await fetch('https://creatorsapi.amazon/catalog/v1/searchItems', {
       method: 'POST',
+      signal: AbortSignal.timeout(25000),
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json; charset=utf-8',

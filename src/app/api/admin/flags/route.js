@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 
 import { requireAdmin } from '../_auth'
-import { FEATURE_KEYS, FREE_FEATURES } from '@/libs/entitlement'
+import { FEATURE_KEYS, FEATURE_MODES, FREE_FEATURES } from '@/libs/entitlement'
 import { serializeError } from '@/utils/serializeError'
 
 const prisma = global.prisma || new PrismaClient()
@@ -24,7 +24,18 @@ export async function GET(request) {
       }
     }
 
-    return Response.json({ success: true, flags: FEATURE_KEYS.map(key => ({ key, mode: byKey.get(key).mode || (byKey.get(key).enabled === false ? 'off' : byKey.get(key).free ? 'free' : 'pro') })) })
+    const freeKeysSetting = await prisma.appSetting.findUnique({ where: { key: 'allowFreeGeminiKeysForPro' } }).catch(() => null)
+    const allowFreeGeminiKeysForPro =
+      freeKeysSetting?.value === '1' || freeKeysSetting?.value === 'true'
+
+    return Response.json({
+      success: true,
+      flags: FEATURE_KEYS.map(key => ({
+        key,
+        mode: byKey.get(key).mode || (byKey.get(key).enabled === false ? 'off' : byKey.get(key).free ? 'free' : 'pro')
+      })),
+      allowFreeGeminiKeysForPro
+    })
   } catch (error) {
     return Response.json({ success: false, error: serializeError(error) }, { status: 500 })
   }
@@ -36,8 +47,19 @@ export async function PATCH(request) {
 
     if (gate.error) return gate.error
 
-    const { key, mode } = await request.json()
-    if (!FEATURE_KEYS.includes(key) || !['free', 'pro', 'off'].includes(mode)) {
+    const body = await request.json()
+
+    if (typeof body.allowFreeGeminiKeysForPro === 'boolean') {
+      await prisma.appSetting.upsert({
+        where: { key: 'allowFreeGeminiKeysForPro' },
+        create: { key: 'allowFreeGeminiKeysForPro', value: body.allowFreeGeminiKeysForPro ? '1' : '0' },
+        update: { value: body.allowFreeGeminiKeysForPro ? '1' : '0' }
+      })
+      return Response.json({ success: true, allowFreeGeminiKeysForPro: body.allowFreeGeminiKeysForPro })
+    }
+
+    const { key, mode } = body
+    if (!FEATURE_KEYS.includes(key) || !FEATURE_MODES.includes(mode)) {
       return Response.json({ success: false, error: 'Invalid feature key or mode.' }, { status: 400 })
     }
 

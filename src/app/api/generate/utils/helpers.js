@@ -1,5 +1,3 @@
-import { YoutubeTranscript } from 'youtube-transcript'
-
 import { geminiGenerateContent, listGeminiApiKeys } from './geminiKeys'
 
 import { callLightLLM, parseJsonSafe } from './lightLLM'
@@ -574,7 +572,14 @@ export async function attachBrandedHero(result, settings = {}) {
     console.error('[hero] branded raster failed', error?.message || error)
   }
 
-  if (!heroImage) return { ...result, heroImage: '', heroImageId: null, heroImageSource: 'gradient' }
+  if (!heroImage) {
+    return {
+      ...result,
+      heroImage: result.heroImage || '',
+      heroImageId: result.heroImage ? result.heroImageId ?? null : null,
+      heroImageSource: result.heroImageSource || 'gradient'
+    }
+  }
 
   return { ...result, heroImage, heroImageId: null, heroImageSource: photo ? 'branded-photo' : 'branded-gradient' }
 }
@@ -1112,8 +1117,17 @@ export async function fetchSerperPlacesData(query, count = 10, countryCode = 'us
     })
 
     const data = await res.json()
-
-    return data.places ? data.places.slice(0, count) : []
+    const places = data.places ? data.places.slice(0, count) : []
+    return places.map(place => {
+      const lat = Number(place.latitude ?? place.lat ?? place.gpsCoordinates?.latitude)
+      const lng = Number(place.longitude ?? place.lng ?? place.gpsCoordinates?.longitude)
+      return {
+        ...place,
+        latitude: Number.isFinite(lat) ? lat : place.latitude,
+        longitude: Number.isFinite(lng) ? lng : place.longitude,
+        phoneNumber: place.phoneNumber || place.phoneNumberFormatted || place.phone || ''
+      }
+    })
   } catch (e) {
     console.error('Serper Places API Error:', e)
 
@@ -1121,29 +1135,8 @@ export async function fetchSerperPlacesData(query, count = 10, countryCode = 'us
   }
 }
 
-export async function fetchYoutubeVideoData(url) {
-  try {
-    const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`)
+export { fetchYoutubeVideoData } from './youtubeCaptions'
 
-    if (!oembedRes.ok) throw new Error('Invalid YouTube URL or private video.')
-    const metadata = await oembedRes.json()
-
-    const transcriptArray = await YoutubeTranscript.fetchTranscript(url)
-    const fullTranscript = transcriptArray.map(t => t.text).join(' ')
-
-    return {
-      success: true,
-      title: metadata.title,
-      author: metadata.author_name,
-      thumbnail: metadata.thumbnail_url,
-      transcript: fullTranscript
-    }
-  } catch (error) {
-    console.error('YouTube Fetch Error:', error.message)
-
-    return { success: false, error: error.message }
-  }
-}
 
 export function getBaseSystemInstruction(language, country) {
   const baseSystemInstruction = `You are an advanced, lightning-fast AI writing assistant.
@@ -1161,11 +1154,17 @@ export function getBaseSystemInstruction(language, country) {
 
 export function getToneInstruction(toneOfVoice, customToneOfVoice) {
   let toneInstruction = ''
+  const pretty = value => {
+    const raw = String(value || '').trim()
+    if (!raw) return 'Professional'
+    if (raw.toLowerCase() === 'seo') return 'SEO Optimized (Confident, Knowledgeable, Neutral, and Clear)'
+    return raw.charAt(0).toUpperCase() + raw.slice(1)
+  }
 
   if (toneOfVoice === 'custom' && customToneOfVoice) {
-    toneInstruction = `\nCRITICAL TONE REQUIREMENT: You MUST write this entire section using a ${customToneOfVoice} tone of voice.`
+    toneInstruction = `\nCRITICAL TONE REQUIREMENT: You MUST write this entire section using a ${pretty(customToneOfVoice)} tone of voice.`
   } else if (toneOfVoice && toneOfVoice !== 'seo') {
-    toneInstruction = `\nCRITICAL TONE REQUIREMENT: You MUST write this entire section using a heavily ${toneOfVoice} tone of voice.`
+    toneInstruction = `\nCRITICAL TONE REQUIREMENT: You MUST write this entire section using a heavily ${pretty(toneOfVoice)} tone of voice.`
   } else {
     toneInstruction = `\nCRITICAL TONE REQUIREMENT: You MUST write this entire section using an SEO Optimized (Confident, Knowledgeable, Neutral, and Clear) tone of voice.`
   }

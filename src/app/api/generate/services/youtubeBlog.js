@@ -24,7 +24,7 @@ export async function generateYoutubeBlogOutline(body, genAI) {
   const videoData = await fetchYoutubeVideoData(youtubeUrl)
 
   if (!videoData.success) {
-    throw new Error('Failed to fetch YouTube transcript. The video might be private or lacking captions.')
+    throw new Error(videoData.error || 'Could not fetch captions. The video might be private, age-restricted, or missing subtitles.')
   }
 
   const transcript = videoData.transcript || videoData.text || ''

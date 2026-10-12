@@ -125,7 +125,10 @@ export async function creditWordPack({ userId, customerId, words, sessionId, pla
   const globalFreeWordCap = capSetting ? Math.max(0, Number(capSetting.value) || 0) : 5000
   const currentLimit = user.wordsLimitCustomized ? user.wordsLimit : globalFreeWordCap
   const keepAdmin = user.role === 'admin' || user.plan === 'admin'
-  const grantPro = plan === 'pro' || plan === 'enterprise' || plan === 'max'
+  const buyingMax = plan === 'max' || plan === 'enterprise'
+  const alreadyMax = user.plan === 'max' || user.role === 'max'
+  const nextPlan = keepAdmin ? user.plan : buyingMax || alreadyMax ? 'max' : plan === 'pro' ? 'pro' : user.plan
+  const nextRole = keepAdmin ? user.role : buyingMax || alreadyMax ? 'max' : plan === 'pro' ? 'pro' : user.role
 
   return prisma.$transaction([
     prisma.user.update({
@@ -135,8 +138,8 @@ export async function creditWordPack({ userId, customerId, words, sessionId, pla
         wordsLimitCustomized: true,
         stripeCustomerId: customerId || user.stripeCustomerId,
         subscriptionStatus: 'paid',
-        plan: keepAdmin ? user.plan : grantPro ? 'pro' : user.plan,
-        role: keepAdmin ? user.role : grantPro ? 'pro' : user.role
+        plan: nextPlan,
+        role: nextRole
       }
     }),
     prisma.appSetting.create({ data: { key: markerKey, value: '1' } })

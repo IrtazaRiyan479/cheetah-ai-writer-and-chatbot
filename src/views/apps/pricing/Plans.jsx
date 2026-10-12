@@ -22,6 +22,13 @@ import frontCommonStyles from '@views/apps/styles.module.css'
 
 const plans = ['starter', 'pro', 'enterprise']
 
+const featureIncluded = (mode, key) => {
+  if (mode === 'free') return true
+  if (mode === 'pro') return key !== 'starter'
+  if (mode === 'max') return key === 'enterprise'
+  return false
+}
+
 const wordsFor = (plan, key) => {
   const raw = Number(plan?.words)
 
@@ -159,12 +166,12 @@ const Plans = () => {
                   <i className='ri-checkbox-circle-line text-primary' />
                 </td>
               </tr>
-              {featureRows.map(feature => (
+              {featureRows.filter(feature => feature.mode && feature.mode !== 'off').map(feature => (
                 <tr key={feature.key}>
                   <td className='text-textPrimary'>{feature.label}</td>
                   {plans.map(key => (
                     <td key={key}>
-                      {feature.mode === 'free' || (feature.mode === 'pro' && key !== 'starter') ? (
+                      {featureIncluded(feature.mode, key) ? (
                         <i className='ri-checkbox-circle-line text-primary' />
                       ) : (
                         <i className='ri-close-circle-line' />

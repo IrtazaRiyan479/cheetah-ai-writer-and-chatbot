@@ -85,6 +85,20 @@ function mediaKey(item) {
   }
 }
 
+
+function stripLeadingHeading(html, heading) {
+  if (!html || !heading) return html
+  const escaped = String(heading).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const patterns = [
+    new RegExp(`^\\s*<h[1-3][^>]*>\\s*${escaped}\\s*<\\/h[1-3]>`, 'i'),
+    new RegExp(`^\\s*<p[^>]*>\\s*<strong>\\s*${escaped}\\s*<\\/strong>\\s*<\\/p>`, 'i'),
+    new RegExp(`^\\s*#+\\s*${escaped}\\s*`, 'i')
+  ]
+  let out = String(html)
+  for (const re of patterns) out = out.replace(re, '')
+  return out
+}
+
 function waitHtml(index, text) {
   const safe = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
@@ -842,7 +856,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         featuredImageUrl: finalHeroImage,
         language: settings.language,
         metaTitle: metaTitle,
-        metaDescription: metaDescription
+        metaDescription: metaDescription,
+        articleType: settings.type || ''
       }
 
       const res = await fetch('/api/publish', {
@@ -1011,20 +1026,21 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
       const processAndInsertSection = (i, group, data) => {
         if (!data || !data.success || !data?.text || data.text.trim().length < 30) {
-          editor
-            .chain()
-            .focus('end')
-            .insertContent(failedSectionHtml(i, group.h2?.text, { showHeading: i !== 0 }))
-            .run()
-
-          return
+          return failedSectionHtml(i, group.h2?.text, { showHeading: i !== 0 })
         }
+
+        const parts = []
 
         if (i !== 0) {
-          editor.chain().focus('end').insertContent(`<${group.h2.type}>${group.h2.text}</${group.h2.type}>`).run()
+          parts.push(`<${group.h2.type}>${group.h2.text}</${group.h2.type}>`)
         }
 
-        let finalSectionText = data.text
+        let finalSectionText = stripLeadingHeading(data.text, group.h2?.text)
+
+        finalSectionText = String(finalSectionText || '').replace(
+          /^\s*(?:#{1,3}\s+[^\n]+|<h[1-3][^>]*>[\s\S]*?<\/h[1-3]>)\s*/i,
+          ''
+        )
 
         if (data.mediaUrl) {
           trackedImages.push(data.mediaUrl)
@@ -1044,10 +1060,9 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           }
         }
 
-        editor.chain().focus('end').insertContent(sectionTextToHtml(finalSectionText, settings.language)).run()
+        parts.push(sectionTextToHtml(finalSectionText, settings.language))
 
         let mediaHtml = data.mediaHtml || ''
-
         const skipMediaForHeroIntro = i === 0 && !!settings.heroImage
 
         if (mediaHtml && !skipMediaForHeroIntro) {
@@ -1063,15 +1078,15 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
           const alreadyUsed = candidateKeys.some(k => liveUsedMedia.has(k))
 
-          if (alreadyUsed) {
-            mediaHtml = ''
-          } else {
+          if (!alreadyUsed) {
             candidateKeys.forEach(k => {
               if (k) liveUsedMedia.add(k)
             })
-            editor.chain().focus('end').insertContent(mediaHtml).run()
+            parts.push(mediaHtml)
           }
         }
+
+        return parts.join('')
       }
 
       if (settings.deepSearch) {
@@ -1083,10 +1098,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           setCurrentIndex(group.originalIndex)
 
           const shouldGenerateMedia = i === 0 && settings.heroImage ? false : settings.aiImagesAndVideos
-
-          if (i !== 0) {
-            editor.chain().focus('end').insertContent(`<${group.h2.type}>${group.h2.text}</${group.h2.type}>`).run()
-          }
 
           const subheadings = group.h3s.map(h3 => h3.text)
 
@@ -1207,7 +1218,11 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                 setDeepSearchProgress(0)
               }
 
-              processAndInsertSection(i, group, { ...data, text: finalSectionText })
+              editor
+                .chain()
+                .focus('end')
+                .insertContent(processAndInsertSection(i, group, { ...data, text: finalSectionText }))
+                .run()
             } else {
               editor
                 .chain()
@@ -1241,7 +1256,14 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       }
 
       const resultsBuffer = new Array(groupedSections.length).fill(null)
+      const flushed = new Array(groupedSections.length).fill(false)
       let nextInsertIdx = 0
+
+      // Show ordered wait markers immediately so sections appear in outline order as they finish
+      for (let wi = 0; wi < groupedSections.length; wi++) {
+        const title = groupedSections[wi]?.h2?.text || `Section ${wi + 1}`
+        upsertWaitInEditor(editor, wi, `Writing: ${title}`)
+      }
 
       const liveUsedMedia = new Set((settings.usedImageUrls || []).map(mediaKey).filter(Boolean))
 
@@ -1316,16 +1338,30 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         }
       }
 
-      const CONCURRENCY = settings.type === 'product-comparison' ? 1 : 3
+      const CONCURRENCY = Math.max(1, groupedSections.length)
       let haltNotice = false
 
-      const tryFlush = () => {
-        while (nextInsertIdx < groupedSections.length && resultsBuffer[nextInsertIdx] !== null) {
-          const { i, group, data, error } = resultsBuffer[nextInsertIdx]
+      const placeAt = (index, html) => {
+        const current = editor.getHTML()
+        const re = new RegExp(
+          `<p[^>]*(?:data-wait-section="${index}"|wait-section-${index})[^>]*>[\\s\\S]*?<\\/p>`,
+          'i'
+        )
 
+        if (re.test(current)) {
+          editor.commands.setContent(current.replace(re, html), false)
+        } else {
+          editor.chain().focus('end').insertContent(html).run()
+        }
+      }
+
+      const tryFlush = () => {
+        for (let idx = 0; idx < groupedSections.length; idx++) {
+          if (flushed[idx] || resultsBuffer[idx] == null) continue
+          const { i, group, data, error } = resultsBuffer[idx]
+
+          flushed[idx] = true
           setCurrentIndex(group.originalIndex)
-          setWaitBanner('')
-          removeWaitInEditor(editor, i)
 
           if (error) {
             if (error.noRetry) {
@@ -1334,56 +1370,46 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                 const message =
                   error.code === 'PAID_KEYS_FAILED'
                     ? 'Low credits. Generation stopped.'
-                    : error.code === 'PRO_REQUIRED'
-                      ? (error.message || 'This feature requires a Pro plan.')
+                    : error.code === 'PRO_REQUIRED' || error.code === 'MAX_REQUIRED'
+                      ? error.message || 'This feature requires a higher plan.'
                       : 'Free word limit reached. Generation stopped so it does not keep retrying. Upgrade to Pro to continue this article.'
                 const safe = String(message)
-                  .replace(/&/g, '&amp;')
-                  .replace(/</g, '&lt;')
-                  .replace(/>/g, '&gt;')
-                editor
-                  .chain()
-                  .focus('end')
-                  .insertContent(
-                    `<p class="word-limit-notice" data-word-limit="1" style="background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px;line-height:1.5;">${safe}</p>`
-                  )
-                  .run()
+                  .replace(/&/g, '&')
+                  .replace(/</g, '<')
+                  .replace(/>/g, '>')
+
+                placeAt(
+                  i,
+                  `<p class="word-limit-notice" data-word-limit="1" style="background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px;line-height:1.5;">${safe}</p>`
+                )
+              } else {
+                removeWaitInEditor(editor, i)
               }
             } else if (haltNotice || error.silentHalt) {
-              // skip leftover placeholders after a hard stop
+              removeWaitInEditor(editor, i)
             } else if (error.name === 'AbortError') {
-              editor.chain().focus('end').insertContent('<p><em>Generation stopped.</em></p>').run()
-              nextInsertIdx = groupedSections.length
-              break
+              placeAt(i, '<p><em>Generation stopped.</em></p>')
             } else {
-              editor
-                .chain()
-                .focus('end')
-                .insertContent(failedSectionHtml(i, group.h2?.text, { showHeading: i !== 0 }))
-                .run()
+              placeAt(i, failedSectionHtml(i, group.h2?.text, { showHeading: i !== 0 }))
             }
           } else if (data?.skipped) {
-            editor
-              .chain()
-              .focus('end')
-              .insertContent(failedSectionHtml(i, group.h2?.text, { showHeading: i !== 0 }))
-              .run()
+            placeAt(i, failedSectionHtml(i, group.h2?.text, { showHeading: i !== 0 }))
           } else {
-            processAndInsertSection(i, group, data)
+            placeAt(i, processAndInsertSection(i, group, data))
 
             if (data?.mediaUrl) trackedImages.push(mediaKey(data.mediaUrl))
             if (data?.mediaId) trackedImages.push(mediaKey(data.mediaId))
             if (data?.internalLinkUrl) trackedInternalLinks.push(data.internalLinkUrl)
           }
-
-          nextInsertIdx++
         }
 
-        if (nextInsertIdx < groupedSections.length) {
-          setCurrentIndex(groupedSections[nextInsertIdx].originalIndex)
-        }
+        const done = flushed.filter(Boolean).length
 
-        if (nextInsertIdx >= groupedSections.length && !isCancelled) {
+        if (done < groupedSections.length) {
+          setWaitBanner(`Finished ${done} of ${groupedSections.length} sections`)
+          const pending = flushed.findIndex(item => !item)
+          if (pending >= 0) setCurrentIndex(groupedSections[pending].originalIndex)
+        } else if (!isCancelled) {
           setIsGenerating(false)
           setWaitBanner('')
           setCurrentIndex(outline.length)

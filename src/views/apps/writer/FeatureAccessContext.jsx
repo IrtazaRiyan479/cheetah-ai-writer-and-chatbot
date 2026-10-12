@@ -15,17 +15,21 @@ import { FEATURE_META, FREE_FEATURES, OPTION_FEATURE_MAP } from '@/libs/entitlem
 
 const FeatureAccessContext = createContext({
   isPaid: false,
+  isMax: false,
   featureModes: {},
   requireFeature: () => true,
   isProFeature: () => false,
+  isMaxFeature: () => false,
   modeOf: () => 'pro'
 })
 
 export function FeatureAccessProvider({ children }) {
   const [isPaid, setIsPaid] = useState(false)
+  const [isMax, setIsMax] = useState(false)
   const [featureModes, setFeatureModes] = useState({})
   const [premiumOpen, setPremiumOpen] = useState(false)
   const [premiumMessage, setPremiumMessage] = useState('')
+  const [dialogTitle, setDialogTitle] = useState('Pro feature')
 
   useEffect(() => {
     let active = true
@@ -34,10 +38,13 @@ export function FeatureAccessProvider({ children }) {
       .then(data => {
         if (!active) return
         setIsPaid(Boolean(data.user?.paid))
+        setIsMax(Boolean(data.user?.isMax))
         setFeatureModes(data.featureModes || {})
       })
       .catch(() => {})
-    return () => { active = false }
+    return () => {
+      active = false
+    }
   }, [])
 
   const modeOf = useCallback(
@@ -45,36 +52,44 @@ export function FeatureAccessProvider({ children }) {
     [featureModes]
   )
   const isProFeature = useCallback(key => modeOf(key) === 'pro', [modeOf])
+  const isMaxFeature = useCallback(key => modeOf(key) === 'max', [modeOf])
   const requireFeature = useCallback(
     (featureKey, { label } = {}) => {
       const mode = modeOf(featureKey)
+      const name = label || FEATURE_META[featureKey]?.label || featureKey
       if (mode === 'off') {
-        setPremiumMessage(`${label || FEATURE_META[featureKey]?.label || featureKey} is currently turned off.`)
+        setDialogTitle('Unavailable')
+        setPremiumMessage(`${name} is currently turned off.`)
+        setPremiumOpen(true)
+        return false
+      }
+      if (mode === 'max' && !isMax) {
+        setDialogTitle('Max feature')
+        setPremiumMessage(`${name} is a Max feature. Buy a Max word pack to unlock it.`)
         setPremiumOpen(true)
         return false
       }
       if (mode === 'pro' && !isPaid) {
-        setPremiumMessage(
-          `${label || FEATURE_META[featureKey]?.label || featureKey} is a Pro feature. Buy a word pack to unlock it.`
-        )
+        setDialogTitle('Pro feature')
+        setPremiumMessage(`${name} is a Pro feature. Buy a word pack to unlock it.`)
         setPremiumOpen(true)
         return false
       }
       return true
     },
-    [isPaid, modeOf]
+    [isPaid, isMax, modeOf]
   )
 
   const value = useMemo(
-    () => ({ isPaid, featureModes, requireFeature, isProFeature, modeOf, OPTION_FEATURE_MAP }),
-    [isPaid, featureModes, requireFeature, isProFeature, modeOf]
+    () => ({ isPaid, isMax, featureModes, requireFeature, isProFeature, isMaxFeature, modeOf, OPTION_FEATURE_MAP }),
+    [isPaid, isMax, featureModes, requireFeature, isProFeature, isMaxFeature, modeOf]
   )
 
   return (
     <FeatureAccessContext.Provider value={value}>
       {children}
       <Dialog open={premiumOpen} onClose={() => setPremiumOpen(false)} maxWidth='xs' fullWidth>
-        <DialogTitle>Pro feature</DialogTitle>
+        <DialogTitle>{dialogTitle}</DialogTitle>
         <DialogContent>
           <Typography variant='body2'>{premiumMessage}</Typography>
         </DialogContent>
@@ -113,7 +128,6 @@ export function FlagSwitch({ featureKey, checked, onChange, label }) {
           checked={Boolean(checked)}
           onChange={event => {
             const next = event.target.checked
-
             if (next && !requireFeature(featureKey)) return
             onChange(next)
           }}
@@ -129,11 +143,13 @@ export function FlagSwitch({ featureKey, checked, onChange, label }) {
 }
 
 export function ProLabel({ featureKey, children }) {
-  const { isProFeature, isPaid } = useFeatureAccess()
-  const showStar = isProFeature(featureKey) && !isPaid
+  const { isProFeature, isMaxFeature, isPaid, isMax } = useFeatureAccess()
+  const showPro = isProFeature(featureKey) && !isPaid
+  const showMax = isMaxFeature(featureKey) && !isMax
   return (
     <span className='inline-flex items-center gap-1'>
-      {showStar ? <span title='Pro'>⭐</span> : null}
+      {showMax ? <span title='Max'>◆</span> : null}
+      {showPro ? <span title='Pro'>⭐</span> : null}
       {children}
     </span>
   )

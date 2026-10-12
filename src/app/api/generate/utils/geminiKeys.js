@@ -17,29 +17,71 @@ export function listGeminiApiKeys({ paid = false } = {}) {
 
 function statusFor(error) {
   const status = Number(error?.status || error?.statusCode || error?.response?.status)
-  if (status) return String(status)
-  return serializeError(error).match(/(?:HTTP\s*)?(401|403|429|503)\b/i)?.[1] || 'error'
+  if (status) return status
+  const match = serializeError(error).match(/(?:HTTP\s*)?(401|403|429|500|503)\b/i)
+  return match ? Number(match[1]) : null
 }
 
-export function withGeminiKey(fn, { paid = false } = {}) {
+function classifyGeminiError(error) {
+  const status = statusFor(error)
+  const message = serializeError(error)
+  const lower = message.toLowerCase()
+
+  if (status === 429 || /rate.?limit|quota|resource.?exhausted|too many requests/i.test(lower)) {
+    return { kind: 'rate_limit', status: status || 429, message }
+  }
+  if (status === 401 || status === 403 || /api key|invalid|permission|unauthorized|forbidden/i.test(lower)) {
+    return { kind: 'auth', status: status || 403, message }
+  }
+  if (status === 503 || /unavailable|overloaded|high demand|try again later/i.test(lower)) {
+    return { kind: 'unavailable', status: status || 503, message }
+  }
+  if (/timeout|abort|network|fetch failed|econnreset|enotfound/i.test(lower)) {
+    return { kind: 'network', status: status || 0, message }
+  }
+  return { kind: 'other', status: status || 0, message }
+}
+
+export function withGeminiKey(fn, { paid = false, model } = {}) {
   const keys = listGeminiApiKeys({ paid })
   if (!keys.length) throw new Error(paid ? 'Gemini API key is not configured for paid models.' : 'Gemini API key is not configured.')
 
-  return rotateGeminiKeys(keys, fn, paid)
+  return rotateGeminiKeys(keys, fn, paid, model)
 }
 
-async function rotateGeminiKeys(keys, fn, paid) {
+async function rotateGeminiKeys(keys, fn, paid, model) {
   let lastError
-  console.info(`[gemini] pool=${keys.length} tier=${paid ? 'paid' : 'free'}`)
+  const failures = []
+  console.info(`[gemini] pool=${keys.length} tier=${paid ? 'paid' : 'free'} model=${model || 'unknown'}`)
+
   for (let index = 0; index < keys.length; index++) {
     try {
-      return await fn(keys[index], { index, total: keys.length })
+      const result = await fn(keys[index], { index, total: keys.length })
+      if (failures.length) {
+        console.info(
+          `[gemini] recovered on key ${index + 1}/${keys.length} after ${failures.length} failure(s): ${failures
+            .map(item => `${item.index}:${item.kind}`)
+            .join(', ')}`
+        )
+      }
+      return result
     } catch (error) {
       lastError = error
-      console.warn(`[gemini] key ${index + 1}/${keys.length} failed (${statusFor(error)})`)
+      const info = classifyGeminiError(error)
+      failures.push({ index: index + 1, ...info })
+      const snippet = String(info.message || '').replace(/\s+/g, ' ').slice(0, 180)
+      console.warn(
+        `[gemini] key ${index + 1}/${keys.length} failed kind=${info.kind} status=${info.status || 'n/a'} tier=${paid ? 'paid' : 'free'} msg="${snippet}"`
+      )
     }
   }
-  throw new Error(serializeError(lastError))
+
+  const summary = failures.map(item => `#${item.index}:${item.kind}${item.status ? `(${item.status})` : ''}`).join(' | ')
+  console.error(`[gemini] all ${keys.length} ${paid ? 'paid' : 'free'} keys exhausted: ${summary}`)
+  const wrapped = new Error(serializeError(lastError))
+  wrapped.code = failures.every(item => item.kind === 'rate_limit') ? 'GEMINI_RATE_LIMIT' : 'GEMINI_POOL_EXHAUSTED'
+  wrapped.failures = failures
+  throw wrapped
 }
 
 export async function geminiGenerateContent({ model, body, timeoutMs = 90000, paid } = {}) {
@@ -63,5 +105,5 @@ export async function geminiGenerateContent({ model, body, timeoutMs = 90000, pa
       throw error
     }
     return data
-  }, { paid: usePaid })
+  }, { paid: usePaid, model })
 }

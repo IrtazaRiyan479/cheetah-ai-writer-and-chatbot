@@ -17,6 +17,7 @@ import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 
 import { ProLabel, useFeatureAccess } from '../FeatureAccessContext'
+import GatedSelect, { GatedNumber, InternalLinkFields } from '../GatedSelect'
 
 const BlogFields = ({ settings, updateSetting }) => {
   const { requireFeature, modeOf } = useFeatureAccess()
@@ -39,37 +40,12 @@ const BlogFields = ({ settings, updateSetting }) => {
       />
     </Grid>
 <Grid size={{ xs: 12 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Automatic Internal Linking</Typography>
-      <FormControl fullWidth size='small' className='mbe-3'>
-        <Select
-          multiple
-          value={Array.isArray(settings.internalLinking) ? settings.internalLinking : []}
-          onChange={(e) => updateSetting('internalLinking', typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
-          input={<OutlinedInput size='small' />}
-          renderValue={(selected) => (
-            <div className='flex flex-wrap gap-1'>
-              {selected.map((value) => (
-                <Chip key={value} label={value} size="small" className='h-6' />
-              ))}
-            </div>
-          )}
-        >
-          {clientSites.map((site) => (
-            <MenuItem key={site} value={site}>
-              <Checkbox checked={Array.isArray(settings.internalLinking) && settings.internalLinking.indexOf(site) > -1} />
-              <ListItemText primary={site} />
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Custom URLs (Comma Separated)</Typography>
-      <TextField
-        fullWidth
-        size='small'
-        placeholder='https://site1.com, https://site2.com'
-        value={settings.customInternalLink || ''}
-        onChange={(e) => updateSetting('customInternalLink', e.target.value)}
+      <InternalLinkFields
+        sites={settings.internalLinking}
+        custom={settings.customInternalLink}
+        onSites={value => updateSetting('internalLinking', value)}
+        onCustom={value => updateSetting('customInternalLink', value)}
+        siteOptions={clientSites}
       />
     </Grid>
 
@@ -77,18 +53,12 @@ const BlogFields = ({ settings, updateSetting }) => {
     <Grid size={{ xs: 12 }}><Divider className='my-2' /></Grid>
 
     <Grid size={{ xs: 12, sm: 6 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>SEO Optimization</Typography>
-
-      <FormControl fullWidth size='small' className={settings.seoOptimization === 'manual' ? 'mbe-3' : ''}>
-        <Select
-          value={settings.seoOptimization}
-          onChange={(e) => updateSetting('seoOptimization', e.target.value)}
-        >
-          <MenuItem value='default'>Default</MenuItem>
-          <MenuItem value='manual'>Manual</MenuItem>
-          <MenuItem value='ai'>AI-Powered</MenuItem>
-        </Select>
-      </FormControl>
+      <GatedSelect
+        menuKey='menu-seo-optimization'
+        value={settings.seoOptimization}
+        onChange={value => updateSetting('seoOptimization', value)}
+        className={settings.seoOptimization === 'manual' ? 'mbe-3' : ''}
+      />
 
       {/* Conditionally render manual keyword input */}
       {settings.seoOptimization === 'manual' && (
@@ -102,20 +72,12 @@ const BlogFields = ({ settings, updateSetting }) => {
       )}
     </Grid>
    <Grid size={{ xs: 12, sm: settings.aiImagesAndVideos === 'auto' ? 4 : 6 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Royalty Free Images & YouTube Videos</Typography>
-      <FormControl fullWidth size='small' className={settings.aiImagesAndVideos.startsWith('upload') ? 'mbe-3' : ''}>
-        <Select
-          value={settings.aiImagesAndVideos}
-          onChange={(e) => updateSetting('aiImagesAndVideos', e.target.value)}
-        >
-          <MenuItem value='none'>None</MenuItem>
-          <MenuItem value='auto'>Royalty Free Images & Videos</MenuItem>
-          <MenuItem disabled>──────────</MenuItem>
-          <MenuItem value='upload-images'>Upload Custom Images</MenuItem>
-          {/* <MenuItem value='upload-videos'>Upload Custom Videos</MenuItem>
-          <MenuItem value='upload-both'>Upload Both Images & Videos</MenuItem> */}
-        </Select>
-      </FormControl>
+      <GatedSelect
+        menuKey='menu-royalty-media'
+        value={settings.aiImagesAndVideos}
+        onChange={value => updateSetting('aiImagesAndVideos', value)}
+        className={settings.aiImagesAndVideos.startsWith('upload') ? 'mbe-3' : ''}
+      />
     </Grid>
 
     {settings.aiImagesAndVideos === 'auto' && (
@@ -157,18 +119,12 @@ const BlogFields = ({ settings, updateSetting }) => {
       </Grid>
     )}
    <Grid size={{ xs: 12, sm: settings.aiImagesAndVideos === 'auto' ? 4 : 6 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Article Length</Typography>
-      <FormControl fullWidth size='small' className={settings.articleLength === 'custom' ? 'mbe-3' : ''}>
-        <Select value={settings.articleLength} onChange={(e) => updateSetting('articleLength', e.target.value)}>
-          <MenuItem value='default'>Default</MenuItem>
-          <MenuItem value='custom'>Custom Number of Sections</MenuItem>
-          <MenuItem value='shorter'>Shorter (2-3 Sections)</MenuItem>
-          <MenuItem value='short'>Short (3-5 Sections)</MenuItem>
-          <MenuItem value='medium'>Medium (5-7 Sections)</MenuItem>
-          <MenuItem value='long'>Long Form (7-10 Sections)</MenuItem>
-          <MenuItem value='longer'>Longer (10-12 Sections)</MenuItem>
-        </Select>
-      </FormControl>
+      <GatedSelect
+        menuKey='menu-article-length'
+        value={settings.articleLength}
+        onChange={value => updateSetting('articleLength', value)}
+        className={settings.articleLength === 'custom' ? 'mbe-3' : ''}
+      />
 
       {/* Conditionally render custom section count input */}
        {settings.articleLength === 'custom' && (
@@ -195,19 +151,12 @@ const BlogFields = ({ settings, updateSetting }) => {
       )}
     </Grid>
    <Grid size={{ xs: 12, sm: 6 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Tone of Voice</Typography>
-      <FormControl fullWidth size='small' className={settings.toneOfVoice === 'custom' ? 'mbe-3' : ''}>
-        <Select value={settings.toneOfVoice} onChange={(e) => updateSetting('toneOfVoice', e.target.value)}>
-          <MenuItem value='seo'>SEO Optimized (Confident, Knowledgeable, Neutral, and Clear)</MenuItem>
-          <MenuItem value='excited'>Excited</MenuItem>
-          <MenuItem value='professional'>Professional</MenuItem>
-          <MenuItem value='friendly'>Friendly</MenuItem>
-          <MenuItem value='formal'>Formal</MenuItem>
-          <MenuItem value='casual'>Casual</MenuItem>
-          <MenuItem value='humorous'>Humorous</MenuItem>
-          <MenuItem value='custom'>Custom</MenuItem>
-        </Select>
-      </FormControl>
+      <GatedSelect
+        menuKey='menu-tone'
+        value={settings.toneOfVoice}
+        onChange={value => updateSetting('toneOfVoice', value)}
+        className={settings.toneOfVoice === 'custom' ? 'mbe-3' : ''}
+      />
 
       {/* Conditionally render custom tone input */}
       {settings.toneOfVoice === 'custom' && (
@@ -253,19 +202,11 @@ const BlogFields = ({ settings, updateSetting }) => {
     </Grid>
 
    <Grid size={{ xs: 12, sm: 6 }}>
-      <Typography variant='subtitle2' className='font-medium mbe-1'>Point of View</Typography>
-      <FormControl fullWidth size='small'>
-        <Select
-          value={settings.pointOfView}
-          onChange={(e) => updateSetting('pointOfView', e.target.value)}
-        >
-          <MenuItem value='first'>First Person (I, me, my)</MenuItem>
-          {/* --- ADD THIS NEW OPTION --- */}
-          <MenuItem value='first-plural'>First Person Plural (We, us, our)</MenuItem>
-          <MenuItem value='second'>Second Person (You, your)</MenuItem>
-          <MenuItem value='third'>Third Person (he, she, it, they)</MenuItem>
-        </Select>
-      </FormControl>
+      <GatedSelect
+        menuKey='menu-point-of-view'
+        value={settings.pointOfView}
+        onChange={value => updateSetting('pointOfView', value)}
+      />
     </Grid>
 
     {/* Toggles Section - Note that Switches use 'checked' instead of 'value' */}

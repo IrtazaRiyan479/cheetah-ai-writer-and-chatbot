@@ -36,7 +36,8 @@ export async function withProviderKey(keys, fn, label = 'provider') {
       return result
     } catch (error) {
       lastError = error
-      console.warn(`[${label}] key ${index + 1}/${ordered.length} failed (${failureCode(error)})`)
+      const snippet = serializeError(error).replace(/\s+/g, ' ').slice(0, 180)
+      console.warn(`[${label}] key ${index + 1}/${ordered.length} failed status=${failureCode(error)} msg="${snippet}"`)
     }
   }
 
