@@ -1279,6 +1279,33 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
           const prep = await prepRes.json()
 
+          if (
+            !prepRes.ok &&
+            (prepRes.status === 402 ||
+              ['WORD_LIMIT', 'PAID_KEYS_FAILED', 'PRO_REQUIRED', 'FEATURE_OFF'].includes(prep?.code))
+          ) {
+            const message =
+              prep?.code === 'PAID_KEYS_FAILED'
+                ? 'Low credits. Generation stopped.'
+                : serializeError(prep?.error || prep) ||
+                  'Free word limit reached. Generation stopped so it does not keep retrying. Upgrade to Pro to continue this article.'
+            const safe = String(message)
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+            editor
+              .chain()
+              .focus('end')
+              .insertContent(
+                `<p class="word-limit-notice" data-word-limit="1" style="background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px;line-height:1.5;">${safe}</p>`
+              )
+              .run()
+            setIsGenerating(false)
+            setWaitBanner('')
+            editor.setEditable(true)
+            return
+          }
+
           if (prep?.success) shared = prep.shared
           console.info(`[writer] prepare ms=${Date.now() - prepStarted}`)
         } catch (error) {
@@ -1287,6 +1314,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       }
 
       const CONCURRENCY = settings.type === 'product-comparison' ? 1 : 3
+      let haltNotice = false
 
       const tryFlush = () => {
         while (nextInsertIdx < groupedSections.length && resultsBuffer[nextInsertIdx] !== null) {
@@ -1297,17 +1325,40 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           removeWaitInEditor(editor, i)
 
           if (error) {
-            if (error.name === 'AbortError') {
+            if (error.noRetry) {
+              if (!haltNotice) {
+                haltNotice = true
+                const message =
+                  error.code === 'PAID_KEYS_FAILED'
+                    ? 'Low credits. Generation stopped.'
+                    : error.code === 'PRO_REQUIRED'
+                      ? (error.message || 'This feature requires a Pro plan.')
+                      : 'Free word limit reached. Generation stopped so it does not keep retrying. Upgrade to Pro to continue this article.'
+                const safe = String(message)
+                  .replace(/&/g, '&amp;')
+                  .replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;')
+                editor
+                  .chain()
+                  .focus('end')
+                  .insertContent(
+                    `<p class="word-limit-notice" data-word-limit="1" style="background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px;line-height:1.5;">${safe}</p>`
+                  )
+                  .run()
+              }
+            } else if (haltNotice || error.silentHalt) {
+              // skip leftover placeholders after a hard stop
+            } else if (error.name === 'AbortError') {
               editor.chain().focus('end').insertContent('<p><em>Generation stopped.</em></p>').run()
               nextInsertIdx = groupedSections.length
               break
+            } else {
+              editor
+                .chain()
+                .focus('end')
+                .insertContent(failedSectionHtml(i, group.h2?.text, { showHeading: i !== 0 }))
+                .run()
             }
-
-            editor
-              .chain()
-              .focus('end')
-              .insertContent(failedSectionHtml(i, group.h2?.text, { showHeading: i !== 0 }))
-              .run()
           } else if (data?.skipped) {
             editor
               .chain()
@@ -1373,8 +1424,18 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
             if (data?.skipped) return data
             if (res.ok) return data
 
+            const code = data?.code || (res.status === 402 ? 'WORD_LIMIT' : '')
+            const stopCodes = new Set(['WORD_LIMIT', 'PRO_REQUIRED', 'PAID_KEYS_FAILED', 'FEATURE_OFF'])
+            if (stopCodes.has(code) || res.status === 402) {
+              const err = new Error(serializeError(data?.error || data) || 'Stopped')
+              err.code = code || 'WORD_LIMIT'
+              err.noRetry = true
+              throw err
+            }
+
             lastErr = new Error(serializeError(data?.error || data) || `HTTP ${res.status}`)
           } catch (e) {
+            if (e?.noRetry) throw e
             if (e?.name === 'AbortError' && options.signal?.aborted) throw e
             lastErr = e?.name === 'AbortError' ? new Error('Section timed out after 90s') : e
           }
@@ -1464,8 +1525,23 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
             resultsBuffer[i] = { i, group, data, error: null }
           } catch (error) {
-            if (isCancelled) return
-            resultsBuffer[i] = { i, group, data: null, error }
+            if (isCancelled && !error?.noRetry) {
+              resultsBuffer[i] = {
+                i,
+                group,
+                data: null,
+                error: Object.assign(error?.name === 'AbortError' ? error : new Error('stopped'), {
+                  silentHalt: true,
+                  name: 'AbortError'
+                })
+              }
+            } else {
+              if (error?.noRetry) {
+                isCancelled = true
+                abortControllerRef.current?.abort()
+              }
+              resultsBuffer[i] = { i, group, data: null, error }
+            }
           }
 
           tryFlush()

@@ -73,8 +73,8 @@ const Login = ({ mode }) => {
       setError('Enter a valid email address (example: name@company.com).')
       return
     }
-    if (!password || password.length < 8) {
-      setError('Password must be at least 8 characters.')
+    if (!password) {
+      setError('Enter your password.')
       return
     }
     setIsLoading(true)

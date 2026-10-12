@@ -352,7 +352,7 @@ export async function generateStandardBlogSection(body, genAI) {
         input: `${baseSystemInstruction}\n\nYou are an expert researcher. Conduct a deep web search based on the following instructions. \n\nCRITICAL RULE: DO NOT output your research notes, search queries, or internal reasoning. Your FINAL output MUST strictly be the final, ready-to-publish Markdown text adhering exactly to the layout requirements provided below.\n\n---\n\n${sectionPrompt}`,
         background: true
       })
-    })
+    }, { paid: Boolean(genAI?.paid) })
 
     return {
       success: true,

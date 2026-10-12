@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs'
 import { authOptions } from '@/libs/auth'
 import { getDbUser } from '@/libs/entitlement'
 import { serializeError } from '@/utils/serializeError'
+import { passwordIssue } from '@/utils/credentials'
 
 export async function POST(request) {
   try {
@@ -15,8 +16,9 @@ export async function POST(request) {
 
     const { currentPassword, newPassword } = await request.json()
 
-    if (!currentPassword || !newPassword || String(newPassword).length < 8) {
-      return NextResponse.json({ success: false, error: 'Current password and a new password of at least 8 characters are required.' }, { status: 400 })
+    const issue = passwordIssue(newPassword)
+    if (!currentPassword || issue) {
+      return NextResponse.json({ success: false, error: issue || 'Current password is required.' }, { status: 400 })
     }
 
     if (!user.password || !(await bcrypt.compare(currentPassword, user.password))) {

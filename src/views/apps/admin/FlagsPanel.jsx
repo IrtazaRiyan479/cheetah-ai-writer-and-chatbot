@@ -5,21 +5,20 @@ import { useEffect, useMemo, useState } from 'react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
-import FormControl from '@mui/material/FormControl'
-import InputLabel from '@mui/material/InputLabel'
-import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
-import Select from '@mui/material/Select'
 import Skeleton from '@mui/material/Skeleton'
-import Table from '@mui/material/Table'
-import TableBody from '@mui/material/TableBody'
-import TableCell from '@mui/material/TableCell'
-import TableHead from '@mui/material/TableHead'
-import TableRow from '@mui/material/TableRow'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
 import { toast } from 'react-toastify'
 
 import { FEATURE_META } from '@/libs/entitlement'
+
+const modeColor = {
+  free: 'success',
+  pro: 'warning',
+  off: 'error'
+}
 
 export default function FlagsPanel() {
   const [flags, setFlags] = useState(null)
@@ -37,7 +36,9 @@ export default function FlagsPanel() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+  }, [])
 
   const update = async (key, mode) => {
     setBusy(key)
@@ -70,59 +71,98 @@ export default function FlagsPanel() {
     return Array.from(map.entries())
   }, [flags])
 
-  if (!flags && !error) return <Skeleton variant='rounded' height={320} />
+  if (!flags && !error) return <Skeleton variant='rounded' height={320} sx={{ borderRadius: 4 }} />
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <Box>
-        <Typography variant='h6' sx={{ fontWeight: 700 }}>Feature access</Typography>
-        <Typography variant='body2' color='text.secondary' sx={{ mt: 0.5 }}>
-          Free = everyone. Pro = paid users only (paid API keys when that feature is active). Off = disabled.
+        <Typography variant='h6' sx={{ fontWeight: 800 }}>
+          Feature access
+        </Typography>
+        <Typography variant='body2' color='text.secondary' sx={{ mt: 0.5, maxWidth: 720 }}>
+          Free = everyone. Pro = paid users only (paid API keys when that feature is active). Off = disabled for all.
+          Pro items show a golden star in the writer.
         </Typography>
       </Box>
-      {error ? <Typography color='error' sx={{ p: 1 }}>{error}</Typography> : null}
+      {error ? (
+        <Typography color='error' sx={{ p: 1 }}>
+          {error}
+        </Typography>
+      ) : null}
       {groups.map(([group, items]) => (
-        <Paper key={group} variant='outlined' sx={{ borderRadius: 3, overflow: 'hidden' }}>
-          <Box sx={{ px: 2.5, py: 1.5, borderBottom: 1, borderColor: 'divider', bgcolor: 'action.hover' }}>
-            <Typography variant='subtitle2' sx={{ fontWeight: 700 }}>{group}</Typography>
+        <Paper
+          key={group}
+          elevation={0}
+          sx={{
+            borderRadius: 4,
+            overflow: 'hidden',
+            border: '1px solid',
+            borderColor: 'divider'
+          }}
+        >
+          <Box
+            sx={{
+              px: 2.5,
+              py: 1.75,
+              borderBottom: 1,
+              borderColor: 'divider',
+              background: theme =>
+                theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(255,193,7,0.08)'
+            }}
+          >
+            <Typography variant='subtitle1' sx={{ fontWeight: 800 }}>
+              {group}
+            </Typography>
           </Box>
-          <Table size='small'>
-            <TableHead>
-              <TableRow>
-                <TableCell>Feature</TableCell>
-                <TableCell sx={{ width: 180 }}>Access</TableCell>
-                <TableCell sx={{ width: 120 }}>Status</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {items.map(flag => (
-                <TableRow key={flag.key} hover>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      {flag.mode === 'pro' ? <span title='Pro'>⭐</span> : null}
-                      <Box>
-                        <Typography variant='body2' sx={{ fontWeight: 600 }}>{flag.label}</Typography>
-                        <Typography variant='caption' color='text.secondary'>{flag.key}</Typography>
-                      </Box>
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <FormControl size='small' fullWidth>
-                      <InputLabel>Mode</InputLabel>
-                      <Select label='Mode' value={flag.mode} disabled={busy === flag.key} onChange={event => update(flag.key, event.target.value)}>
-                        {['free', 'pro', 'off'].map(mode => (
-                          <MenuItem key={mode} value={mode}>{mode}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </TableCell>
-                  <TableCell>
-                    <Chip size='small' color={flag.mode === 'off' ? 'error' : flag.mode === 'free' ? 'success' : 'warning'} label={busy === flag.key ? 'Saving…' : flag.mode} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+            {items.map((flag, index) => (
+              <Box
+                key={flag.key}
+                sx={{
+                  display: 'flex',
+                  alignItems: { xs: 'flex-start', md: 'center' },
+                  justifyContent: 'space-between',
+                  gap: 2,
+                  px: 2.5,
+                  py: 2,
+                  borderTop: index ? 1 : 0,
+                  borderColor: 'divider',
+                  flexWrap: 'wrap'
+                }}
+              >
+                <Box sx={{ minWidth: 220 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {flag.mode === 'pro' ? <span title='Pro'>⭐</span> : null}
+                    <Typography variant='body1' sx={{ fontWeight: 700 }}>
+                      {flag.label}
+                    </Typography>
+                    <Chip size='small' color={modeColor[flag.mode] || 'default'} label={flag.mode} sx={{ fontWeight: 700 }} />
+                  </Box>
+                  <Typography variant='caption' color='text.secondary'>
+                    {flag.key}
+                  </Typography>
+                </Box>
+                <ToggleButtonGroup
+                  exclusive
+                  size='small'
+                  value={flag.mode}
+                  disabled={busy === flag.key}
+                  onChange={(_, value) => value && update(flag.key, value)}
+                  sx={{
+                    '& .MuiToggleButton-root': {
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      px: 1.75
+                    }
+                  }}
+                >
+                  <ToggleButton value='free'>Free</ToggleButton>
+                  <ToggleButton value='pro'>Pro</ToggleButton>
+                  <ToggleButton value='off'>Off</ToggleButton>
+                </ToggleButtonGroup>
+              </Box>
+            ))}
+          </Box>
         </Paper>
       ))}
       {!flags ? <Button onClick={load}>Retry</Button> : null}

@@ -19,35 +19,40 @@ import DialogActions from '@mui/material/DialogActions'
 import DialogContentText from '@mui/material/DialogContentText'
 import TextField from '@mui/material/TextField'
 
+import { featureKeyForModel } from '@/libs/entitlement'
+
+import { ProLabel, useFeatureAccess } from './FeatureAccessContext'
+
 const availableModels = [
-  { label: 'Gemini 3.5 Flash', value: 'gemini-3.5-flash', isPaid: false },
-  { label: 'Gemini 3.1 Flash-Lite', value: 'gemini-3.1-flash-lite', isPaid: false },
-  { label: 'Gemini 3.1 Pro ⭐', value: 'gemini-3.1-pro-preview-customtools', isPaid: false },
-  { label: 'GPT-5.2 ⭐', value: 'gpt-5.2', isPaid: false },
-  { label: 'GPT-5 Mini', value: 'gpt-5-mini', isPaid: false },
-  { label: 'Claude 4.5 Sonnet ⭐', value: 'claude-4.5-sonnet', isPaid: false }
+  { label: 'Gemini 3.5 Flash', value: 'gemini-3.5-flash' },
+  { label: 'Gemini 3.1 Flash-Lite', value: 'gemini-3.1-flash-lite' },
+  { label: 'Gemini 3.1 Pro', value: 'gemini-3.1-pro-preview-customtools' },
+  { label: 'GPT-5.2', value: 'gpt-5.2' },
+  { label: 'GPT-5 Mini', value: 'gpt-5-mini' },
+  { label: 'Claude 4.5 Sonnet', value: 'claude-4.5-sonnet' },
+  { label: 'Grok 4.7', value: 'grok-4.7' }
 ]
 
 const WriterHeader = ({
-  settings, updateSetting, presets, selectedPresetId,
-  onLoadPreset, onCreatePreset, onUpdatePreset, onDeletePreset
+  settings,
+  updateSetting,
+  presets,
+  selectedPresetId,
+  onLoadPreset,
+  onCreatePreset,
+  onUpdatePreset,
+  onDeletePreset
 }) => {
-
-
-
-
+  const { requireFeature } = useFeatureAccess()
   const [openCreate, setOpenCreate] = useState(false)
   const [openDelete, setOpenDelete] = useState(false)
   const [newPresetName, setNewPresetName] = useState('')
 
-  const handleModelChange = (e) => {
+  const handleModelChange = e => {
     const val = e.target.value
-    const targetModel = availableModels.find(m => m.value === val)
-    if (targetModel?.isPaid) {
-            updateSetting('model', val)
-    } else {
-      updateSetting('model', val)
-    }
+
+    if (!requireFeature(featureKeyForModel(val))) return
+    updateSetting('model', val)
   }
 
   const submitCreate = () => {
@@ -68,17 +73,18 @@ const WriterHeader = ({
       <Card className='shadow-sm'>
         <CardContent className='p-4 sm:p-6'>
           <Grid container spacing={5} alignItems='flex-end'>
-
             <Grid size={{ xs: 12, sm: 6 }}>
-              <Typography variant='subtitle2' className='mbe-2 font-medium'>AI Model <Tooltip title='Uses the selected provider. Keys rotate on quota.'><i className='ri-information-line' /></Tooltip></Typography>
+              <Typography variant='subtitle2' className='mbe-2 font-medium'>
+                AI Model{' '}
+                <Tooltip title='Uses the selected provider. Keys rotate on quota.'>
+                  <i className='ri-information-line' />
+                </Tooltip>
+              </Typography>
               <FormControl fullWidth size='small'>
                 <Select value={settings.model} onChange={handleModelChange}>
-                  {availableModels.map((model) => (
-                    <MenuItem key={model.value} value={model.value} className={model.isPaid ? 'bg-amber-50/30' : ''}>
-                      <div className="flex justify-between items-center w-full">
-                        <span>{model.label}</span>
-                        {model.isPaid && <Typography variant="caption" color="warning" className="ml-2 border border-warning rounded px-1.5 py-0.5 bg-warning/10 font-bold">Upgrade</Typography>}
-                      </div>
+                  {availableModels.map(model => (
+                    <MenuItem key={model.value} value={model.value}>
+                      <ProLabel featureKey={featureKeyForModel(model.value)}>{model.label}</ProLabel>
                     </MenuItem>
                   ))}
                 </Select>
@@ -86,13 +92,17 @@ const WriterHeader = ({
             </Grid>
 
             <Grid size={{ xs: 12, sm: 6 }}>
-              <Typography variant='subtitle2' className='mbe-2 font-medium'>Project / Preset</Typography>
+              <Typography variant='subtitle2' className='mbe-2 font-medium'>
+                Project / Preset
+              </Typography>
               <div className='flex items-center gap-2'>
                 <FormControl fullWidth size='small'>
-                  <Select value={selectedPresetId} onChange={(e) => onLoadPreset(e.target.value)}>
+                  <Select value={selectedPresetId} onChange={e => onLoadPreset(e.target.value)}>
                     <MenuItem value='default'>Default Settings</MenuItem>
                     {presets.map(p => (
-                      <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                      <MenuItem key={p.id} value={p.id}>
+                        {p.name}
+                      </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -104,12 +114,22 @@ const WriterHeader = ({
                   </IconButton>
                 </Tooltip>
                 <Tooltip title='Save Current State'>
-                  <IconButton onClick={onUpdatePreset} disabled={selectedPresetId === 'default'} color='success' className='bg-success/10 rounded disabled:opacity-50'>
+                  <IconButton
+                    onClick={onUpdatePreset}
+                    disabled={selectedPresetId === 'default'}
+                    color='success'
+                    className='bg-success/10 rounded disabled:opacity-50'
+                  >
                     <i className='ri-save-line' />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title='Delete Preset'>
-                  <IconButton onClick={() => setOpenDelete(true)} disabled={selectedPresetId === 'default'} color='error' className='bg-error/10 rounded disabled:opacity-50'>
+                  <IconButton
+                    onClick={() => setOpenDelete(true)}
+                    disabled={selectedPresetId === 'default'}
+                    color='error'
+                    className='bg-error/10 rounded disabled:opacity-50'
+                  >
                     <i className='ri-delete-bin-7-line' />
                   </IconButton>
                 </Tooltip>
@@ -120,20 +140,28 @@ const WriterHeader = ({
       </Card>
 
       {/* CREATE PRESET DIALOG */}
-      <Dialog open={openCreate} onClose={() => setOpenCreate(false)} fullWidth maxWidth="xs">
+      <Dialog open={openCreate} onClose={() => setOpenCreate(false)} fullWidth maxWidth='xs'>
         <DialogTitle>Create New Preset</DialogTitle>
         <DialogContent>
           <DialogContentText className='mbe-3'>
             Enter a name for your preset. This will save all your current settings and toggles.
           </DialogContentText>
           <TextField
-            autoFocus fullWidth size="small" label='Preset Name'
-            value={newPresetName} onChange={e => setNewPresetName(e.target.value)}
+            autoFocus
+            fullWidth
+            size='small'
+            label='Preset Name'
+            value={newPresetName}
+            onChange={e => setNewPresetName(e.target.value)}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenCreate(false)} color='secondary'>Cancel</Button>
-          <Button onClick={submitCreate} variant='contained' disabled={!newPresetName.trim()}>Save Preset</Button>
+          <Button onClick={() => setOpenCreate(false)} color='secondary'>
+            Cancel
+          </Button>
+          <Button onClick={submitCreate} variant='contained' disabled={!newPresetName.trim()}>
+            Save Preset
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -146,8 +174,12 @@ const WriterHeader = ({
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDelete(false)} color='secondary'>Cancel</Button>
-          <Button onClick={submitDelete} variant='contained' color='error'>Delete</Button>
+          <Button onClick={() => setOpenDelete(false)} color='secondary'>
+            Cancel
+          </Button>
+          <Button onClick={submitDelete} variant='contained' color='error'>
+            Delete
+          </Button>
         </DialogActions>
       </Dialog>
     </>

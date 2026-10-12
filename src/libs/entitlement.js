@@ -29,9 +29,20 @@ export const FEATURE_KEYS = [
   'include-key-takeaways',
   'automatic-external-links',
   'improve-readability',
+  'enable-auto-length',
+  'enable-supplemental-information',
+  'use-descending-order',
+  'enable-first-hand-experience',
+  'enable-condensed-mode',
+  'generate-unique-map-images',
+  'enable-caption-rewriting',
   'model-gemini-flash-lite',
   'model-gemini-flash',
-  'model-gemini-pro'
+  'model-gemini-pro',
+  'model-gpt',
+  'model-gpt-mini',
+  'model-claude',
+  'model-grok'
 ]
 
 export const FEATURE_META = {
@@ -55,9 +66,20 @@ export const FEATURE_META = {
   'include-key-takeaways': { label: 'Key takeaways', group: 'Writer options' },
   'automatic-external-links': { label: 'Automatic external links', group: 'Writer options' },
   'improve-readability': { label: 'Improve readability', group: 'Writer options' },
+  'enable-auto-length': { label: 'Auto length', group: 'Writer options' },
+  'enable-supplemental-information': { label: 'Supplemental information', group: 'Writer options' },
+  'use-descending-order': { label: 'Descending order', group: 'Writer options' },
+  'enable-first-hand-experience': { label: 'First-hand experience', group: 'Writer options' },
+  'enable-condensed-mode': { label: 'Condensed mode', group: 'Writer options' },
+  'generate-unique-map-images': { label: 'Unique map images', group: 'Writer options' },
+  'enable-caption-rewriting': { label: 'Rewrite captions', group: 'Writer options' },
   'model-gemini-flash-lite': { label: 'Gemini Flash Lite', group: 'Models' },
   'model-gemini-flash': { label: 'Gemini Flash', group: 'Models' },
-  'model-gemini-pro': { label: 'Gemini Pro', group: 'Models' }
+  'model-gemini-pro': { label: 'Gemini Pro', group: 'Models' },
+  'model-gpt': { label: 'GPT-5.2', group: 'Models' },
+  'model-gpt-mini': { label: 'GPT-5 Mini', group: 'Models' },
+  'model-claude': { label: 'Claude Sonnet', group: 'Models' },
+  'model-grok': { label: 'Grok', group: 'Models' }
 }
 
 export const OPTION_FEATURE_MAP = {
@@ -67,13 +89,21 @@ export const OPTION_FEATURE_MAP = {
   includeFaq: 'include-faq',
   includeKeyTakeaways: 'include-key-takeaways',
   automaticExternalLinks: 'automatic-external-links',
-  improveReadability: 'improve-readability'
+  improveReadability: 'improve-readability',
+  enableAutoLength: 'enable-auto-length',
+  enableSupplementalInformation: 'enable-supplemental-information',
+  useDescendingOrder: 'use-descending-order',
+  enableFirstHandExperience: 'enable-first-hand-experience',
+  enableCondensedMode: 'enable-condensed-mode',
+  generateUniqueMapImages: 'generate-unique-map-images',
+  enableCaptionRewriting: 'enable-caption-rewriting'
 }
 
 export const FREE_FEATURES = new Set([
   'standard',
   'rewrite',
   'model-gemini-flash-lite',
+  'model-gpt-mini',
   'outline-editor',
   'include-faq',
   'include-key-takeaways',
@@ -97,10 +127,28 @@ export function featureKeyForType(type) {
   return map[type] || 'standard'
 }
 
+const MODEL_FEATURE = {
+  'gemini-3.5-flash': 'model-gemini-flash',
+  'gemini-2.5-flash': 'model-gemini-flash',
+  'gemini-3.1-flash-lite': 'model-gemini-flash-lite',
+  'gemini-3.1-pro-preview-customtools': 'model-gemini-pro',
+  'gemini-3.1-pro-preview': 'model-gemini-pro',
+  'gemini-2.5-pro': 'model-gemini-pro',
+  'gpt-5.2': 'model-gpt',
+  'gpt-5-mini': 'model-gpt-mini',
+  'claude-4.5-sonnet': 'model-claude',
+  'grok-4.7': 'model-grok'
+}
+
 export function featureKeyForModel(model) {
-  const value = String(model || '').toLowerCase()
-  if (value.includes('pro')) return 'model-gemini-pro'
-  if (value.includes('flash') && !value.includes('lite')) return 'model-gemini-flash'
+  const value = String(model || '')
+  if (MODEL_FEATURE[value]) return MODEL_FEATURE[value]
+  const lower = value.toLowerCase()
+  if (lower.startsWith('gpt-')) return lower.includes('mini') ? 'model-gpt-mini' : 'model-gpt'
+  if (lower.startsWith('claude')) return 'model-claude'
+  if (lower.startsWith('grok')) return 'model-grok'
+  if (lower.includes('pro')) return 'model-gemini-pro'
+  if (lower.includes('flash') && !lower.includes('lite')) return 'model-gemini-flash'
   return 'model-gemini-flash-lite'
 }
 
@@ -148,13 +196,15 @@ export function activeFeatureKeysFromSettings(settings = {}, type, model) {
   return [...new Set(keys)]
 }
 
-export async function resolveGenerationAccess({ userId, email, settings = {}, type, model, estimatedWords = 0 }) {
+export async function resolveGenerationAccess({ userId, email, settings = {}, type, model, estimatedWords = 0, featureKeys } = {}) {
   try {
     const user = await getDbUser({ userId, email })
     if (!user) return { ok: false, status: 401, error: 'Sign in required.' }
 
     const modes = await getFeatureModes()
-    const activeKeys = activeFeatureKeysFromSettings(settings, type, model)
+    const activeKeys = featureKeys?.length
+      ? [...new Set(featureKeys)]
+      : activeFeatureKeysFromSettings(settings, type, model)
     let usePaidKeys = false
     const blocked = []
 
@@ -225,9 +275,53 @@ export async function assertCanGenerate({ userId, email, featureKey, estimatedWo
     userId,
     email,
     settings: {},
-    type: featureKey === 'standard' ? 'blog' : featureKey,
+    featureKeys: featureKey ? [featureKey] : undefined,
     estimatedWords
   })
+}
+
+const SECTION_WORD_RESERVE = 400
+
+export async function claimFreeWords(userId, requested = SECTION_WORD_RESERVE) {
+  if (!userId) return { claimed: 0, blocked: true }
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user) return { claimed: 0, blocked: true }
+    if (isPaid(user)) return { claimed: 0, blocked: false, paid: true }
+
+    const capSetting = await prisma.appSetting.findUnique({ where: { key: 'globalFreeWordCap' } }).catch(() => null)
+    const globalFreeWordCap = capSetting ? Math.max(0, Number(capSetting.value) || 0) : FREE_WORD_CAP
+    const limit = user.wordsLimitCustomized ? user.wordsLimit : globalFreeWordCap
+    const room = limit - user.wordsUsed
+    if (room <= 0) return { claimed: 0, blocked: true, limit, wordsUsed: user.wordsUsed }
+
+    const amount = Math.max(1, Math.min(requested, room))
+    const updated = await prisma.user.updateMany({
+      where: { id: userId, wordsUsed: user.wordsUsed },
+      data: { wordsUsed: { increment: amount } }
+    })
+    if (updated.count === 1) return { claimed: amount, blocked: false, paid: false, limit }
+  }
+
+  return { claimed: 0, blocked: true }
+}
+
+export async function settleReservedWords(userId, reserved, text) {
+  const actual = countWords(text)
+  const delta = actual - (Number(reserved) || 0)
+  if (!userId || !delta) return actual
+  const user = await prisma.user.findUnique({ where: { id: userId } })
+  if (!user || isPaid(user)) return actual
+  if (delta < 0) {
+    await prisma.user.updateMany({
+      where: { id: userId, wordsUsed: { gte: -delta } },
+      data: { wordsUsed: { increment: delta } }
+    })
+    return actual
+  }
+  await prisma.user.update({ where: { id: userId }, data: { wordsUsed: { increment: delta } } })
+  return actual
 }
 
 export async function recordGeneratedWords(userId, text) {

@@ -28,6 +28,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 
 import { serializeError } from '@/utils/serializeError'
+import { passwordIssue } from '@/utils/credentials'
 
 const AccountSettings = () => {
   const { data: session, update: updateSession } = useSession()
@@ -53,6 +54,7 @@ const AccountSettings = () => {
     subscriptionStatus: 'none',
     wordsUsed: 0,
     wordsLimit: 5000,
+    paid: false,
     hasStripeCustomer: false,
     chatsLimit: '25 / 25 chats'
   })
@@ -75,6 +77,7 @@ const AccountSettings = () => {
               subscriptionStatus: data.user.subscriptionStatus || 'none',
               wordsUsed: data.user.wordsUsed || 0,
               wordsLimit: data.user.wordsLimit || 5000,
+              paid: Boolean(data.user.paid),
               hasStripeCustomer: Boolean(data.user.hasStripeCustomer)
             }))
           }
@@ -407,7 +410,7 @@ const AccountSettings = () => {
           </Paper>
         </Box>
 
-        {/* Usage Section (Unchanged) */}
+        {userData.paid ? null : (
         <Box sx={{ mb: 4 }}>
           <Typography variant='h6' component='h3' sx={{ fontWeight: 600, mb: 2 }}>
             Current Usage
@@ -455,6 +458,7 @@ const AccountSettings = () => {
             </Box>
           </Paper>
         </Box>
+        )}
       </Box>
 
       {/* Change Password Dialog */}
@@ -485,7 +489,7 @@ const AccountSettings = () => {
               label='New password'
               autoComplete='new-password'
               inputProps={{ minLength: 8 }}
-              helperText='Use at least 8 characters.'
+              helperText='At least 8 characters, with uppercase, lowercase, and a number.'
               value={newPassword}
               onChange={event => setNewPassword(event.target.value)}
             />
@@ -498,7 +502,7 @@ const AccountSettings = () => {
           <Button
             onClick={handlePasswordChange}
             variant='contained'
-            disabled={isUpdating || !currentPassword || newPassword.length < 8}
+            disabled={isUpdating || !currentPassword || Boolean(passwordIssue(newPassword))}
           >
             {isUpdating ? <CircularProgress size={24} color='inherit' /> : 'Save Password'}
           </Button>

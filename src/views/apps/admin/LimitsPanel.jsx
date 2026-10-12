@@ -31,8 +31,8 @@ export default function LimitsPanel() {
     } catch (caught) { toast.error(caught.message || 'Could not save global word cap.') } finally { setBusy(false) }
   }
 
-  return <Paper variant='outlined' sx={{ maxWidth: 560, p: 3, borderRadius: 3 }}>
-    <Typography variant='h6' sx={{ mb: 1 }}>Global free word cap</Typography>
+  return <Paper elevation={0} sx={{ maxWidth: 560, p: 3, borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
+    <Typography variant='h6' sx={{ mb: 1, fontWeight: 800 }}>Global free word cap</Typography>
     <Typography color='text.secondary' sx={{ mb: 2 }}>Used as the fallback when a user has no individual limit.</Typography>
     {error ? <Typography color='error' sx={{ mb: 2 }}>{error}</Typography> : null}
     <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}><TextField type='number' label='Words' value={value} onChange={event => setValue(event.target.value)} inputProps={{ min: 0, step: 1 }} /><Button variant='contained' onClick={save} disabled={busy || value === ''}>{busy ? <CircularProgress size={20} color='inherit' /> : 'Save cap'}</Button></Box>

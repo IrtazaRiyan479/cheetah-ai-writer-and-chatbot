@@ -5,8 +5,6 @@ import Typography from '@mui/material/Typography'
 import FormControl from '@mui/material/FormControl'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
-import Switch from '@mui/material/Switch'
-import FormControlLabel from '@mui/material/FormControlLabel'
 import Divider from '@mui/material/Divider'
 import { clientSites } from '@/configs/clientSites'
 import Checkbox from '@mui/material/Checkbox'
@@ -16,6 +14,7 @@ import Chip from '@mui/material/Chip'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 import CircularProgress from '@mui/material/CircularProgress'
+import { FlagSwitch } from '../FeatureAccessContext'
 
 const YoutubeBlogFields = ({ settings, updateSetting }) => {
   const [statusText, setStatusText] = useState('');
@@ -85,10 +84,7 @@ const YoutubeBlogFields = ({ settings, updateSetting }) => {
 
       <Grid size={{ xs: 12 }}>
         <div className='flex flex-col'>
-          <FormControlLabel
-            control={<Switch checked={settings.enableCaptionRewriting} onChange={(e) => updateSetting('enableCaptionRewriting', e.target.checked)} />}
-            label={<Typography className='font-medium text-textPrimary'>Directly Rewrite Captions</Typography>}
-          />
+          <FlagSwitch featureKey='enable-caption-rewriting' checked={settings.enableCaptionRewriting} onChange={value => updateSetting('enableCaptionRewriting', value)} label='Directly Rewrite Captions' />
           <Typography variant='caption' className='text-textSecondary ml-10 -mt-2'>
             If ON, the AI acts like a transcriber formatting spoken words into an article.
           </Typography>
@@ -207,8 +203,8 @@ const YoutubeBlogFields = ({ settings, updateSetting }) => {
     <Grid size={{ xs: 12 }}><Divider className='my-2' /></Grid>
 
     <Grid size={{ xs: 12 }} className='flex flex-col gap-2'>
-      <FormControlLabel control={<Switch checked={settings.useOutlineEditor} onChange={(e) => updateSetting('useOutlineEditor', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Outline Editor</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.improveReadability} onChange={(e) => updateSetting('improveReadability', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Improve Readability</Typography>} />
+      <FlagSwitch featureKey='outline-editor' checked={settings.useOutlineEditor} onChange={value => updateSetting('useOutlineEditor', value)} label='Use Outline Editor' />
+      <FlagSwitch featureKey='improve-readability' checked={settings.improveReadability} onChange={value => updateSetting('improveReadability', value)} label='Improve Readability' />
     </Grid>
   </>
 )

@@ -4,8 +4,6 @@ import Typography from '@mui/material/Typography'
 import FormControl from '@mui/material/FormControl'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
-import Switch from '@mui/material/Switch'
-import FormControlLabel from '@mui/material/FormControlLabel'
 import Divider from '@mui/material/Divider'
 import { clientSites } from '@/configs/clientSites'
 import Checkbox from '@mui/material/Checkbox'
@@ -14,6 +12,7 @@ import OutlinedInput from '@mui/material/OutlinedInput'
 import Chip from '@mui/material/Chip'
 import { languages } from '@/configs/languages'
 import {useEffect} from 'react';
+import { FlagSwitch } from '../FeatureAccessContext'
 
 const AmazonReviewFields = ({ settings, updateSetting }) => {
   useEffect(() => {
@@ -151,28 +150,25 @@ const AmazonReviewFields = ({ settings, updateSetting }) => {
     <Grid size={{ xs: 12 }}><Divider className='my-2' /></Grid>
 
     <Grid size={{ xs: 12 }} className='flex flex-col gap-2'>
-      <FormControlLabel control={<Switch checked={settings.enableFirstHandExperience} onChange={(e) => updateSetting('enableFirstHandExperience', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable First-Hand Experience</Typography>} />
+      <FlagSwitch featureKey='enable-first-hand-experience' checked={settings.enableFirstHandExperience} onChange={value => updateSetting('enableFirstHandExperience', value)} label='Enable First-Hand Experience' />
 
       <div className='flex flex-col'>
-        <FormControlLabel control={<Switch checked={settings.enableCondensedMode} onChange={(e) => updateSetting('enableCondensedMode', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable Condensed Mode</Typography>} />
+        <FlagSwitch featureKey='enable-condensed-mode' checked={settings.enableCondensedMode} onChange={value => updateSetting('enableCondensedMode', value)} label='Enable Condensed Mode' />
         <Typography variant='caption' color='text.secondary' className='ml-[42px] -mt-1 block mbe-2'>
           Creates a shorter, more concise article that doesn't waste the user's time.
         </Typography>
       </div>
 
       <Grid size={{ xs: 12, sm: 12 }}>
-            <FormControlLabel
-              control={<Switch checked={settings.automaticExternalLinks} onChange={(e) => updateSetting('automaticExternalLinks', e.target.checked)} />}
-              label={<Typography className='font-medium text-textPrimary'>Automatic External Links</Typography>}
-            />
+            <FlagSwitch featureKey='automatic-external-links' checked={settings.automaticExternalLinks} onChange={value => updateSetting('automaticExternalLinks', value)} label='Automatic External Links' />
             <Typography variant='caption' color='text.secondary' className='ml-[42px] -mt-1 block mbe-2'>
               Finds and embeds highly relevant, authoritative outbound links via Google Search.
             </Typography>
           </Grid>
 
-      <FormControlLabel control={<Switch checked={settings.useOutlineEditor} onChange={(e) => updateSetting('useOutlineEditor', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Outline Editor</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.includeFaq} onChange={(e) => updateSetting('includeFaq', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Include FAQ Section</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.improveReadability} onChange={(e) => updateSetting('improveReadability', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Improve Readability</Typography>} />
+      <FlagSwitch featureKey='outline-editor' checked={settings.useOutlineEditor} onChange={value => updateSetting('useOutlineEditor', value)} label='Use Outline Editor' />
+      <FlagSwitch featureKey='include-faq' checked={settings.includeFaq} onChange={value => updateSetting('includeFaq', value)} label='Include FAQ Section' />
+      <FlagSwitch featureKey='improve-readability' checked={settings.improveReadability} onChange={value => updateSetting('improveReadability', value)} label='Improve Readability' />
     </Grid>
   </>
 )

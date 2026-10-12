@@ -28,16 +28,52 @@ export default function Overview() {
 
   if (!stats && !error) return <Stack spacing={2}>{[1, 2, 3].map(item => <Skeleton key={item} variant='rounded' height={108} />)}</Stack>
 
-  return <Box>
-    {error ? <Typography color='error' role='alert'>{error}</Typography> : null}
-    {stats ? <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-      {[
-        ['Users', stats.users.toLocaleString()],
-        ['Users by role', Object.entries(stats.byRole || {}).map(([role, count]) => `${role} ${count}`).join(' · ') || '—'],
-        ['Words used / cap', `${stats.wordsUsed.toLocaleString()} / ${stats.wordsCap.toLocaleString()}`],
-        ['Flags off', <Chip key='flags' label={stats.flagsOff} color={stats.flagsOff ? 'warning' : 'success'} />]
-      ].map(([label, value]) => <Paper key={label} variant='outlined' sx={{ flex: 1, p: 3, borderRadius: 3 }}><Typography color='text.secondary'>{label}</Typography><Typography variant='h6' sx={{ mt: 1 }}>{value}</Typography></Paper>)}
-    </Stack> : null}
-    <Button onClick={load} disabled={!stats && !error} sx={{ mt: 2 }}>{!stats && !error ? <CircularProgress size={18} /> : 'Refresh'}</Button>
-  </Box>
+  return (
+    <Box>
+      {error ? (
+        <Typography color='error' role='alert'>
+          {error}
+        </Typography>
+      ) : null}
+      {stats ? (
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+          {[
+            ['Users', stats.users.toLocaleString()],
+            [
+              'Users by role',
+              Object.entries(stats.byRole || {})
+                .map(([role, count]) => `${role} ${count}`)
+                .join(' · ') || '—'
+            ],
+            ['Words used / cap', `${stats.wordsUsed.toLocaleString()} / ${stats.wordsCap.toLocaleString()}`],
+            ['Flags off', <Chip key='flags' label={stats.flagsOff} color={stats.flagsOff ? 'warning' : 'success'} />]
+          ].map(([label, value]) => (
+            <Paper
+              key={label}
+              elevation={0}
+              sx={{
+                flex: 1,
+                p: 3,
+                borderRadius: 4,
+                border: '1px solid',
+                borderColor: 'divider',
+                background: theme =>
+                  theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(255,193,7,0.05)'
+              }}
+            >
+              <Typography color='text.secondary' sx={{ fontWeight: 600 }}>
+                {label}
+              </Typography>
+              <Typography variant='h5' sx={{ mt: 1, fontWeight: 800 }}>
+                {value}
+              </Typography>
+            </Paper>
+          ))}
+        </Stack>
+      ) : null}
+      <Button onClick={load} disabled={!stats && !error} sx={{ mt: 2, textTransform: 'none', fontWeight: 700 }}>
+        {!stats && !error ? <CircularProgress size={18} /> : 'Refresh'}
+      </Button>
+    </Box>
+  )
 }

@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 
 import { requireAdmin } from '../_auth'
-import { FEATURE_KEYS } from '@/libs/entitlement'
+import { FEATURE_KEYS, FREE_FEATURES } from '@/libs/entitlement'
 import { serializeError } from '@/utils/serializeError'
 
 const prisma = global.prisma || new PrismaClient()
@@ -18,8 +18,7 @@ export async function GET(request) {
 
     for (const key of FEATURE_KEYS) {
       if (!byKey.has(key)) {
-        const freeDefaults = ['standard', 'rewrite', 'model-gemini-flash-lite', 'outline-editor', 'include-faq', 'include-key-takeaways', 'improve-readability']
-        const isFree = freeDefaults.includes(key)
+        const isFree = FREE_FEATURES.has(key)
         const flag = await prisma.featureFlag.create({ data: { key, enabled: true, free: isFree, mode: isFree ? 'free' : 'pro' } })
         byKey.set(key, flag)
       }

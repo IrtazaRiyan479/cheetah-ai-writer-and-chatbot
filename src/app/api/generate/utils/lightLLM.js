@@ -37,7 +37,7 @@ export async function callGroq({ prompt, system, json = false, model, max_tokens
           throw error
         }
         return data.choices?.[0]?.message?.content?.trim() || null
-      })
+      }, 'groq')
     } catch (error) {
       if (/404|model_not_found/i.test(String(error?.message || error))) continue
       if (waitOn429 && /429/.test(String(error?.message || error))) await new Promise(resolve => setTimeout(resolve, 20000))
@@ -68,7 +68,7 @@ export async function callMistral({ prompt, system, json = false, model = 'mistr
         throw error
       }
       return data.choices?.[0]?.message?.content?.trim() || null
-    })
+    }, 'mistral')
   } catch {
     return null
   }

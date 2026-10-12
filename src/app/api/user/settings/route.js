@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
 
 import { authOptions } from '@/libs/auth';
+import { isValidEmail } from '@/utils/credentials';
 
 const prisma = new PrismaClient();
 
@@ -78,8 +79,8 @@ export async function PATCH(request) {
 
   const { newEmail } = await request.json();
 
-  if (!newEmail) {
-    return NextResponse.json({ error: "New email is required" }, { status: 400 });
+  if (!isValidEmail(newEmail)) {
+    return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
   }
 
   try {

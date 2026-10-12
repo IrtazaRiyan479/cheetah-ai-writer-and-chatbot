@@ -24,7 +24,7 @@ function failureCode(error) {
   return String(error?.status || error?.statusCode || serializeError(error).match(/(?:HTTP\s*)?(\d{3})/i)?.[1] || 'error')
 }
 
-export async function withProviderKey(keys, fn) {
+export async function withProviderKey(keys, fn, label = 'provider') {
   const ordered = [...new Set((keys || []).map(value => String(value || '').trim()).filter(Boolean))]
   if (!ordered.length) return null
   let lastError
@@ -36,7 +36,7 @@ export async function withProviderKey(keys, fn) {
       return result
     } catch (error) {
       lastError = error
-      console.warn(`provider key ${index + 1}/${ordered.length} failed (${failureCode(error)})`)
+      console.warn(`[${label}] key ${index + 1}/${ordered.length} failed (${failureCode(error)})`)
     }
   }
 

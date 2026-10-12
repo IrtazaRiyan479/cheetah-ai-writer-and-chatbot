@@ -7,8 +7,12 @@ import Typography from '@mui/material/Typography'
 import Grid from '@mui/material/Grid'
 import classnames from 'classnames'
 
+import { featureKeyForType } from '@/libs/entitlement'
+
+import { ProLabel, useFeatureAccess } from './FeatureAccessContext'
+
 const articleTypes = [
-  { id: 'blog', title: 'Blog Post', caption: 'Standard article from a keyword', icon: 'ri-article-line' },
+  { id: 'blog', title: 'Blog Post', caption: 'Standard article from a bunch of keywords', icon: 'ri-article-line' },
   { id: 'listicle', title: 'Listicle', caption: 'Structured list with useful takeaways', icon: 'ri-list-check-2' },
   {
     id: 'local-roundup',
@@ -56,6 +60,8 @@ const articleTypes = [
 ]
 
 const ArticleTypeMenu = ({ selectedType, setSelectedType }) => {
+  const { requireFeature } = useFeatureAccess()
+
   return (
     <div className='flex flex-col gap-3'>
       <Typography variant='h6' className='font-semibold'>
@@ -66,7 +72,12 @@ const ArticleTypeMenu = ({ selectedType, setSelectedType }) => {
         {articleTypes.map(type => (
           <Grid size={{ xs: 12, sm: 6, md: 4 }} key={type.id}>
             <Card
-              onClick={() => setSelectedType(type.id)}
+              onClick={() => {
+                const featureKey = featureKeyForType(type.id)
+
+                if (type.id !== selectedType && !requireFeature(featureKey, { label: type.title })) return
+                setSelectedType(type.id)
+              }}
               className={classnames(
                 'cursor-pointer transition-all duration-200 border-2 shadow-sm',
                 selectedType === type.id
@@ -85,7 +96,7 @@ const ArticleTypeMenu = ({ selectedType, setSelectedType }) => {
                 <Typography
                   className={classnames('font-medium', selectedType === type.id ? 'text-primary' : 'text-textPrimary')}
                 >
-                  {type.title}
+                  <ProLabel featureKey={featureKeyForType(type.id)}>{type.title}</ProLabel>
                 </Typography>
                 <Typography variant='caption' color='text.secondary' className='max-w-[240px]'>
                   {type.caption}

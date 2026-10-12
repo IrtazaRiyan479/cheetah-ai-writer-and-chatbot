@@ -31,6 +31,7 @@ import { useImageVariant } from '@core/hooks/useImageVariant'
 
 // Util Imports
 import { getLocalizedUrl } from '@/utils/i18n'
+import { isValidEmail, passwordIssue } from '@/utils/credentials'
 
 const Register = ({ mode }) => {
   const { status } = useSession()
@@ -66,10 +67,6 @@ const Register = ({ mode }) => {
     }
   }, [status, router])
 
-  const isValidEmail = value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim())
-  const isStrongPassword = value =>
-    String(value || '').length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /[0-9]/.test(value)
-
   const handleSubmit = async e => {
     e.preventDefault()
     setError('')
@@ -85,8 +82,9 @@ const Register = ({ mode }) => {
       setError('Enter a valid email address (example: name@company.com).')
       return
     }
-    if (!isStrongPassword(password)) {
-      setError('Password must be at least 8 characters and include uppercase, lowercase, and a number.')
+    const passwordError = passwordIssue(password)
+    if (passwordError) {
+      setError(passwordError)
       return
     }
     setIsLoading(true)
@@ -163,6 +161,7 @@ const Register = ({ mode }) => {
                 type={isPasswordShown ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                helperText='At least 8 characters, with uppercase, lowercase, and a number.'
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position='end'>

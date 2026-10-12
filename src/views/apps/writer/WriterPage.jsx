@@ -233,7 +233,7 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
         setPremiumMessage(serializeError(data?.error || data) || 'This requires a Pro plan or more free words.')
         setPremiumOpen(true)
       } else if (data?.code === 'PAID_KEYS_FAILED') {
-        toast.error(serializeError(data?.error) || 'Paid API keys failed. Check quota.')
+        toast.error('Low credits.')
       } else {
         throw new Error(serializeError(data?.error || data))
       }
@@ -266,6 +266,7 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
         <Grid container spacing={5}>
           <ActiveFields settings={settings} updateSetting={updateSetting} />
 
+          {/* Show Advanced Options temporarily disabled
           <Grid size={{ xs: 12 }}>
             <div
               className='flex items-center gap-1 cursor-pointer w-fit text-primary mbe-2'
@@ -277,6 +278,7 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
               <i className={showAdvanced ? 'ri-arrow-up-s-line text-xl' : 'ri-arrow-down-s-line text-xl'} />
             </div>
           </Grid>
+          */}
         </Grid>
 
         <Divider className='my-6' />
@@ -300,31 +302,33 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
             ) : null}
           </div>
 
-          <Button
-            variant='contained'
-            color='primary'
-            size='large'
-            className='px-8 py-2.5 text-base font-bold rounded-md'
-            onClick={handleCreateArticle}
-            disabled={isGenerating}
-          >
-            {isGenerating ? 'Generating outline…' : settings.useOutlineEditor ? 'Create Outline' : 'Create Article'}
-          </Button>
-          <Button
-            variant='outlined'
-            disabled={isGenerating || isBatching}
-            onClick={() => {
-              if (!isPaid && (featureModes['batch-generate'] || 'pro') === 'pro') {
-                setPremiumMessage('Batch generation is a Pro feature. Upgrade to generate multiple outlines at once.')
-                setPremiumOpen(true)
-                return
-              }
-              setBatchOpen(true)
-            }}
-          >
-            {(featureModes['batch-generate'] || 'pro') === 'pro' && !isPaid ? '⭐ ' : ''}
-            Batch
-          </Button>
+          <div className='flex items-center gap-2'>
+            <Button
+              variant='contained'
+              color='primary'
+              size='large'
+              className='px-8 py-2.5 text-base font-bold rounded-md'
+              onClick={handleCreateArticle}
+              disabled={isGenerating}
+            >
+              {isGenerating ? 'Generating outline…' : settings.useOutlineEditor ? 'Create Outline' : 'Create Article'}
+            </Button>
+            <Button
+              variant='outlined'
+              disabled={isGenerating || isBatching}
+              onClick={() => {
+                if (!isPaid && (featureModes['batch-generate'] || 'pro') === 'pro') {
+                  setPremiumMessage('Batch generation is a Pro feature. Upgrade to generate multiple outlines at once.')
+                  setPremiumOpen(true)
+                  return
+                }
+                setBatchOpen(true)
+              }}
+            >
+              {(featureModes['batch-generate'] || 'pro') === 'pro' && !isPaid ? '⭐ ' : ''}
+              Batch
+            </Button>
+          </div>
         </div>
       </CardContent>
       <Dialog open={batchOpen} onClose={() => !isBatching && setBatchOpen(false)} fullWidth maxWidth='sm'>

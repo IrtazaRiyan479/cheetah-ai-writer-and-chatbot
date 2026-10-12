@@ -12,7 +12,7 @@ export function listGeminiApiKeys({ paid = false } = {}) {
     numberedPrefix: 'GEMINI_PAID_API_KEY_',
     legacySingles: ['GEMINI_PAID_API_KEY']
   })
-  return paidKeys.length ? paidKeys : freeKeys
+  return paidKeys
 }
 
 function statusFor(error) {
@@ -25,17 +25,18 @@ export function withGeminiKey(fn, { paid = false } = {}) {
   const keys = listGeminiApiKeys({ paid })
   if (!keys.length) throw new Error(paid ? 'Gemini API key is not configured for paid models.' : 'Gemini API key is not configured.')
 
-  return rotateGeminiKeys(keys, fn)
+  return rotateGeminiKeys(keys, fn, paid)
 }
 
-async function rotateGeminiKeys(keys, fn) {
+async function rotateGeminiKeys(keys, fn, paid) {
   let lastError
+  console.info(`[gemini] pool=${keys.length} tier=${paid ? 'paid' : 'free'}`)
   for (let index = 0; index < keys.length; index++) {
     try {
       return await fn(keys[index], { index, total: keys.length })
     } catch (error) {
       lastError = error
-      if (index < keys.length - 1) console.warn(`gemini key ${index + 1}/${keys.length} failed (${statusFor(error)})`)
+      console.warn(`[gemini] key ${index + 1}/${keys.length} failed (${statusFor(error)})`)
     }
   }
   throw new Error(serializeError(lastError))

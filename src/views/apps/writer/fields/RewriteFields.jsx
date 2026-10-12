@@ -16,6 +16,7 @@ import Chip from '@mui/material/Chip'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 import CircularProgress from '@mui/material/CircularProgress'
+import { FlagSwitch } from '../FeatureAccessContext'
 
 const RewriteFields = ({ settings, updateSetting }) => {
   const [statusText, setStatusText] = useState('');
@@ -293,10 +294,7 @@ const RewriteFields = ({ settings, updateSetting }) => {
     <Grid size={{ xs: 12 }} className='flex flex-col gap-2'>
     {/* REAL-TIME DATA & EXTERNAL LINKS */}
     <Grid size={{ xs: 12, sm: 6 }}>
-      <FormControlLabel
-        control={<Switch checked={settings.useRealTimeSearchData} onChange={(e) => updateSetting('useRealTimeSearchData', e.target.checked)} />}
-        label={<Typography className='font-medium text-textPrimary'>Real-Time Data</Typography>}
-      />
+      <FlagSwitch featureKey='real-time-data' checked={settings.useRealTimeSearchData} onChange={value => updateSetting('useRealTimeSearchData', value)} label='Real-Time Data' />
       {settings.useRealTimeSearchData && (
         <FormControl fullWidth size='small' className='mt-2 mbe-3'>
           <Select value={settings.realTimeDataSource} onChange={(e) => updateSetting('realTimeDataSource', e.target.value)}>
@@ -309,19 +307,16 @@ const RewriteFields = ({ settings, updateSetting }) => {
     </Grid>
 
     <Grid size={{ xs: 12, sm: 6 }}>
-      <FormControlLabel
-        control={<Switch checked={settings.automaticExternalLinks} onChange={(e) => updateSetting('automaticExternalLinks', e.target.checked)} />}
-        label={<Typography className='font-medium text-textPrimary'>Automatic External Links</Typography>}
-      />
+      <FlagSwitch featureKey='automatic-external-links' checked={settings.automaticExternalLinks} onChange={value => updateSetting('automaticExternalLinks', value)} label='Automatic External Links' />
       <Typography variant='caption' color='text.secondary' className='ml-[42px] -mt-1 block mbe-2'>
         Finds and embeds highly relevant, authoritative outbound links via Google Search.
       </Typography>
     </Grid>
 
-      <FormControlLabel control={<Switch checked={settings.useOutlineEditor} onChange={(e) => updateSetting('useOutlineEditor', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Outline Editor</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.includeFaq} onChange={(e) => updateSetting('includeFaq', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Include FAQ Section</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.includeKeyTakeaways} onChange={(e) => updateSetting('includeKeyTakeaways', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Include Key Takeaways</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.improveReadability} onChange={(e) => updateSetting('improveReadability', e.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Improve Readability</Typography>} />
+      <FlagSwitch featureKey='outline-editor' checked={settings.useOutlineEditor} onChange={value => updateSetting('useOutlineEditor', value)} label='Use Outline Editor' />
+      <FlagSwitch featureKey='include-faq' checked={settings.includeFaq} onChange={value => updateSetting('includeFaq', value)} label='Include FAQ Section' />
+      <FlagSwitch featureKey='include-key-takeaways' checked={settings.includeKeyTakeaways} onChange={value => updateSetting('includeKeyTakeaways', value)} label='Include Key Takeaways' />
+      <FlagSwitch featureKey='improve-readability' checked={settings.improveReadability} onChange={value => updateSetting('improveReadability', value)} label='Improve Readability' />
     </Grid>
   </>
 )

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 
 import { authOptions } from '@/libs/auth'
-import { resolveGenerationAccess, recordGeneratedWords } from '@/libs/entitlement'
+import { resolveGenerationAccess, claimFreeWords, settleReservedWords } from '@/libs/entitlement'
 import { serializeError } from '@/utils/serializeError'
 
 import { generateLocalRoundupOutline, generateLocalRoundupSection } from './services/localRoundup'
@@ -24,6 +24,9 @@ function logStage(stage, started, type) {
 }
 
 export async function POST(request) {
+  let reserved = 0
+  let reserveUserId = null
+
   try {
     const body = await request.json()
     const { mode, prompt, settings = {}, history = [] } = body
@@ -40,7 +43,7 @@ export async function POST(request) {
       settings,
       type,
       model: settings.model || body.model,
-      estimatedWords: 1
+      estimatedWords: mode === 'section' ? 0 : 1
     })
 
     if (!gate.ok) {
@@ -53,6 +56,15 @@ export async function POST(request) {
     const genAI = createProviderGenAI({ paid: Boolean(gate.usePaidKeys) })
     const started = Date.now()
     console.info(`[generate] keys=${gate.usePaidKeys ? 'paid' : 'free'} features=${(gate.activeKeys || []).join(',')}`)
+
+    const reserveFreeWords = async () => {
+      if (gate.paid || !gate.user?.id) return true
+      const claim = await claimFreeWords(gate.user.id)
+      if (claim.blocked) return false
+      reserved = claim.claimed || 0
+      reserveUserId = gate.user.id
+      return true
+    }
 
     if (mode === 'prepare' && type === 'product-comparison') return NextResponse.json({ success: true, shared: {} })
 
@@ -127,6 +139,13 @@ export async function POST(request) {
     }
 
     if (mode === 'section') {
+      if (!(await reserveFreeWords())) {
+        return NextResponse.json(
+          { success: false, error: 'Free word limit reached. Upgrade to Pro for unlimited writing.', code: 'WORD_LIMIT' },
+          { status: 402 }
+        )
+      }
+
       let result
 
       switch (type) {
@@ -161,9 +180,8 @@ export async function POST(request) {
       logStage('section', started, type)
 
       const sectionText = result?.text || result?.content || result?.html || ''
-      if (sectionText && gate.user?.id) {
-        await recordGeneratedWords(gate.user.id, sectionText)
-      }
+      if (gate.user?.id) await settleReservedWords(gate.user.id, reserved, sectionText)
+      reserved = 0
 
       return NextResponse.json(result)
     }
@@ -177,6 +195,13 @@ export async function POST(request) {
       .filter(Boolean)
       .join('\n\n')
 
+    if (!(await reserveFreeWords())) {
+      return NextResponse.json(
+        { success: false, error: 'Free word limit reached. Upgrade to Pro for unlimited writing.', code: 'WORD_LIMIT' },
+        { status: 402 }
+      )
+    }
+
     const result = await callLLM({
       system: getBaseSystemInstruction(),
       prompt: historyText ? `${historyText}\n\nUser: ${prompt}` : prompt,
@@ -185,16 +210,19 @@ export async function POST(request) {
       paid: Boolean(gate.usePaidKeys)
     })
 
-    if (result?.text && gate.user?.id) {
-      await recordGeneratedWords(gate.user.id, result.text)
-    }
+    if (gate.user?.id) await settleReservedWords(gate.user.id, reserved, result?.text || '')
+    reserved = 0
 
     return NextResponse.json({ success: true, text: result.text })
   } catch (error) {
+    if (reserved && reserveUserId) {
+      await settleReservedWords(reserveUserId, reserved, '').catch(() => {})
+      reserved = 0
+    }
     const msg = serializeError(error)
-    const isPaidKeys = error?.code === 'PAID_KEYS_FAILED' || /Paid API keys failed/i.test(msg)
+    const isPaidKeys = error?.code === 'PAID_KEYS_FAILED' || /Low credits/i.test(msg)
     if (isPaidKeys) {
-      return NextResponse.json({ success: false, error: msg, code: 'PAID_KEYS_FAILED' }, { status: 502 })
+      return NextResponse.json({ success: false, error: 'Low credits.', code: 'PAID_KEYS_FAILED' }, { status: 502 })
     }
     const isCapacity =
       /429|quota|rate.?limit|503|high demand|unavailable|overloaded|OUTLINE_PARSE_FAILED|RATE_LIMIT/i.test(msg)

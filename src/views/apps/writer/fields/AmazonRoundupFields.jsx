@@ -4,8 +4,6 @@ import Typography from '@mui/material/Typography'
 import FormControl from '@mui/material/FormControl'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
-import Switch from '@mui/material/Switch'
-import FormControlLabel from '@mui/material/FormControlLabel'
 import Divider from '@mui/material/Divider'
 import { clientSites } from '@/configs/clientSites'
 import Checkbox from '@mui/material/Checkbox'
@@ -15,6 +13,7 @@ import Chip from '@mui/material/Chip'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 import { useEffect } from 'react'
+import { FlagSwitch } from '../FeatureAccessContext'
 
 const AmazonRoundupFields = ({ settings, updateSetting }) => {
   useEffect(() => {
@@ -94,12 +93,12 @@ const AmazonRoundupFields = ({ settings, updateSetting }) => {
     </Grid>
     <Grid size={{ xs: 12 }}><Divider className='my-2' /></Grid>
     <Grid size={{ xs: 12 }} className='flex flex-col gap-2'>
-      <FormControlLabel control={<Switch checked={settings.enableFirstHandExperience} onChange={event => updateSetting('enableFirstHandExperience', event.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Enable First-Hand Experience</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.automaticExternalLinks} onChange={event => updateSetting('automaticExternalLinks', event.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Automatic External Links</Typography>} />
+      <FlagSwitch featureKey='enable-first-hand-experience' checked={settings.enableFirstHandExperience} onChange={value => updateSetting('enableFirstHandExperience', value)} label='Enable First-Hand Experience' />
+      <FlagSwitch featureKey='automatic-external-links' checked={settings.automaticExternalLinks} onChange={value => updateSetting('automaticExternalLinks', value)} label='Automatic External Links' />
       <Typography variant='caption' color='text.secondary' className='ml-[42px] -mt-1 block mbe-2'>Finds and embeds highly relevant, authoritative outbound links via Google Search.</Typography>
-      <FormControlLabel control={<Switch checked={settings.useOutlineEditor} onChange={event => updateSetting('useOutlineEditor', event.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Use Outline Editor</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.includeFaq} onChange={event => updateSetting('includeFaq', event.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Include FAQ Section</Typography>} />
-      <FormControlLabel control={<Switch checked={settings.improveReadability} onChange={event => updateSetting('improveReadability', event.target.checked)} />} label={<Typography className='font-medium text-textPrimary'>Improve Readability</Typography>} />
+      <FlagSwitch featureKey='outline-editor' checked={settings.useOutlineEditor} onChange={value => updateSetting('useOutlineEditor', value)} label='Use Outline Editor' />
+      <FlagSwitch featureKey='include-faq' checked={settings.includeFaq} onChange={value => updateSetting('includeFaq', value)} label='Include FAQ Section' />
+      <FlagSwitch featureKey='improve-readability' checked={settings.improveReadability} onChange={value => updateSetting('improveReadability', value)} label='Improve Readability' />
     </Grid>
   </>
 }

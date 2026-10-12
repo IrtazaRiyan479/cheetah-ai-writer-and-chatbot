@@ -53,12 +53,25 @@ async function parseProviderResponse(response) {
 
 function keysFor(provider, paid = false) {
   if (provider === 'gemini') return listGeminiApiKeys({ paid })
-  if (provider === 'xai') return listProviderKeys('XAI_API_KEYS', { numberedPrefix: 'XAI_API_KEY_', legacySingles: ['XAI_API_KEY'] })
-  if (provider === 'groq') return listProviderKeys('GROQ_API_KEYS', { numberedPrefix: 'GROQ_API_KEY_', legacySingles: ['GROQ_API_KEY'] })
-  if (provider === 'mistral') return listProviderKeys('MISTRAL_API_KEYS', { numberedPrefix: 'MISTRAL_API_KEY_', legacySingles: ['MISTRAL_API_KEY'] })
-  if (provider === 'openai') return listProviderKeys('OPENAI_API_KEYS', { numberedPrefix: 'OPENAI_API_KEY_' })
-  if (provider === 'anthropic') return listProviderKeys('ANTHROPIC_API_KEYS', { numberedPrefix: 'ANTHROPIC_API_KEY_' })
-  return []
+  const names = {
+    xai: 'XAI',
+    groq: 'GROQ',
+    mistral: 'MISTRAL',
+    openai: 'OPENAI',
+    anthropic: 'ANTHROPIC'
+  }
+  const name = names[provider]
+  if (!name) return []
+  if (paid) {
+    return listProviderKeys(`${name}_PAID_API_KEYS`, {
+      numberedPrefix: `${name}_PAID_API_KEY_`,
+      legacySingles: [`${name}_PAID_API_KEY`]
+    })
+  }
+  return listProviderKeys(`${name}_API_KEYS`, {
+    numberedPrefix: `${name}_API_KEY_`,
+    legacySingles: [`${name}_API_KEY`]
+  })
 }
 
 function resolveModel(model) {
@@ -144,7 +157,7 @@ async function runProvider(config, request) {
     if (config.provider === 'openai') return callOpenAI({ ...request, apiKey, model: config.model })
     if (config.provider === 'anthropic') return callAnthropic({ ...request, apiKey, model: config.model })
     return null
-  })
+  }, config.provider)
 }
 
 const FALLBACK_ORDER = ['xai', 'mistral', 'groq', 'gemini']
@@ -167,11 +180,13 @@ export async function callLLM({
   const request = { system: stableSystem, prompt: userPrompt, json, maxTokens, temperature }
   const selectedKeys = keysFor(requested.provider, requested.paid)
   if (!selectedKeys.length) {
-    throw new Error(
-      requested.paid
-        ? `Paid API keys are not configured for ${requested.provider}. Add GEMINI_PAID_API_KEYS in .env.`
-        : `Selected provider ${requested.provider} is not configured for model ${requested.requested}.`
-    )
+    if (requested.paid) {
+      console.error(`[llm] no paid keys for ${requested.provider}`)
+      const paidError = new Error('Low credits.')
+      paidError.code = 'PAID_KEYS_FAILED'
+      throw paidError
+    }
+    throw new Error(`Selected provider ${requested.provider} is not configured for model ${requested.requested}.`)
   }
 
   const failures = []
@@ -184,9 +199,12 @@ export async function callLLM({
     failures.push({ name: requested.provider, message, paid: requested.paid })
     console.error(`[llm] selected ${requested.provider} failed (paid=${requested.paid}):`, message.slice(0, 220))
     if (requested.paid) {
-      const paidError = new Error(`Paid API keys failed: ${message}. Check GEMINI_PAID_API_KEYS / quota.`)
+      const paidError = new Error('Low credits.')
       paidError.code = 'PAID_KEYS_FAILED'
       throw paidError
+    }
+    if (requested.provider !== 'gemini') {
+      throw new Error(`${requested.provider} keys failed: ${message}`)
     }
     console.warn(`[llm] fallback after selected provider exhausted: ${requested.provider}`)
   }

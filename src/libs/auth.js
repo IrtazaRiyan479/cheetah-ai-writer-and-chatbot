@@ -72,9 +72,12 @@ export const authOptions = {
       if (user) {
         token.name = user.name
         token.id = user.id
-        token.remember = Boolean(user.remember)
-        const maxAge = token.remember ? 30 * 24 * 60 * 60 : 12 * 60 * 60
-        token.exp = Math.floor(Date.now() / 1000) + maxAge
+        if (user.remember === true || user.remember === 'true') token.remember = true
+        else if (user.remember === false || user.remember === 'false') token.remember = false
+        else if (token.remember === undefined) token.remember = true
+      }
+      if (token.remember === false) {
+        token.exp = Math.floor(Date.now() / 1000) + 12 * 60 * 60
       }
       if (token.exp && token.exp * 1000 < Date.now()) {
         return {}
