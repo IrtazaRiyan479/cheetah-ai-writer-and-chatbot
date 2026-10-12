@@ -49,6 +49,8 @@ import { toast } from 'react-toastify'
 
 import { serializeError } from '@/utils/serializeError'
 
+import { useFeatureAccess } from './FeatureAccessContext'
+
 import { getAffigenieArticleCss, prepareArticleHtml, finalizeArticleHtml } from '@/app/api/generate/utils/articleHtml'
 
 function mediaKey(item) {
@@ -665,6 +667,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
   const router = useRouter()
   const searchParams = useSearchParams()
   const draftId = searchParams.get('draftId')
+  const { modeOf } = useFeatureAccess()
   const [isGenerating, setIsGenerating] = useState(true)
   const [currentIndex, setCurrentIndex] = useState(0)
 
@@ -1937,9 +1940,11 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                   <ListItemText>Download Markdown</ListItemText>
                 </MenuItem>
               </Menu>
-              <Button variant='contained' color='success' onClick={() => setPublishDialogOpen(true)}>
-                Publish to WP
-              </Button>
+              {modeOf('wp-publish') === 'off' ? null : (
+                <Button variant='contained' color='success' onClick={() => setPublishDialogOpen(true)}>
+                  Publish to WP
+                </Button>
+              )}
             </>
           )}
         </div>

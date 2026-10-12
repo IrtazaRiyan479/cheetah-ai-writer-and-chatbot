@@ -238,20 +238,22 @@ export async function resolveGenerationAccess({ userId, email, settings = {}, ty
     const globalFreeWordCap = capSetting ? Math.max(0, Number(capSetting.value) || 0) : FREE_WORD_CAP
     const limit = user.wordsLimitCustomized ? user.wordsLimit : globalFreeWordCap
 
-    if (!isPaid(user) && user.wordsUsed >= limit) {
+    const admin = user.role === 'admin' || user.plan === 'admin'
+
+    if (!admin && user.wordsUsed >= limit) {
       return {
         ok: false,
         status: 402,
-        error: `Free word limit reached (${limit.toLocaleString()} words). Upgrade to Pro for unlimited writing.`,
+        error: `Word cap reached (${limit.toLocaleString()} words). Buy another pack to keep writing. Words already bought never expire.`,
         code: 'WORD_LIMIT'
       }
     }
 
-    if (!isPaid(user) && estimatedWords > 0 && user.wordsUsed + estimatedWords > limit) {
+    if (!admin && estimatedWords > 0 && user.wordsUsed + estimatedWords > limit) {
       return {
         ok: false,
         status: 402,
-        error: `Not enough free words left (${Math.max(0, limit - user.wordsUsed)} remaining of ${limit}).`,
+        error: `Not enough words left (${Math.max(0, limit - user.wordsUsed)} remaining of ${limit}).`,
         code: 'WORD_LIMIT'
       }
     }
@@ -288,7 +290,7 @@ export async function claimFreeWords(userId, requested = SECTION_WORD_RESERVE) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user) return { claimed: 0, blocked: true }
-    if (isPaid(user)) return { claimed: 0, blocked: false, paid: true }
+    if (user.role === 'admin' || user.plan === 'admin') return { claimed: 0, blocked: false, paid: true }
 
     const capSetting = await prisma.appSetting.findUnique({ where: { key: 'globalFreeWordCap' } }).catch(() => null)
     const globalFreeWordCap = capSetting ? Math.max(0, Number(capSetting.value) || 0) : FREE_WORD_CAP
@@ -312,7 +314,7 @@ export async function settleReservedWords(userId, reserved, text) {
   const delta = actual - (Number(reserved) || 0)
   if (!userId || !delta) return actual
   const user = await prisma.user.findUnique({ where: { id: userId } })
-  if (!user || isPaid(user)) return actual
+  if (!user || user.role === 'admin' || user.plan === 'admin') return actual
   if (delta < 0) {
     await prisma.user.updateMany({
       where: { id: userId, wordsUsed: { gte: -delta } },
@@ -328,7 +330,7 @@ export async function recordGeneratedWords(userId, text) {
   const words = countWords(text)
   if (!words || !userId) return 0
   const user = await prisma.user.findUnique({ where: { id: userId } })
-  if (!user || isPaid(user)) return 0
+  if (!user || user.role === 'admin' || user.plan === 'admin') return 0
   await prisma.user.update({ where: { id: userId }, data: { wordsUsed: { increment: words } } })
   return words
 }

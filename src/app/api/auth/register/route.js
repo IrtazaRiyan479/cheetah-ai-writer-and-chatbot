@@ -46,7 +46,11 @@ export async function POST(request) {
         name: trimmedName,
         email: trimmedEmail,
         password: hashedPassword,
-        supportPin: supportPin, // <-- Save the generated PIN
+        supportPin: supportPin,
+        role: 'free',
+        plan: 'free',
+        wordsLimit: 5000,
+        wordsUsed: 0
       }
     });
 

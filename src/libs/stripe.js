@@ -107,6 +107,42 @@ export async function syncStripeCustomer(customerId) {
   })
 }
 
+export async function creditWordPack({ userId, customerId, words, sessionId, plan }) {
+  const grant = Math.max(0, Math.round(Number(words) || 0))
+
+  if (!userId || !grant || !sessionId) return null
+
+  const markerKey = `stripeSession:${sessionId}`
+  const existing = await prisma.appSetting.findUnique({ where: { key: markerKey } }).catch(() => null)
+
+  if (existing) return null
+
+  const user = await prisma.user.findUnique({ where: { id: userId } })
+
+  if (!user) return null
+
+  const capSetting = await prisma.appSetting.findUnique({ where: { key: 'globalFreeWordCap' } }).catch(() => null)
+  const globalFreeWordCap = capSetting ? Math.max(0, Number(capSetting.value) || 0) : 5000
+  const currentLimit = user.wordsLimitCustomized ? user.wordsLimit : globalFreeWordCap
+  const keepAdmin = user.role === 'admin' || user.plan === 'admin'
+  const grantPro = plan === 'pro' || plan === 'enterprise' || plan === 'max'
+
+  return prisma.$transaction([
+    prisma.user.update({
+      where: { id: user.id },
+      data: {
+        wordsLimit: currentLimit + grant,
+        wordsLimitCustomized: true,
+        stripeCustomerId: customerId || user.stripeCustomerId,
+        subscriptionStatus: 'paid',
+        plan: keepAdmin ? user.plan : grantPro ? 'pro' : user.plan,
+        role: keepAdmin ? user.role : grantPro ? 'pro' : user.role
+      }
+    }),
+    prisma.appSetting.create({ data: { key: markerKey, value: '1' } })
+  ])
+}
+
 export function getAppUrl(request) {
   const configuredUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL
 

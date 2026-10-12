@@ -83,7 +83,7 @@ const HeroSection = ({ mode }) => {
               variant='contained'
               color='primary'
             >
-              Start Your Free Trial
+              Get a 5000-word trial
             </Button>
           </div>
         </div>

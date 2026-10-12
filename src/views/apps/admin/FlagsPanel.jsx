@@ -76,12 +76,11 @@ export default function FlagsPanel() {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <Box>
-        <Typography variant='h6' sx={{ fontWeight: 800 }}>
+        <Typography variant='h6' sx={{ fontWeight: 800, letterSpacing: '-0.02em' }}>
           Feature access
         </Typography>
-        <Typography variant='body2' color='text.secondary' sx={{ mt: 0.5, maxWidth: 720 }}>
-          Free = everyone. Pro = paid users only (paid API keys when that feature is active). Off = disabled for all.
-          Pro items show a golden star in the writer.
+        <Typography variant='body2' color='text.secondary' sx={{ mt: 0.75, maxWidth: 760, lineHeight: 1.6 }}>
+          Free shows for every plan. Pro shows on Pro and Max only. Off removes the feature from the writer, the model list, and the pricing table.
         </Typography>
       </Box>
       {error ? (

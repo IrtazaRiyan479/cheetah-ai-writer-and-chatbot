@@ -8,7 +8,6 @@ import { useSession } from 'next-auth/react'
 // MUI Imports
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
-import Chip from '@mui/material/Chip'
 
 // Third-party Imports
 import classnames from 'classnames'
@@ -21,145 +20,76 @@ import tableStyles from '@core/styles/table.module.css'
 import styles from './styles.module.css'
 import frontCommonStyles from '@views/apps/styles.module.css'
 
-// Data
-const features = [
-  {
-    feature: '14-days free trial',
-    starter: true,
-    pro: true,
-    enterprise: true,
-    addOnAvailable: {
-      starter: false,
-      pro: false,
-      enterprise: false
-    }
-  },
-  {
-    feature: 'No user limit',
-    starter: false,
-    pro: false,
-    enterprise: true,
-    addOnAvailable: {
-      starter: false,
-      pro: false,
-      enterprise: false
-    }
-  },
-  {
-    feature: 'Product Support',
-    starter: false,
-    pro: true,
-    enterprise: true,
-    addOnAvailable: {
-      starter: false,
-      pro: false,
-      enterprise: false
-    }
-  },
-  {
-    feature: 'Email Support',
-    starter: false,
-    pro: false,
-    enterprise: true,
-    addOnAvailable: {
-      starter: false,
-      pro: true,
-      enterprise: false
-    }
-  },
-  {
-    feature: 'Integrations',
-    starter: false,
-    pro: true,
-    enterprise: true,
-    addOnAvailable: {
-      starter: false,
-      pro: false,
-      enterprise: false
-    }
-  },
-  {
-    feature: 'Removal of Front branding',
-    starter: false,
-    pro: false,
-    enterprise: true,
-    addOnAvailable: {
-      starter: false,
-      pro: true,
-      enterprise: false
-    }
-  },
-  {
-    feature: 'Active maintenance & support',
-    starter: false,
-    pro: false,
-    enterprise: true,
-    addOnAvailable: {
-      starter: false,
-      pro: false,
-      enterprise: false
-    }
-  },
-  {
-    feature: 'Data storage for 365 days',
-    starter: false,
-    pro: false,
-    enterprise: true,
-    addOnAvailable: {
-      starter: false,
-      pro: false,
-      enterprise: false
-    }
-  }
-]
+const plans = ['starter', 'pro', 'enterprise']
 
-const plans = [
-  { variant: 'outlined', label: 'Choose Plan', plan: 'starter' },
-  { variant: 'contained', label: 'Choose Plan', plan: 'pro' },
-  { variant: 'outlined', label: 'Choose Plan', plan: 'enterprise' }
-]
+const wordsFor = (plan, key) => {
+  const raw = Number(plan?.words)
+
+  if (Number.isFinite(raw) && raw > 0) return raw
+  if (key === 'starter') return 5000
+  if (key === 'enterprise') return 200000
+
+  return 50000
+}
 
 const Plans = () => {
   const { data: session } = useSession()
   const pathname = usePathname()
   const locale = pathname?.split('/').filter(Boolean)[0] || 'en'
-  const [checkoutLoading, setCheckoutLoading] = useState(false)
+  const [checkoutLoading, setCheckoutLoading] = useState('')
   const [checkoutError, setCheckoutError] = useState('')
   const [pricingCopy, setPricingCopy] = useState(null)
+  const [featureRows, setFeatureRows] = useState([])
 
   useEffect(() => {
     let active = true
 
-    fetch('/api/pricing/copy').then(response => response.json()).then(data => {
-      if (active && data.success && Array.isArray(data.pricing)) setPricingCopy(data.pricing)
-    }).catch(() => {})
+    fetch('/api/pricing/copy')
+      .then(response => response.json())
+      .then(data => {
+        if (!active || !data.success) return
+        if (Array.isArray(data.pricing)) setPricingCopy(data.pricing)
+        if (Array.isArray(data.features)) setFeatureRows(data.features)
+      })
+      .catch(() => {})
 
-    return () => { active = false }
+    return () => {
+      active = false
+    }
   }, [])
 
   const copyFor = key => pricingCopy?.find(plan => plan.key === key)
 
-
-  const startCheckout = async () => {
+  const startCheckout = async plan => {
     setCheckoutError('')
+
+    if (plan === 'starter') {
+      window.location.assign('/' + locale + '/register')
+
+      return
+    }
 
     if (!session?.user) {
       window.location.assign('/' + locale + '/login?callbackUrl=%2F' + locale + '%2Fpricing')
 
-return
+      return
     }
 
-    setCheckoutLoading(true)
+    setCheckoutLoading(plan)
 
     try {
-      const response = await fetch('/api/billing/checkout', { method: 'POST' })
+      const response = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan })
+      })
       const data = await response.json()
 
       if (!response.ok || !data.url) throw new Error(data.error || 'Could not start checkout.')
       window.location.assign(data.url)
     } catch (error) {
       setCheckoutError(error?.message || 'Could not start checkout.')
-      setCheckoutLoading(false)
+      setCheckoutLoading('')
     }
   }
 
@@ -168,7 +98,7 @@ return
       <div className={frontCommonStyles.layoutSpacing}>
         <div className='flex flex-col text-center gap-2 mbe-6'>
           <Typography variant='h4'>Pick a plan that works best for you</Typography>
-          <Typography>{pricingCopy?.some(plan => plan.footnote) ? pricingCopy.filter(plan => plan.footnote).map(plan => `${plan.name}: ${plan.footnote}`).join(' · ') : 'Stay cool, we have a 48-hour money back guarantee!'}</Typography>
+          <Typography>Words stay on the account. Buy a pack again whenever you need more.</Typography>
         </div>
         {checkoutError ? (
           <Typography color='error' role='alert' sx={{ mt: 2, textAlign: 'center' }}>
@@ -179,73 +109,78 @@ return
           <table className={tableStyles.table}>
             <thead className={classnames('border-be', styles.tableHead)}>
               <tr>
-                <th>Time</th>
-                <th>
-                  {copyFor('starter')?.name || 'STARTER'}
-                  <Typography variant='body2' className='capitalize'>
-                    {copyFor('starter')?.interval || 'Free'}
-                  </Typography>
-                </th>
-                <th>
-                  <div className='flex justify-center gap-x-2'>
-                    {copyFor('pro')?.name || 'Pro'}
-                    <CustomAvatar size={20} color='primary'>
-                      <i className='ri-star-line text-[14px]' />
-                    </CustomAvatar>
-                  </div>
-                  <Typography variant='body2' className='capitalize'>
-                    {copyFor('pro')?.displayAmount ? `$${copyFor('pro').displayAmount}/${copyFor('pro').interval || 'Month'}` : '$7.5/Month'}
-                  </Typography>
-                </th>
-                <th>
-                  {copyFor('enterprise')?.name || 'ENTERPRISE'}
-                  <Typography variant='body2' className='capitalize'>
-                    {copyFor('enterprise')?.displayAmount ? `$${copyFor('enterprise').displayAmount}/${copyFor('enterprise').interval || 'Month'}` : '$16/Month'}
-                  </Typography>
-                </th>
+                <th>Included</th>
+                {plans.map(key => {
+                  const copy = copyFor(key)
+                  const words = wordsFor(copy, key)
+
+                  return (
+                    <th key={key}>
+                      <div className='flex justify-center items-center gap-1'>
+                        {copy?.name || (key === 'enterprise' ? 'Max' : key === 'pro' ? 'Pro' : 'Starter')}
+                        {key === 'pro' ? (
+                          <CustomAvatar size={20} color='primary'>
+                            <i className='ri-star-line text-[14px]' />
+                          </CustomAvatar>
+                        ) : null}
+                      </div>
+                      <Typography variant='body2'>
+                        {key === 'starter'
+                          ? 'Get a 5000-word trial'
+                          : `$${copy?.displayAmount || (key === 'pro' ? '7.5' : '16')} one-time · ${words.toLocaleString()} words`}
+                      </Typography>
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody className={classnames('border-be', styles.tableBody)}>
-              {features.map((feature, index) => (
-                <tr key={index}>
-                  <td className='text-textPrimary'>{feature.feature}</td>
-                  <td>
-                    {feature.starter ? (
-                      <i className='ri-checkbox-circle-line text-primary' />
-                    ) : (
-                      <i className='ri-close-circle-line' />
-                    )}
-                  </td>
-                  <td>
-                    {feature.pro ? (
-                      <i className='ri-checkbox-circle-line text-primary' />
-                    ) : feature.addOnAvailable.pro && !feature.pro ? (
-                      <Chip variant='tonal' size='small' color='primary' label='Add-on-Available' />
-                    ) : (
-                      <i className='ri-close-circle-line' />
-                    )}
-                  </td>
-                  <td>
-                    {feature.enterprise ? (
-                      <i className='ri-checkbox-circle-line text-primary' />
-                    ) : (
-                      <i className='ri-close-circle-line' />
-                    )}
-                  </td>
+              <tr>
+                <td className='text-textPrimary'>5,000-word trial on signup</td>
+                <td>
+                  <i className='ri-checkbox-circle-line text-primary' />
+                </td>
+                <td>
+                  <i className='ri-checkbox-circle-line text-primary' />
+                </td>
+                <td>
+                  <i className='ri-checkbox-circle-line text-primary' />
+                </td>
+              </tr>
+              <tr>
+                <td className='text-textPrimary'>Words never expire</td>
+                <td>
+                  <i className='ri-checkbox-circle-line text-primary' />
+                </td>
+                <td>
+                  <i className='ri-checkbox-circle-line text-primary' />
+                </td>
+                <td>
+                  <i className='ri-checkbox-circle-line text-primary' />
+                </td>
+              </tr>
+              {featureRows.map(feature => (
+                <tr key={feature.key}>
+                  <td className='text-textPrimary'>{feature.label}</td>
+                  {plans.map(key => (
+                    <td key={key}>
+                      {feature.mode === 'free' || (feature.mode === 'pro' && key !== 'starter') ? (
+                        <i className='ri-checkbox-circle-line text-primary' />
+                      ) : (
+                        <i className='ri-close-circle-line' />
+                      )}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr>
                 <td></td>
-                {plans.map((plan, index) => (
-                  <td key={index} className='text-center plb-[9px]'>
-                    <Button
-                      variant={plan.variant}
-                      disabled={plan.plan === 'pro' && checkoutLoading}
-                      onClick={plan.plan === 'pro' ? startCheckout : () => window.location.assign('/' + locale + '/register')}
-                    >
-                      {plan.plan === 'pro' && checkoutLoading ? 'Redirecting...' : copyFor(plan.plan)?.cta || plan.label}
+                {plans.map(key => (
+                  <td key={key} className='text-center plb-[9px]'>
+                    <Button variant={key === 'pro' ? 'contained' : 'outlined'} disabled={checkoutLoading === key} onClick={() => startCheckout(key)}>
+                      {checkoutLoading === key ? 'Redirecting...' : copyFor(key)?.cta || (key === 'starter' ? 'Get a 5000-word trial' : 'Buy words')}
                     </Button>
                   </td>
                 ))}

@@ -50,6 +50,23 @@ const ImageGeneratorBoard = () => {
   const [imageHistory, setImageHistory] = useState([])
   const [isHistoryLoading, setIsHistoryLoading] = useState(true)
   const [isEnhancing, setIsEnhancing] = useState(false)
+  const [imageOff, setImageOff] = useState(false)
+
+  useEffect(() => {
+    let active = true
+
+    fetch('/api/pricing/copy')
+      .then(response => response.json())
+      .then(data => {
+        if (!active || !data.success || !Array.isArray(data.features)) return
+        setImageOff(!data.features.some(feature => feature.key === 'image-standalone'))
+      })
+      .catch(() => {})
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   useEffect(() => {
     if (sessionStatus === 'loading') return
@@ -213,6 +230,14 @@ const ImageGeneratorBoard = () => {
     } finally {
       setIsGenerating(false)
     }
+  }
+
+  if (imageOff) {
+    return (
+      <Box sx={{ p: 4 }}>
+        <Typography variant='h6'>Standalone images are turned off.</Typography>
+      </Box>
+    )
   }
 
   return (

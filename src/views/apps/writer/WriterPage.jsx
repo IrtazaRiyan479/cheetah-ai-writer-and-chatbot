@@ -285,21 +285,17 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
 
         <div className='flex items-center justify-between flex-wrap gap-4'>
           <div className='flex items-center gap-4 text-textSecondary'>
-            {!isPaid ? (
-              <>
-                <div className='flex items-center gap-1'>
-                  <i className='ri-line-chart-line text-lg' />
-                  <Typography variant='caption' className='font-medium text-sm'>
-                    Current Usage:
-                  </Typography>
-                </div>
-                {usage ? (
-                  <Typography variant='caption' className='text-sm'>
-                    {usage.wordsUsed.toLocaleString()} / {usage.wordsLimit.toLocaleString()} words
-                  </Typography>
-                ) : null}
-              </>
-            ) : null}
+            <div className='flex items-center gap-1'>
+              <i className='ri-line-chart-line text-lg' />
+              <Typography variant='caption' className='font-medium text-sm'>
+                Word balance:
+              </Typography>
+              {usage ? (
+                <Typography variant='caption' className='text-sm'>
+                  {usage.wordsUsed.toLocaleString()} / {usage.wordsLimit.toLocaleString()} words
+                </Typography>
+              ) : null}
+            </div>
           </div>
 
           <div className='flex items-center gap-2'>
@@ -313,21 +309,23 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
             >
               {isGenerating ? 'Generating outline…' : settings.useOutlineEditor ? 'Create Outline' : 'Create Article'}
             </Button>
-            <Button
-              variant='outlined'
-              disabled={isGenerating || isBatching}
-              onClick={() => {
-                if (!isPaid && (featureModes['batch-generate'] || 'pro') === 'pro') {
-                  setPremiumMessage('Batch generation is a Pro feature. Upgrade to generate multiple outlines at once.')
-                  setPremiumOpen(true)
-                  return
-                }
-                setBatchOpen(true)
-              }}
-            >
-              {(featureModes['batch-generate'] || 'pro') === 'pro' && !isPaid ? '⭐ ' : ''}
-              Batch
-            </Button>
+            {featureModes['batch-generate'] === 'off' ? null : (
+              <Button
+                variant='outlined'
+                disabled={isGenerating || isBatching}
+                onClick={() => {
+                  if (!isPaid && (featureModes['batch-generate'] || 'pro') === 'pro') {
+                    setPremiumMessage('Batch generation is a Pro feature. Buy a word pack to unlock it.')
+                    setPremiumOpen(true)
+                    return
+                  }
+                  setBatchOpen(true)
+                }}
+              >
+                {(featureModes['batch-generate'] || 'pro') === 'pro' && !isPaid ? '⭐ ' : ''}
+                Batch
+              </Button>
+            )}
           </div>
         </div>
       </CardContent>

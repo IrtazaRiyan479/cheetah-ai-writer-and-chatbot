@@ -34,7 +34,7 @@ const GetStarted = () => {
               Ready to Get Started?
             </Typography>
             <Typography className='font-medium max-lg:text-center'>
-              Start your project with a 14-day free trial
+              Start your account with a 5,000-word trial
             </Typography>
           </div>
           <Button

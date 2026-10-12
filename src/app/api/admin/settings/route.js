@@ -32,11 +32,12 @@ export async function PUT(request) {
       key: String(plan.key || '').slice(0, 80),
       name: String(plan.name || '').slice(0, 120),
       badge: String(plan.badge || '').slice(0, 120),
-      interval: String(plan.interval || '').slice(0, 60),
+      interval: 'one-time',
       bullets: Array.isArray(plan.bullets) ? plan.bullets.map(item => String(item).slice(0, 300)).slice(0, 30) : [],
       cta: String(plan.cta || '').slice(0, 120),
       footnote: String(plan.footnote || '').slice(0, 300),
-      displayAmount: plan.displayAmount === '' || plan.displayAmount == null ? null : String(plan.displayAmount).slice(0, 40)
+      displayAmount: plan.displayAmount === '' || plan.displayAmount == null ? null : String(plan.displayAmount).slice(0, 40),
+      words: Math.max(0, Math.round(Number(plan.words) || 0))
     }))
 
     await prisma.appSetting.upsert({

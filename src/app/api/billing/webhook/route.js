@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 
 import { NextResponse } from 'next/server'
 
-import { stripeRequest, syncStripeCustomer, syncStripeSubscription } from '@/libs/stripe'
+import { stripeRequest, syncStripeCustomer, syncStripeSubscription, creditWordPack } from '@/libs/stripe'
 
 export const runtime = 'nodejs'
 
@@ -58,6 +58,17 @@ export async function POST(request) {
 
     switch (event.type) {
       case 'checkout.session.completed': {
+        if (object?.mode === 'payment' && object.payment_status === 'paid') {
+          await creditWordPack({
+            userId: object.metadata?.userId || object.client_reference_id,
+            customerId: typeof object.customer === 'string' ? object.customer : object.customer?.id,
+            words: object.metadata?.words,
+            sessionId: object.id,
+            plan: object.metadata?.plan
+          })
+          break
+        }
+
         if (object?.mode === 'subscription' && object.subscription) {
           const subscriptionId = typeof object.subscription === 'string' ? object.subscription : object.subscription.id
 

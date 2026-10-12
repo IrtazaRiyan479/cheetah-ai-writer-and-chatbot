@@ -100,22 +100,6 @@ const AccountSettings = () => {
     }
   }
 
-  const handleManageBilling = async () => {
-    setUpdateError('')
-    setIsUpdating(true)
-
-    try {
-      const response = await fetch('/api/billing/portal', { method: 'POST' })
-      const data = await response.json()
-
-      if (!response.ok || !data.url) throw new Error(data.error || 'Could not open billing management.')
-      window.location.assign(data.url)
-    } catch (error) {
-      setUpdateError(error?.message || 'Could not open billing management.')
-      setIsUpdating(false)
-    }
-  }
-
   const handlePasswordChange = async () => {
     setIsUpdating(true)
     setUpdateError('')
@@ -349,10 +333,10 @@ const AccountSettings = () => {
           </Paper>
         </Box>
 
-        {/* Subscription Section (Unchanged) */}
+        {/* Word balance */}
         <Box>
           <Typography variant='h6' component='h3' sx={{ fontWeight: 600, mb: 2 }}>
-            Subscription
+            Word balance
           </Typography>
           <Paper
             variant='outlined'
@@ -368,49 +352,36 @@ const AccountSettings = () => {
           >
             <Box>
               <Typography variant='body2' color='text.secondary' fontWeight={500} mb={1}>
-                Current Plan
+                Current plan
               </Typography>
               <Chip
                 label={
                   userData.plan === 'admin'
                     ? 'Admin'
                     : userData.plan === 'pro'
-                      ? `Pro · ${userData.subscriptionStatus}`
-                      : 'Free plan'
+                      ? 'Pro · words never expire'
+                      : 'Free · 5,000-word trial'
                 }
                 size='small'
                 color={userData.plan === 'pro' || userData.plan === 'admin' ? 'success' : 'default'}
                 sx={{ fontWeight: 600, borderRadius: 1.5 }}
               />
             </Box>
-            {userData.hasStripeCustomer ? (
-              <Button
-                variant='contained'
-                color='primary'
-                disableElevation
-                onClick={handleManageBilling}
-                disabled={isUpdating}
-                sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
-              >
-                {isUpdating ? <CircularProgress size={20} color='inherit' /> : 'Manage Billing'}
-              </Button>
-            ) : (
-              <Button
-                component='a'
-                href={`/${locale}/pricing`}
-                variant='contained'
-                color='primary'
-                disableElevation
-                sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
-              >
-                View Pricing
-              </Button>
-            )}
+            <Button
+              component='a'
+              href={`/${locale}/pricing`}
+              variant='contained'
+              color='primary'
+              disableElevation
+              sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
+            >
+              Buy words
+            </Button>
             {updateError ? <Alert severity='error'>{updateError}</Alert> : null}
           </Paper>
         </Box>
 
-        {userData.paid ? null : (
+        {userData.plan === 'admin' ? null : (
         <Box sx={{ mb: 4 }}>
           <Typography variant='h6' component='h3' sx={{ fontWeight: 600, mb: 2 }}>
             Current Usage
@@ -441,7 +412,7 @@ const AccountSettings = () => {
                   <Typography variant='subtitle2' fontWeight={600}>
                     Active Chats
                   </Typography>
-                  <Tooltip title='Total chat threads initiated this billing cycle'>
+                  <Tooltip title='Chat threads on this account'>
                     <InfoOutlinedIcon sx={{ fontSize: 18, color: 'text.secondary', cursor: 'pointer' }} />
                   </Tooltip>
                 </Box>

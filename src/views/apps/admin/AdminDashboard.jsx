@@ -28,7 +28,7 @@ const tabs = [
   { label: 'Users', icon: 'ri-team-line' },
   { label: 'Feature flags', icon: 'ri-flag-2-line' },
   { label: 'Limits', icon: 'ri-speed-line' },
-  { label: 'Pricing copy', icon: 'ri-price-tag-3-line' }
+  { label: 'Word packs', icon: 'ri-price-tag-3-line' }
 ]
 
 export default function AdminDashboard() {
@@ -56,91 +56,43 @@ export default function AdminDashboard() {
   }
 
   return (
-    <Box
-      sx={{
-        minHeight: '100%',
-        background: theme =>
-          `linear-gradient(180deg, ${theme.palette.mode === 'dark' ? 'rgba(255,193,7,0.06)' : 'rgba(255,193,7,0.08)'} 0%, transparent 220px)`,
-        p: { xs: 2, md: 4 }
-      }}
-    >
+    <Box sx={{ minHeight: '100%', bgcolor: 'background.default', p: { xs: 2, md: 3 } }}>
       <Paper
         elevation={0}
         sx={{
-          mb: 3,
-          p: { xs: 2.5, md: 3 },
-          borderRadius: 4,
+          mb: 2.5,
+          px: { xs: 2, md: 3 },
+          py: 2.25,
+          borderRadius: 3,
           border: '1px solid',
           borderColor: 'divider',
-          background: theme =>
-            theme.palette.mode === 'dark'
-              ? 'linear-gradient(135deg, rgba(255,193,7,0.12), rgba(0,0,0,0.2))'
-              : 'linear-gradient(135deg, #fff8e1, #ffffff)'
+          bgcolor: 'background.paper'
         }}
       >
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: { xs: 'flex-start', sm: 'center' },
-            flexWrap: 'wrap',
-            gap: 2
-          }}
-        >
-          <Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 0.75 }}>
-              <Box
-                sx={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 2,
-                  display: 'grid',
-                  placeItems: 'center',
-                  bgcolor: 'warning.main',
-                  color: 'warning.contrastText',
-                  fontSize: 20
-                }}
-              >
-                <i className='ri-shield-star-line' />
-              </Box>
-              <Typography variant='h4' sx={{ fontWeight: 800, letterSpacing: '-0.02em' }}>
-                AffiGenie Admin
-              </Typography>
-              <Chip size='small' color='warning' variant='outlined' label='Private' sx={{ fontWeight: 700 }} />
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Box sx={{ width: 44, height: 44, borderRadius: 2, display: 'grid', placeItems: 'center', bgcolor: 'primary.main', color: 'primary.contrastText', fontSize: 22 }}>
+              <i className='ri-shield-star-line' />
             </Box>
-            <Typography color='text.secondary'>
-              Operator console for access, limits, models, and billing display copy.
-            </Typography>
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant='h5' sx={{ fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.2 }}>
+                  AffiGenie Admin
+                </Typography>
+                <Chip size='small' label='Private' color='primary' variant='outlined' />
+              </Box>
+              <Typography variant='body2' color='text.secondary' sx={{ mt: 0.25 }}>
+                Access, word caps, and one-time word packs.
+              </Typography>
+            </Box>
           </Box>
-          <Button
-            variant='outlined'
-            color='inherit'
-            disabled={busy}
-            onClick={() => setConfirmLock(true)}
-            startIcon={<i className='ri-lock-2-line' />}
-            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
-          >
+          <Button variant='outlined' color='inherit' disabled={busy} onClick={() => setConfirmLock(true)} startIcon={<i className='ri-lock-2-line' />} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}>
             Lock console
           </Button>
         </Box>
       </Paper>
-
-      {error ? (
-        <Alert severity='error' sx={{ mb: 2, borderRadius: 2 }}>
-          {error}
-        </Alert>
-      ) : null}
-
-      <Paper
-        elevation={0}
-        sx={{
-          borderRadius: 4,
-          mb: 3,
-          border: '1px solid',
-          borderColor: 'divider',
-          overflow: 'hidden'
-        }}
-      >
+      {error ? <Alert severity='error' sx={{ mb: 2, borderRadius: 2 }}>{error}</Alert> : null}
+      <Paper elevation={0} sx={{ borderRadius: 3, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
         <Tabs
           value={tab}
           onChange={(_, value) => setTab(value)}
@@ -148,55 +100,30 @@ export default function AdminDashboard() {
           scrollButtons='auto'
           sx={{
             px: 1,
-            minHeight: 56,
-            '& .MuiTab-root': {
-              minHeight: 56,
-              textTransform: 'none',
-              fontWeight: 700,
-              gap: 1
-            }
+            bgcolor: theme => (theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(15, 23, 42, 0.03)'),
+            borderBottom: 1,
+            borderColor: 'divider',
+            minHeight: 52,
+            '& .MuiTab-root': { minHeight: 52, textTransform: 'none', fontWeight: 700, fontSize: 14, gap: 1, color: 'text.secondary' },
+            '& .Mui-selected': { color: 'primary.main' }
           }}
         >
           {tabs.map((item, index) => (
-            <Tab
-              key={item.label}
-              value={index}
-              icon={<i className={item.icon} />}
-              iconPosition='start'
-              label={item.label}
-            />
+            <Tab key={item.label} value={index} icon={<i className={item.icon} />} iconPosition='start' label={item.label} />
           ))}
         </Tabs>
+        <Box sx={{ p: { xs: 2, md: 3 } }}>
+          {tab === 0 ? <Overview /> : tab === 1 ? <UsersPanel /> : tab === 2 ? <FlagsPanel /> : tab === 3 ? <LimitsPanel /> : <PricingCopyPanel />}
+        </Box>
       </Paper>
-
-      <Box sx={{ borderRadius: 4 }}>
-        {tab === 0 ? (
-          <Overview />
-        ) : tab === 1 ? (
-          <UsersPanel />
-        ) : tab === 2 ? (
-          <FlagsPanel />
-        ) : tab === 3 ? (
-          <LimitsPanel />
-        ) : (
-          <PricingCopyPanel />
-        )}
-      </Box>
-
       <Dialog open={confirmLock} onClose={() => !busy && setConfirmLock(false)}>
         <DialogTitle>Lock admin console?</DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            You will need to unlock the console again before accessing its controls.
-          </DialogContentText>
+          <DialogContentText>You will need to unlock the console again before accessing its controls.</DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button disabled={busy} onClick={() => setConfirmLock(false)}>
-            Cancel
-          </Button>
-          <Button variant='contained' color='primary' disabled={busy} onClick={lock}>
-            {busy ? 'Locking…' : 'Lock console'}
-          </Button>
+          <Button disabled={busy} onClick={() => setConfirmLock(false)}>Cancel</Button>
+          <Button variant='contained' disabled={busy} onClick={lock}>{busy ? 'Locking…' : 'Lock console'}</Button>
         </DialogActions>
       </Dialog>
     </Box>

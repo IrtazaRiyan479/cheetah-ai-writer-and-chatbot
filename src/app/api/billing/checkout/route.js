@@ -16,19 +16,22 @@ export async function POST(request) {
     if (!user) return NextResponse.json({ success: false, error: 'Sign in required.' }, { status: 401 })
     if (!user.email) return NextResponse.json({ success: false, error: 'An email address is required.' }, { status: 400 })
 
-    if (user.role === 'admin' || user.plan === 'admin') {
-      return NextResponse.json({ success: false, error: 'Admin accounts do not need a subscription.' }, { status: 400 })
-    }
+    const body = await request.json().catch(() => ({}))
+    const plan = body.plan === 'enterprise' || body.plan === 'max' ? 'enterprise' : 'pro'
+    const { PrismaClient } = await import('@prisma/client')
+    const prisma = global.prisma || new PrismaClient()
 
-    if (user.plan === 'pro' || user.role === 'pro') {
-      return NextResponse.json({ success: false, error: 'Your account already has Pro. Use Manage Billing to update your subscription.' }, { status: 409 })
-    }
+    if (process.env.NODE_ENV !== 'production') global.prisma = prisma
 
-    const priceId = process.env.STRIPE_PRO_PRICE_ID
+    const setting = await prisma.appSetting.findUnique({ where: { key: 'pricingCopy' } }).catch(() => null)
+    const pricing = setting ? JSON.parse(setting.value) : []
+    const planCopy = Array.isArray(pricing) ? pricing.find(item => item.key === plan) : null
+    const words = Math.max(1, Math.round(Number(planCopy?.words) || (plan === 'enterprise' ? 200000 : 50000)))
+    const amount = Number(planCopy?.displayAmount)
 
-    if (!priceId) {
+    if (!Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json(
-        { success: false, error: 'Stripe checkout is not configured. Set STRIPE_PRO_PRICE_ID.' },
+        { success: false, error: 'Set a display amount for this word pack in Admin → Word packs.' },
         { status: 503 }
       )
     }
@@ -46,19 +49,22 @@ export async function POST(request) {
     }
 
     const pricingUrl = getLocalizedAppUrl(request, 'pricing')
-
     const checkout = await stripeRequest('checkout/sessions', {
       method: 'POST',
       params: {
-        mode: 'subscription',
+        mode: 'payment',
         customer: customerId,
-        'line_items[0][price]': priceId,
         'line_items[0][quantity]': '1',
+        'line_items[0][price_data][currency]': 'usd',
+        'line_items[0][price_data][unit_amount]': String(Math.round(amount * 100)),
+        'line_items[0][price_data][product_data][name]': `${planCopy?.name || plan} word pack`,
+        'line_items[0][price_data][product_data][description]': `${words.toLocaleString()} words. They never expire.`,
         success_url: `${pricingUrl}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${pricingUrl}?checkout=cancelled`,
         client_reference_id: user.id,
         'metadata[userId]': user.id,
-        'subscription_data[metadata][userId]': user.id
+        'metadata[plan]': plan,
+        'metadata[words]': String(words)
       }
     })
 

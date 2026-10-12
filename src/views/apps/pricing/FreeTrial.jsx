@@ -22,12 +22,12 @@ const FreeTrial = () => {
               <div className='flex flex-col gap-11 items-center md:items-start justify-center plb-10'>
                 <div className='flex flex-col gap-2 max-md:text-center'>
                   <Typography variant='h4' color='primary.main'>
-                    Still not convinced? Start with a 14-day FREE trial!
+                    Get a 5000-word trial
                   </Typography>
-                  <Typography>You will get full access to with all the features for 14 days.</Typography>
+                  <Typography>Sign up and the 5,000 words are added automatically. They stay on the account.</Typography>
                 </div>
                 <Button component={Link} href='/register' variant='contained'>
-                  Start 14-Days Free Trial
+                  Get a 5000-word trial
                 </Button>
               </div>
             </Grid>

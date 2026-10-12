@@ -28,44 +28,30 @@ import ElementTwo from '@/assets/svg/front-pages/landing-page/ElementTwo'
 
 const pricingPlans = [
   {
-    title: 'Basic Plan',
-    price: 29,
-    features: ['50 AI content generations per month', 'Standard chatbot widget', 'Basic traffic analytics', 'Custom form builder', 'Email marketing tools', 'Basic support (24 hour response time)'],
-    supportType: 'Basic',
-    supportMedium: 'Only Email',
-    respondTime: 'AVG. Time: 24h',
-    current: false
-  },
-  {
-    title: 'Growth Plan',
-    price: 79,
-    features: [
-      'Everything in basic',
-      'Unlimited AI content generations',
-      'Advanced AI model access',
-      'Full marketing automation suite',
-      'Campaign management',
-      'Priority support (6 hour response time)'
-    ],
-    supportType: 'Standard',
-    supportMedium: 'Email & Chat',
-    respondTime: 'AVG. Time: 6h',
+    title: 'Starter',
+    price: 0,
+    features: ['5,000 words on signup', 'Words never expire', 'Free article types'],
+    supportType: 'Trial',
+    supportMedium: 'Added when you sign up',
+    respondTime: '5,000 words',
     current: true
   },
   {
-    title: 'Scale Plan',
-    price: 149,
-    features: [
-      'Everything in Growth',
-      'Custom brand voice training',
-      'Team collaboration seats',
-      'A/B testing sandbox',
-      'Social media automation',
-      'Dedicated support'
-    ],
-    supportType: 'Exclusive',
-    supportMedium: 'Email, Chat & Google Meet',
-    respondTime: 'Live Support',
+    title: 'Pro',
+    price: 7.5,
+    features: ['50,000 words added forever', 'Pro features included', 'Buy again any time'],
+    supportType: 'Word pack',
+    supportMedium: 'One-time payment',
+    respondTime: 'Never expires',
+    current: false
+  },
+  {
+    title: 'Max',
+    price: 16,
+    features: ['200,000 words added forever', 'Everything in Pro', 'Buy again any time'],
+    supportType: 'Word pack',
+    supportMedium: 'One-time payment',
+    respondTime: 'Never expires',
     current: false
   }
 ]
@@ -100,7 +86,7 @@ const PricingPlan = () => {
           <Typography variant='h5'>for every stage of your growth</Typography>
         </div>
         <Typography className='font-medium text-center'>
-          Choose the right plan to power your marketing engine. Save 10% on yearly subscriptions.
+          Choose a word pack. Words are added once and never expire.
         </Typography>
       </div>
       <div className='text-center'>
@@ -129,16 +115,24 @@ const PricingPlan = () => {
                   </Typography>
                   <div className='flex items-center gap-3'>
                     <div className='flex items-start'>
-                      <Typography variant='h5'>$</Typography>
-                      <Typography variant='h1' className='font-bold text-5xl'>
-                        {plan.price}
-                      </Typography>
+                      {plan.price === 0 ? (
+                        <Typography variant='h1' className='font-bold text-5xl'>
+                          Free
+                        </Typography>
+                      ) : (
+                        <>
+                          <Typography variant='h5'>$</Typography>
+                          <Typography variant='h1' className='font-bold text-5xl'>
+                            {plan.price}
+                          </Typography>
+                        </>
+                      )}
                     </div>
                     <div className='flex flex-col gap-0.5'>
                       <Typography color='text.primary' className='font-medium'>
-                        Per month
+                        One-time word pack
                       </Typography>
-                      <Typography variant='body2'>10% off for yearly subscription</Typography>
+                      <Typography variant='body2'>Buy again whenever you need more</Typography>
                     </div>
                   </div>
                   <Curve />
@@ -163,8 +157,8 @@ const PricingPlan = () => {
                     <Chip variant='tonal' size='small' color='primary' label={plan.respondTime} />
                   </div>
                 </div>
-                <Button component={Link} href='/register' variant={plan.current ? 'contained' : 'outlined'}>
-                  Get Started
+                <Button component={Link} href={plan.current ? '/register' : '/pricing'} variant={plan.current ? 'contained' : 'outlined'}>
+                  {plan.current ? 'Get a 5000-word trial' : 'Buy words'}
                 </Button>
               </CardContent>
             </Card>

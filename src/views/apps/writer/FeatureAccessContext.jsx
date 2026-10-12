@@ -17,7 +17,8 @@ const FeatureAccessContext = createContext({
   isPaid: false,
   featureModes: {},
   requireFeature: () => true,
-  isProFeature: () => false
+  isProFeature: () => false,
+  modeOf: () => 'pro'
 })
 
 export function FeatureAccessProvider({ children }) {
@@ -28,7 +29,6 @@ export function FeatureAccessProvider({ children }) {
 
   useEffect(() => {
     let active = true
-
     fetch('/api/user/settings')
       .then(res => res.json())
       .then(data => {
@@ -37,36 +37,29 @@ export function FeatureAccessProvider({ children }) {
         setFeatureModes(data.featureModes || {})
       })
       .catch(() => {})
-
-    return () => {
-      active = false
-    }
+    return () => { active = false }
   }, [])
 
-  const modeOf = useCallback(key => featureModes[key] || (FREE_FEATURES.has(key) ? 'free' : 'pro'), [featureModes])
-
+  const modeOf = useCallback(
+    key => featureModes[key] || (FREE_FEATURES.has(key) ? 'free' : 'pro'),
+    [featureModes]
+  )
   const isProFeature = useCallback(key => modeOf(key) === 'pro', [modeOf])
-
   const requireFeature = useCallback(
     (featureKey, { label } = {}) => {
       const mode = modeOf(featureKey)
-
       if (mode === 'off') {
         setPremiumMessage(`${label || FEATURE_META[featureKey]?.label || featureKey} is currently turned off.`)
         setPremiumOpen(true)
-
         return false
       }
-
       if (mode === 'pro' && !isPaid) {
         setPremiumMessage(
-          `${label || FEATURE_META[featureKey]?.label || featureKey} is a Pro feature. Upgrade to unlock it.`
+          `${label || FEATURE_META[featureKey]?.label || featureKey} is a Pro feature. Buy a word pack to unlock it.`
         )
         setPremiumOpen(true)
-
         return false
       }
-
       return true
     },
     [isPaid, modeOf]
@@ -93,7 +86,6 @@ export function FeatureAccessProvider({ children }) {
               setPremiumOpen(false)
               const segment = window.location.pathname.split('/').filter(Boolean)[0]
               const lang = ['en', 'fr', 'ar'].includes(segment) ? segment : 'en'
-
               window.location.href = `/${lang}/home#pricing`
             }}
           >
@@ -110,7 +102,9 @@ export function useFeatureAccess() {
 }
 
 export function FlagSwitch({ featureKey, checked, onChange, label }) {
-  const { requireFeature } = useFeatureAccess()
+  const { requireFeature, modeOf } = useFeatureAccess()
+
+  if (modeOf(featureKey) === 'off') return null
 
   return (
     <FormControlLabel
@@ -137,7 +131,6 @@ export function FlagSwitch({ featureKey, checked, onChange, label }) {
 export function ProLabel({ featureKey, children }) {
   const { isProFeature, isPaid } = useFeatureAccess()
   const showStar = isProFeature(featureKey) && !isPaid
-
   return (
     <span className='inline-flex items-center gap-1'>
       {showStar ? <span title='Pro'>⭐</span> : null}

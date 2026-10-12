@@ -24,9 +24,9 @@ import frontCommonStyles from '@views/apps/styles.module.css'
 const FaqsData = [
   {
     id: 'panel1',
-    question: 'Is my subscription fee recurring?',
+    question: 'Do word packs expire?',
     answer:
-      'Yes, all plans are billed on a monthly or yearly basis to ensure you always have access to the latest AI models and platform features. You can easily upgrade, downgrade, or cancel your plan at any time directly through your account dashboard.'
+      'No. The 5,000-word trial is added when you sign up, and every pack you buy is added to that balance forever. Buying again adds more words. It is not a monthly subscription.'
   },
   {
     id: 'panel2',

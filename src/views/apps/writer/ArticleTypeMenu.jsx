@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect } from 'react'
+
 // MUI Imports
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -12,7 +14,7 @@ import { featureKeyForType } from '@/libs/entitlement'
 import { ProLabel, useFeatureAccess } from './FeatureAccessContext'
 
 const articleTypes = [
-  { id: 'blog', title: 'Blog Post', caption: 'Standard article from a bunch of keywords', icon: 'ri-article-line' },
+  { id: 'blog', title: 'Blog Post', caption: 'Standard article from a keyword', icon: 'ri-article-line' },
   { id: 'listicle', title: 'Listicle', caption: 'Structured list with useful takeaways', icon: 'ri-list-check-2' },
   {
     id: 'local-roundup',
@@ -60,7 +62,14 @@ const articleTypes = [
 ]
 
 const ArticleTypeMenu = ({ selectedType, setSelectedType }) => {
-  const { requireFeature } = useFeatureAccess()
+  const { requireFeature, modeOf, featureModes } = useFeatureAccess()
+  const visibleTypes = articleTypes.filter(type => modeOf(featureKeyForType(type.id)) !== 'off')
+
+  useEffect(() => {
+    if (!visibleTypes.some(type => type.id === selectedType) && visibleTypes[0]) {
+      setSelectedType(visibleTypes[0].id)
+    }
+  }, [featureModes, selectedType, setSelectedType, visibleTypes])
 
   return (
     <div className='flex flex-col gap-3'>
@@ -68,8 +77,8 @@ const ArticleTypeMenu = ({ selectedType, setSelectedType }) => {
         Article Type
       </Typography>
 
-      <Grid container spacing={4}>
-        {articleTypes.map(type => (
+      <Grid container spacing={4} justifyContent='center'>
+        {visibleTypes.map(type => (
           <Grid size={{ xs: 12, sm: 6, md: 4 }} key={type.id}>
             <Card
               onClick={() => {
@@ -79,7 +88,7 @@ const ArticleTypeMenu = ({ selectedType, setSelectedType }) => {
                 setSelectedType(type.id)
               }}
               className={classnames(
-                'cursor-pointer transition-all duration-200 border-2 shadow-sm',
+                'cursor-pointer transition-all duration-200 border-2 shadow-sm h-full',
                 selectedType === type.id
                   ? 'border-primary bg-[var(--mui-palette-primary-lightOpacity)]'
                   : 'border-transparent hover:border-actionHover bg-backgroundPaper'
