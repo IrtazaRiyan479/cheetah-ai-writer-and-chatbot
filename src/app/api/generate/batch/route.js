@@ -132,6 +132,7 @@ export async function POST(request) {
           body: JSON.stringify({
             mode: 'outline',
             settings,
+            extraFeatureKeys: ['batch-generate'],
             targetKeyword: keyword || 'General Topic',
             model: settings.model,
             articleLength: settings.articleLength,

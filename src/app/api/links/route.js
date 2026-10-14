@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 
 import { withGeminiKey } from '@/app/api/generate/utils/geminiKeys';
+import { runWithPaidKeys } from '@/app/api/generate/utils/providerKeys';
+import { paidKeysEnabledFor } from '@/libs/entitlement';
 import * as cheerio from 'cheerio';
 
 
@@ -196,6 +198,7 @@ return res.ok ? url : null;
       }
 
       const validPages = pagesWithContent.filter(p => p.content.length > 50);
+      const usePaidKeys = await paidKeysEnabledFor(['module-links']);
 
       if (validPages.length === 0) {
         return NextResponse.json({ error: 'Could not extract text.' }, { status: 400 });
@@ -243,14 +246,14 @@ return res.ok ? url : null;
               ]
               `;
 
-              const result = await withGeminiKey(async apiKey => {
+              const result = await runWithPaidKeys(usePaidKeys, () => withGeminiKey(async apiKey => {
                 const client = new GoogleGenerativeAI(apiKey)
                 const model = client.getGenerativeModel({
                   model: 'gemini-3.1-flash-lite',
                   generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 8192 }
                 })
                 return model.generateContent(prompt)
-              });
+              }));
 
               if (req.signal.aborted) break;
 

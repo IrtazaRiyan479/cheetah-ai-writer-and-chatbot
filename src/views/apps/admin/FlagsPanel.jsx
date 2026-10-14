@@ -25,7 +25,6 @@ const modeColor = {
 
 export default function FlagsPanel() {
   const [flags, setFlags] = useState(null)
-  const [allowFreeGeminiKeysForPro, setAllowFreeGeminiKeysForPro] = useState(false)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
 
@@ -35,7 +34,6 @@ export default function FlagsPanel() {
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Could not load feature flags.')
       setFlags(data.flags)
-      setAllowFreeGeminiKeysForPro(Boolean(data.allowFreeGeminiKeysForPro))
     } catch (caught) {
       setError(caught.message || 'Could not load feature flags.')
     }
@@ -64,6 +62,25 @@ export default function FlagsPanel() {
     }
   }
 
+  const updatePaidKeys = async (key, usePaidKeys) => {
+    setBusy(`${key}:paid`)
+    try {
+      const response = await fetch('/api/admin/flags', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, usePaidKeys })
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Could not update paid-key setting.')
+      setFlags(items => items.map(item => (item.key === key ? { ...item, usePaidKeys } : item)))
+      toast.success(usePaidKeys ? 'This feature now uses paid API keys.' : 'This feature now uses free API keys.')
+    } catch (caught) {
+      toast.error(caught.message || 'Could not update paid-key setting.')
+    } finally {
+      setBusy('')
+    }
+  }
+
   const groups = useMemo(() => {
     if (!flags) return []
     const map = new Map()
@@ -86,51 +103,10 @@ export default function FlagsPanel() {
         </Typography>
         <Typography variant='body2' color='text.secondary' sx={{ mt: 0.75, maxWidth: 760, lineHeight: 1.6 }}>
           Free is available on every plan. Pro requires Pro or Max. Max requires a Max word pack. Off removes the feature
-          from the writer, models, app pages, and the pricing table.
+          from the writer, models, app pages, and the pricing table. Paid keys is separate: if any feature used in a
+          request has it on, that request uses the paid API key pools. Otherwise it uses the free pools.
         </Typography>
       </Box>
-      <Paper elevation={0} sx={{ borderRadius: 0, border: '1px solid', borderColor: 'divider', p: 2.5 }}>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={allowFreeGeminiKeysForPro}
-              disabled={busy === 'allowFreeGeminiKeysForPro'}
-              onChange={async event => {
-                const next = event.target.checked
-                setBusy('allowFreeGeminiKeysForPro')
-                try {
-                  const response = await fetch('/api/admin/flags', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ allowFreeGeminiKeysForPro: next })
-                  })
-                  const data = await response.json()
-                  if (!response.ok) throw new Error(data.error || 'Could not update setting.')
-                  setAllowFreeGeminiKeysForPro(next)
-                  toast.success(
-                    next ? 'Pro features may use free Gemini keys.' : 'Pro features will use paid Gemini keys.'
-                  )
-                } catch (caught) {
-                  toast.error(caught.message || 'Could not update setting.')
-                } finally {
-                  setBusy('')
-                }
-              }}
-            />
-          }
-          label={
-            <Box>
-              <Typography variant='body1' sx={{ fontWeight: 700 }}>
-                Allow free Gemini API keys for Pro / Max features
-              </Typography>
-              <Typography variant='caption' color='text.secondary'>
-                When enabled, pro-gated writer features still require a paid plan, but generation uses the free Gemini key
-                pool instead of paid keys.
-              </Typography>
-            </Box>
-          }
-        />
-      </Paper>
       {error ? (
         <Typography color='error' sx={{ p: 1 }}>
           {error}
@@ -209,6 +185,17 @@ export default function FlagsPanel() {
                   <ToggleButton value='max'>Max</ToggleButton>
                   <ToggleButton value='off'>Off</ToggleButton>
                 </ToggleButtonGroup>
+                <FormControlLabel
+                  sx={{ m: 0 }}
+                  control={
+                    <Switch
+                      checked={Boolean(flag.usePaidKeys)}
+                      disabled={busy === `${flag.key}:paid`}
+                      onChange={event => updatePaidKeys(flag.key, event.target.checked)}
+                    />
+                  }
+                  label='Paid keys'
+                />
               </Box>
             ))}
           </Box>

@@ -1,4 +1,20 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
+
 import { serializeError } from '@/utils/serializeError'
+
+const keyTierStore = new AsyncLocalStorage()
+
+export function runWithPaidKeys(paid, fn) {
+  return keyTierStore.run({ paid: Boolean(paid) }, fn)
+}
+
+/** Explicit true/false wins. An active request tier wins over model-name guesses. */
+export function resolvePaidTier(explicit, model) {
+  if (typeof explicit === 'boolean') return explicit
+  const store = keyTierStore.getStore()
+  if (store && typeof store.paid === 'boolean') return store.paid
+  return /(?:-pro(?:-|$)|-image(?:-|$)|-pro-image)/i.test(String(model || ''))
+}
 
 export function parseProviderKeyList(value) {
   const values = String(value || '').split(/[\n,;]+/)

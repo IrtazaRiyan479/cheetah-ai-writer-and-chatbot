@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai'
 
-import { withGeminiKey } from '../utils/geminiKeys'
+import { withGeminiKey, rememberPaidInteraction } from '../utils/geminiKeys'
 
 import {
   fetchSerperOutlineData,
@@ -353,6 +353,8 @@ export async function generateStandardBlogSection(body, genAI) {
         background: true
       })
     }, { paid: Boolean(genAI?.paid) })
+
+    if (genAI?.paid && interaction?.id) rememberPaidInteraction(interaction.id)
 
     return {
       success: true,

@@ -1,4 +1,5 @@
 import { geminiGenerateContent, listGeminiApiKeys } from './geminiKeys'
+import { resolvePaidTier } from './providerKeys'
 
 import { callLightLLM, parseJsonSafe } from './lightLLM'
 
@@ -734,7 +735,8 @@ export function calculateRelevanceScore(altText, query, topic) {
 }
 
 export async function generateFallbackImage(prompt) {
-  if (!listGeminiApiKeys().length) return null
+  const paid = resolvePaidTier(undefined, 'gemini-3-pro-image')
+  if (!listGeminiApiKeys({ paid }).length) return null
 
   try {
     const finalPrompt = `photorealistic style, landscape orientation, highly detailed. ${prompt}`
@@ -744,7 +746,7 @@ export async function generateFallbackImage(prompt) {
       generationConfig: { imageConfig: { aspectRatio: '16:9' } }
     }
 
-    const data = await geminiGenerateContent({ model: 'gemini-3-pro-image', body: requestBody })
+    const data = await geminiGenerateContent({ model: 'gemini-3-pro-image', body: requestBody, paid })
     let originalBase64 = null
 
     data.candidates?.forEach(candidate => {

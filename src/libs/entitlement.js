@@ -404,16 +404,17 @@ export function activeFeatureKeysFromSettings(settings = {}, type, model) {
   return [...new Set(keys)]
 }
 
-export async function resolveGenerationAccess({ userId, email, settings = {}, type, model, estimatedWords = 0, featureKeys } = {}) {
+export async function resolveGenerationAccess({ userId, email, settings = {}, type, model, estimatedWords = 0, featureKeys, extraFeatureKeys } = {}) {
   try {
     const user = await getDbUser({ userId, email })
     if (!user) return { ok: false, status: 401, error: 'Sign in required.' }
 
     const modes = await getFeatureModes()
-    const activeKeys = featureKeys?.length
+    const computed = featureKeys?.length
       ? [...new Set(featureKeys)]
       : activeFeatureKeysFromSettings(settings, type, model)
-    let usePaidKeys = false
+    const extras = (Array.isArray(extraFeatureKeys) ? extraFeatureKeys : []).filter(key => FEATURE_KEYS.includes(key))
+    const activeKeys = [...new Set([...computed, ...extras])]
     const blocked = []
 
     for (const key of activeKeys) {
@@ -428,10 +429,8 @@ export async function resolveGenerationAccess({ userId, email, settings = {}, ty
       }
       if (mode === 'max') {
         if (!isMax(user)) blocked.push({ label: FEATURE_META[key]?.label || key, mode })
-        else usePaidKeys = true
       } else if (mode === 'pro') {
         if (!isPaid(user)) blocked.push({ label: FEATURE_META[key]?.label || key, mode })
-        else usePaidKeys = true
       }
     }
 
@@ -446,12 +445,8 @@ export async function resolveGenerationAccess({ userId, email, settings = {}, ty
       }
     }
 
-    if (usePaidKeys) {
-      const freeKeysSetting = await prisma.appSetting.findUnique({ where: { key: 'allowFreeGeminiKeysForPro' } }).catch(() => null)
-      if (freeKeysSetting && (freeKeysSetting.value === '1' || freeKeysSetting.value === 'true')) {
-        usePaidKeys = false
-      }
-    }
+    const paidRows = await prisma.featureFlag.findMany({ where: { key: { in: activeKeys } } })
+    const usePaidKeys = paidRows.some(row => row.usePaidKeys === true)
 
     const capSetting = await prisma.appSetting.findUnique({ where: { key: 'globalFreeWordCap' } }).catch(() => null)
     const globalFreeWordCap = capSetting ? Math.max(0, Number(capSetting.value) || 0) : FREE_WORD_CAP
@@ -489,6 +484,13 @@ export async function resolveGenerationAccess({ userId, email, settings = {}, ty
   } catch (error) {
     return { ok: false, status: 500, error: serializeError(error) }
   }
+}
+
+export async function paidKeysEnabledFor(featureKeys = []) {
+  const keys = [...new Set(featureKeys.filter(key => FEATURE_KEYS.includes(key)))]
+  if (!keys.length) return false
+  const rows = await prisma.featureFlag.findMany({ where: { key: { in: keys } } })
+  return rows.some(row => row.usePaidKeys === true)
 }
 
 export async function assertCanGenerate({ userId, email, featureKey, estimatedWords = 0 }) {

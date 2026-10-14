@@ -1,5 +1,5 @@
 import { serializeError } from '@/utils/serializeError'
-import { listProviderKeys } from './providerKeys'
+import { listProviderKeys, resolvePaidTier } from './providerKeys'
 
 export function listGeminiApiKeys({ paid = false } = {}) {
   const freeKeys = listProviderKeys('GEMINI_API_KEYS', {
@@ -42,11 +42,22 @@ function classifyGeminiError(error) {
   return { kind: 'other', status: status || 0, message }
 }
 
-export function withGeminiKey(fn, { paid = false, model } = {}) {
-  const keys = listGeminiApiKeys({ paid })
-  if (!keys.length) throw new Error(paid ? 'Gemini API key is not configured for paid models.' : 'Gemini API key is not configured.')
+const paidInteractions = globalThis.__affigeniePaidInteractions || (globalThis.__affigeniePaidInteractions = new Set())
 
-  return rotateGeminiKeys(keys, fn, paid, model)
+export function rememberPaidInteraction(id) {
+  if (id) paidInteractions.add(String(id))
+}
+
+export function interactionUsesPaidKeys(id) {
+  return paidInteractions.has(String(id || ''))
+}
+
+export function withGeminiKey(fn, { paid, model } = {}) {
+  const usePaid = resolvePaidTier(paid, model)
+  const keys = listGeminiApiKeys({ paid: usePaid })
+  if (!keys.length) throw new Error(usePaid ? 'Gemini API key is not configured for paid models.' : 'Gemini API key is not configured.')
+
+  return rotateGeminiKeys(keys, fn, usePaid, model)
 }
 
 async function rotateGeminiKeys(keys, fn, paid, model) {
@@ -85,7 +96,7 @@ async function rotateGeminiKeys(keys, fn, paid, model) {
 }
 
 export async function geminiGenerateContent({ model, body, timeoutMs = 90000, paid } = {}) {
-  const usePaid = paid ?? /(?:-pro(?:-|$)|-image(?:-|$)|-pro-image)/i.test(String(model || ''))
+  const usePaid = resolvePaidTier(paid, model)
 
   return withGeminiKey(async apiKey => {
     const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`)

@@ -32,6 +32,7 @@ export async function fetchInternalAmazonData(keyword, settings) {
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
 
   let lastError = null
+
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const response = await fetch(`${baseUrl}/api/amazon`, {
@@ -48,18 +49,28 @@ export async function fetchInternalAmazonData(keyword, settings) {
       if (!response.ok) {
         const errorText = await response.text()
         let errorDetails = errorText
+
         try {
           const parsed = JSON.parse(errorText)
+
           errorDetails = parsed.details ? JSON.stringify(parsed.details) : parsed.error || errorText
         } catch (e) {}
+
         const message = String(errorDetails || '')
+
         lastError = new Error(`Amazon API ${response.status}: ${message.slice(0, 300)}`)
+
         // Retry transient failures
-        if (response.status >= 500 || response.status === 429 || /timeout|fetch failed|credits|throttl/i.test(message)) {
+        if (
+          response.status >= 500 ||
+          response.status === 429 ||
+          /timeout|fetch failed|credits|throttl/i.test(message)
+        ) {
           console.warn(`[amazon] attempt ${attempt}/3 failed:`, message.slice(0, 180))
           await new Promise(r => setTimeout(r, 800 * attempt))
           continue
         }
+
         console.error('Amazon Route Failed:', errorDetails)
         throw lastError
       }
@@ -68,15 +79,18 @@ export async function fetchInternalAmazonData(keyword, settings) {
     } catch (error) {
       lastError = error
       const msg = String(error?.message || error)
+
       if (/timeout|abort|fetch failed|ECONN|network/i.test(msg) && attempt < 3) {
         console.warn(`[amazon] network attempt ${attempt}/3:`, msg.slice(0, 180))
         await new Promise(r => setTimeout(r, 800 * attempt))
         continue
       }
+
       if (attempt >= 3) break
       throw error
     }
   }
+
   throw lastError || new Error('Amazon API failed after retries.')
 }
 
@@ -414,22 +428,29 @@ export async function generateAmazonRoundupSection(body, genAI) {
       partnerTag: settings.amazonTrackingId || process.env.AMAZON_PARTNER_TAG || ''
     }
 
-    topPicksTable = settings.roundupLayout === 'top-pick'
-      ? renderTopPickCards(formattedProducts, linkOptions)
-      : renderResponsiveTable({
-          headers: ['Image', 'Product', 'Link'],
-          rows: top3.map(p => {
-            const safeTitle = escapeHtml(String(p.productName || '').replace(/[\r\n]+/g, ' '))
-            const safeImageUrl = escapeHtml(String(p.imageUrl || '').replace(/_/g, '%5F'))
-            const altText = escapeHtml(`${targetKeyword || ''} ${p.productName || ''}`.trim())
-            const button = buildCheckPriceButton(p.amazonUrl, { ...linkOptions, asin: p.asin })
-            return [`<img src="${safeImageUrl}" alt="${altText}" title="${safeTitle}" style="width:80px;height:80px;max-width:100%;object-fit:contain;border-radius:8px;" />`, safeTitle, button]
-          })
-        })
+    topPicksTable =
+      settings.roundupLayout === 'top-pick'
+        ? renderTopPickCards(formattedProducts, linkOptions)
+        : renderResponsiveTable({
+            headers: ['Image', 'Product', 'Link'],
+            rows: top3.map(p => {
+              const safeTitle = escapeHtml(String(p.productName || '').replace(/[\r\n]+/g, ' '))
+              const safeImageUrl = escapeHtml(String(p.imageUrl || '').replace(/_/g, '%5F'))
+              const altText = escapeHtml(`${targetKeyword || ''} ${p.productName || ''}`.trim())
+              const button = buildCheckPriceButton(p.amazonUrl, { ...linkOptions, asin: p.asin })
 
-    sectionPrompt += settings.roundupLayout === 'top-pick'
-      ? `TASK: Write an engaging introduction for "${targetKeyword}". Follow it with these ranked product cards; do not add a product table:\n${topPicksTable}`
-      : `TASK: Write a strong, engaging introduction for the keyword "${targetKeyword}". Immediately following your introductory paragraphs, include this Product Table:\n### Our Top 3 Picks\n${topPicksTable}`
+              return [
+                `<img src="${safeImageUrl}" alt="${altText}" title="${safeTitle}" style="width:80px;height:80px;max-width:100%;object-fit:contain;border-radius:8px;" />`,
+                safeTitle,
+                button
+              ]
+            })
+          })
+
+    sectionPrompt +=
+      settings.roundupLayout === 'top-pick'
+        ? `TASK: Write an engaging introduction for "${targetKeyword}". Follow it with these ranked product cards; do not add a product table:\n${topPicksTable}`
+        : `TASK: Write a strong, engaging introduction for the keyword "${targetKeyword}". Immediately following your introductory paragraphs, include this Product Table:\n### Our Top 3 Products\n${topPicksTable}`
   } else if (activeSectionType === 'product') {
     const cleanHeading = activeHeadingText
       .replace(/^\d+\.\s*/, '')

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 
 import { authOptions } from '@/libs/auth'
-import { resolveGenerationAccess, claimFreeWords, settleReservedWords } from '@/libs/entitlement'
+import { resolveGenerationAccess, claimFreeWords, settleReservedWords, FEATURE_KEYS } from '@/libs/entitlement'
 import { serializeError } from '@/utils/serializeError'
 
 import { generateLocalRoundupOutline, generateLocalRoundupSection } from './services/localRoundup'
@@ -15,6 +15,7 @@ import { generateAmazonReviewOutline, generateAmazonReviewSection } from './serv
 import { generateProductComparisonOutline, generateProductComparisonSection, validateProductComparisonUrls } from './services/productComparison'
 import { getBaseSystemInstruction } from './utils/helpers'
 import { callLLM, createProviderGenAI } from './utils/llm'
+import { runWithPaidKeys } from './utils/providerKeys'
 import { attachBrandedHero, fetchSerperOutlineData, pickRelevantImages } from './utils/helpers'
 
 export const maxDuration = 60
@@ -37,13 +38,21 @@ export async function POST(request) {
     }
 
     const session = await getServerSession(authOptions)
+    const extraFeatureKeys = []
+    if (!mode && prompt && Array.isArray(history)) extraFeatureKeys.push('module-chat')
+    if (Array.isArray(body.extraFeatureKeys)) {
+      for (const key of body.extraFeatureKeys) {
+        if (typeof key === 'string' && FEATURE_KEYS.includes(key)) extraFeatureKeys.push(key)
+      }
+    }
     const gate = await resolveGenerationAccess({
       userId: session?.user?.id,
       email: session?.user?.email,
       settings,
       type,
       model: settings.model || body.model,
-      estimatedWords: mode === 'section' ? 0 : 1
+      estimatedWords: mode === 'section' ? 0 : 1,
+      extraFeatureKeys
     })
 
     if (!gate.ok) {
@@ -53,6 +62,7 @@ export async function POST(request) {
       )
     }
 
+    return await runWithPaidKeys(Boolean(gate.usePaidKeys), async () => {
     const genAI = createProviderGenAI({ paid: Boolean(gate.usePaidKeys) })
     const started = Date.now()
     console.info(`[generate] keys=${gate.usePaidKeys ? 'paid' : 'free'} features=${(gate.activeKeys || []).join(',')}`)
@@ -214,6 +224,7 @@ export async function POST(request) {
     reserved = 0
 
     return NextResponse.json({ success: true, text: result.text })
+    })
   } catch (error) {
     if (reserved && reserveUserId) {
       await settleReservedWords(reserveUserId, reserved, '').catch(() => {})

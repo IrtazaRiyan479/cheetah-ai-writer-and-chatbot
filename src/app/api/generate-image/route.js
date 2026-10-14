@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client'
 import { authOptions } from '@/libs/auth'
 import { assertCanGenerate, getDbUser } from '@/libs/entitlement'
 import { geminiGenerateContent } from '@/app/api/generate/utils/geminiKeys'
+import { runWithPaidKeys } from '@/app/api/generate/utils/providerKeys'
 import { serializeError } from '@/utils/serializeError'
 
 const prisma = global.prisma || new PrismaClient()
@@ -68,6 +69,7 @@ export async function POST(req) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      return runWithPaidKeys(Boolean(gate.usePaidKeys), async () => {
       try {
         const modelMapping = {
           'nano-banana': 'gemini-3-pro-image',
@@ -202,6 +204,7 @@ export async function POST(req) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ success: false, error: serializeError(error) })}\n\n`))
         controller.close()
       }
+      })
     }
   })
 

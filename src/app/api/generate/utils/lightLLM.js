@@ -1,4 +1,4 @@
-import { listProviderKeys, withProviderKey } from './providerKeys'
+import { listProviderKeys, resolvePaidTier, withProviderKey } from './providerKeys'
 
 const GROQ_MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b']
 
@@ -13,7 +13,10 @@ export function parseJsonSafe(text) {
 }
 
 export async function callGroq({ prompt, system, json = false, model, max_tokens = 512, waitOn429 = true }) {
-  const keys = listProviderKeys('GROQ_API_KEYS', { numberedPrefix: 'GROQ_API_KEY_', legacySingles: ['GROQ_API_KEY'] })
+  const paid = resolvePaidTier()
+  const keys = paid
+    ? listProviderKeys('GROQ_PAID_API_KEYS', { numberedPrefix: 'GROQ_PAID_API_KEY_', legacySingles: ['GROQ_PAID_API_KEY'] })
+    : listProviderKeys('GROQ_API_KEYS', { numberedPrefix: 'GROQ_API_KEY_', legacySingles: ['GROQ_API_KEY'] })
   if (!keys.length) return null
 
   const models = model ? [model, ...GROQ_MODELS.filter(item => item !== model)] : GROQ_MODELS
@@ -47,7 +50,10 @@ export async function callGroq({ prompt, system, json = false, model, max_tokens
 }
 
 export async function callMistral({ prompt, system, json = false, model = 'mistral-small-latest', max_tokens = 512 }) {
-  const keys = listProviderKeys('MISTRAL_API_KEYS', { numberedPrefix: 'MISTRAL_API_KEY_', legacySingles: ['MISTRAL_API_KEY'] })
+  const paid = resolvePaidTier()
+  const keys = paid
+    ? listProviderKeys('MISTRAL_PAID_API_KEYS', { numberedPrefix: 'MISTRAL_PAID_API_KEY_', legacySingles: ['MISTRAL_PAID_API_KEY'] })
+    : listProviderKeys('MISTRAL_API_KEYS', { numberedPrefix: 'MISTRAL_API_KEY_', legacySingles: ['MISTRAL_API_KEY'] })
   if (!keys.length) return null
   const messages = []
   if (system) messages.push({ role: 'system', content: system })

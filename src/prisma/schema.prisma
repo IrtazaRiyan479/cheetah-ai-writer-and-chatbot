@@ -60,10 +60,11 @@ model User {
 }
 
 model FeatureFlag {
-  key     String  @id
-  enabled Boolean @default(true)
-  free    Boolean @default(false)
-  mode    String  @default("pro")
+  key         String  @id
+  enabled     Boolean @default(true)
+  free        Boolean @default(false)
+  mode        String  @default("pro")
+  usePaidKeys Boolean @default(false)
 }
 
 model AppSetting {

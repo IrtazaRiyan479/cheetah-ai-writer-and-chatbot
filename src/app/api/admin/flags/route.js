@@ -25,7 +25,7 @@ export async function GET(request) {
       try {
         const flag = await prisma.featureFlag.upsert({
           where: { key },
-          create: { key, enabled: true, free: isFree, mode: isFree ? 'free' : 'pro' },
+          create: { key, enabled: true, free: isFree, mode: isFree ? 'free' : 'pro', usePaidKeys: !isFree },
           update: {}
         })
 
@@ -42,19 +42,17 @@ export async function GET(request) {
       }
     }
 
-    const freeKeysSetting = await prisma.appSetting
-      .findUnique({ where: { key: 'allowFreeGeminiKeysForPro' } })
-      .catch(() => null)
-
-    const allowFreeGeminiKeysForPro = freeKeysSetting?.value === '1' || freeKeysSetting?.value === 'true'
-
     return Response.json({
       success: true,
-      flags: uniqueKeys.map(key => ({
-        key,
-        mode: byKey.get(key).mode || (byKey.get(key).enabled === false ? 'off' : byKey.get(key).free ? 'free' : 'pro')
-      })),
-      allowFreeGeminiKeysForPro
+      flags: uniqueKeys.map(key => {
+        const row = byKey.get(key)
+        const mode = row.mode || (row.enabled === false ? 'off' : row.free ? 'free' : 'pro')
+        return {
+          key,
+          mode,
+          usePaidKeys: row.usePaidKeys === true
+        }
+      })
     })
   } catch (error) {
     return Response.json({ success: false, error: serializeError(error) }, { status: 500 })
@@ -68,18 +66,28 @@ export async function PATCH(request) {
     if (gate.error) return gate.error
 
     const body = await request.json()
+    const { key, mode, usePaidKeys } = body
 
-    if (typeof body.allowFreeGeminiKeysForPro === 'boolean') {
-      await prisma.appSetting.upsert({
-        where: { key: 'allowFreeGeminiKeysForPro' },
-        create: { key: 'allowFreeGeminiKeysForPro', value: body.allowFreeGeminiKeysForPro ? '1' : '0' },
-        update: { value: body.allowFreeGeminiKeysForPro ? '1' : '0' }
+    if (typeof usePaidKeys === 'boolean') {
+      if (!FEATURE_KEYS.includes(key)) {
+        return Response.json({ success: false, error: 'Invalid feature key.' }, { status: 400 })
+      }
+
+      const isFree = FREE_FEATURES.has(key)
+      await prisma.featureFlag.upsert({
+        where: { key },
+        create: {
+          key,
+          mode: isFree ? 'free' : 'pro',
+          enabled: true,
+          free: isFree,
+          usePaidKeys
+        },
+        update: { usePaidKeys }
       })
 
-      return Response.json({ success: true, allowFreeGeminiKeysForPro: body.allowFreeGeminiKeysForPro })
+      return Response.json({ success: true, key, usePaidKeys })
     }
-
-    const { key, mode } = body
 
     if (!FEATURE_KEYS.includes(key) || !FEATURE_MODES.includes(mode)) {
       return Response.json({ success: false, error: 'Invalid feature key or mode.' }, { status: 400 })

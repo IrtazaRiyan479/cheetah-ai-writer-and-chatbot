@@ -3,9 +3,13 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 
 import { serializeError } from '@/utils/serializeError'
 import { withGeminiKey } from '@/app/api/generate/utils/geminiKeys'
+import { runWithPaidKeys } from '@/app/api/generate/utils/providerKeys'
+import { paidKeysEnabledFor } from '@/libs/entitlement'
 
 export async function POST(req) {
   try {
+    const usePaidKeys = await paidKeysEnabledFor(['module-magnets'])
+    return await runWithPaidKeys(usePaidKeys, async () => {
     const body = await req.json()
     const { action = 'create', prompt, aiInstructions, userInputs } = body
 
@@ -68,6 +72,7 @@ export async function POST(req) {
     }
 
     return NextResponse.json({ error: 'Invalid Action' }, { status: 400 })
+    })
   } catch (error) {
     console.error('AffiGenieMagnets API Error:', error)
     return NextResponse.json({ success: false, error: serializeError(error) }, { status: 500 })

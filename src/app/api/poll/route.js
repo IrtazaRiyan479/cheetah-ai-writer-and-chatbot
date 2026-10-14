@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 
-import { withGeminiKey } from '@/app/api/generate/utils/geminiKeys'
+import { interactionUsesPaidKeys, withGeminiKey } from '@/app/api/generate/utils/geminiKeys'
+import { runWithPaidKeys } from '@/app/api/generate/utils/providerKeys'
+import { paidKeysEnabledFor } from '@/libs/entitlement'
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
@@ -9,6 +11,8 @@ export async function GET(request) {
   if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 })
 
   try {
+    const usePaidKeys = interactionUsesPaidKeys(id) || (await paidKeysEnabledFor(['deep-search']))
+    return await runWithPaidKeys(usePaidKeys, async () => {
     const interaction = await withGeminiKey(async apiKey => {
       const ai = new GoogleGenAI({ apiKey })
       return ai.interactions.get(id)
@@ -21,6 +25,7 @@ export async function GET(request) {
     }
 
     return NextResponse.json({ status: 'processing' })
+    })
   } catch (error) {
     console.error('Polling Error:', error)
 

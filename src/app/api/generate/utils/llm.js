@@ -4,7 +4,7 @@ import { serializeError } from '@/utils/serializeError'
 
 import { callGroq, callMistral, parseJsonSafe } from './lightLLM'
 import { geminiGenerateContent, listGeminiApiKeys } from './geminiKeys'
-import { listProviderKeys, withProviderKey } from './providerKeys'
+import { listProviderKeys, resolvePaidTier, withProviderKey } from './providerKeys'
 
 export const DEFAULT_XAI_MODEL = 'grok-4.7'
 
@@ -171,10 +171,10 @@ export async function callLLM({
   temperature = 0.4,
   model,
   geminiModel,
-  paid = false
+  paid
 }) {
   const requested = resolveModel(model || geminiModel || 'gemini-3.1-flash-lite')
-  requested.paid = Boolean(paid)
+  requested.paid = resolvePaidTier(paid, requested.model)
   const stableSystem = `${STABLE_SYSTEM_PREFIX}\n\n${system || ''}`.trim()
   const userPrompt = json ? `${prompt || ''}${OUTLINE_JSON_SUFFIX}` : prompt || ''
   const request = { system: stableSystem, prompt: userPrompt, json, maxTokens, temperature }
