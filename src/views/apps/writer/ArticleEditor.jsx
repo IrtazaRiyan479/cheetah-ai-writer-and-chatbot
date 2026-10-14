@@ -85,17 +85,20 @@ function mediaKey(item) {
   }
 }
 
-
 function stripLeadingHeading(html, heading) {
   if (!html || !heading) return html
   const escaped = String(heading).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
   const patterns = [
     new RegExp(`^\\s*<h[1-3][^>]*>\\s*${escaped}\\s*<\\/h[1-3]>`, 'i'),
     new RegExp(`^\\s*<p[^>]*>\\s*<strong>\\s*${escaped}\\s*<\\/strong>\\s*<\\/p>`, 'i'),
     new RegExp(`^\\s*#+\\s*${escaped}\\s*`, 'i')
   ]
+
   let out = String(html)
+
   for (const re of patterns) out = out.replace(re, '')
+
   return out
 }
 
@@ -749,6 +752,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
   const handlePublishToWP = async (status = 'draft', metaTitle, metaDescription) => {
     const contentToPublish = editor?.getHTML() || ''
+
     const plainContent = contentToPublish
       .replace(/<h1[^>]*>[\s\S]*?<\/h1>/gi, '')
       .replace(/<script[\s\S]*?<\/script>/gi, '')
@@ -1321,11 +1325,10 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
               prep?.code === 'PAID_KEYS_FAILED'
                 ? 'Low credits. Generation stopped.'
                 : serializeError(prep?.error || prep) ||
-                  'Free word limit reached. Generation stopped so it does not keep retrying. Upgrade to Pro to continue this article.'
-            const safe = String(message)
-              .replace(/&/g, '&amp;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;')
+                  'Free word limit reached. Generation stopped. Upgrade to Pro to continue this article.'
+
+            const safe = String(message).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
             editor
               .chain()
               .focus('end')
@@ -1336,6 +1339,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
             setIsGenerating(false)
             setWaitBanner('')
             editor.setEditable(true)
+
             return
           }
 
@@ -1351,6 +1355,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
       const placeAt = (index, html) => {
         const current = editor.getHTML()
+
         const re = new RegExp(
           `<p[^>]*(?:data-wait-section="${index}"|wait-section-${index})[^>]*>[\\s\\S]*?<\\/p>`,
           'i'
@@ -1375,16 +1380,15 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
             if (error.noRetry) {
               if (!haltNotice) {
                 haltNotice = true
+
                 const message =
                   error.code === 'PAID_KEYS_FAILED'
                     ? 'Low credits. Generation stopped.'
                     : error.code === 'PRO_REQUIRED' || error.code === 'MAX_REQUIRED'
                       ? error.message || 'This feature requires a higher plan.'
-                      : 'Free word limit reached. Generation stopped so it does not keep retrying. Upgrade to Pro to continue this article.'
-                const safe = String(message)
-                  .replace(/&/g, '&')
-                  .replace(/</g, '<')
-                  .replace(/>/g, '>')
+                      : 'Free word limit reached. Generation stopped. Upgrade to Pro to continue this article.'
+
+                const safe = String(message).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>')
 
                 placeAt(
                   i,
@@ -1416,6 +1420,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         if (done < groupedSections.length) {
           setWaitBanner(`Finished ${done} of ${groupedSections.length} sections`)
           const pending = flushed.findIndex(item => !item)
+
           if (pending >= 0) setCurrentIndex(groupedSections[pending].originalIndex)
         } else if (!isCancelled) {
           setIsGenerating(false)
@@ -1463,8 +1468,10 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
             const code = data?.code || (res.status === 402 ? 'WORD_LIMIT' : '')
             const stopCodes = new Set(['WORD_LIMIT', 'PRO_REQUIRED', 'PAID_KEYS_FAILED', 'FEATURE_OFF'])
+
             if (stopCodes.has(code) || res.status === 402) {
               const err = new Error(serializeError(data?.error || data) || 'Stopped')
+
               err.code = code || 'WORD_LIMIT'
               err.noRetry = true
               throw err
@@ -1578,6 +1585,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                 isCancelled = true
                 abortControllerRef.current?.abort()
               }
+
               resultsBuffer[i] = { i, group, data: null, error }
             }
           }
