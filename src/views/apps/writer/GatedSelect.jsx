@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 import Checkbox from '@mui/material/Checkbox'
 import Chip from '@mui/material/Chip'
@@ -19,6 +19,7 @@ import { ProLabel, useFeatureAccess } from './FeatureAccessContext'
 export default function GatedSelect({ menuKey, value, onChange, options, label, className }) {
   const menu = WRITER_MENUS.find(item => item.key === menuKey)
   const { modeOf, requireFeature, isPaid, isMax, featureModes } = useFeatureAccess()
+  const [open, setOpen] = useState(false)
 
   const resolved = (options || menu?.options || []).map(option => {
     const known = menu?.options?.find(item => item.value === option.value)
@@ -38,6 +39,8 @@ export default function GatedSelect({ menuKey, value, onChange, options, label, 
 
   const visible = resolved.filter(option => !option.featureKey || modeOf(option.featureKey) !== 'off')
   const hidden = !menu || modeOf(menu.key) === 'off'
+  const menuMode = menu ? modeOf(menu.key) : 'off'
+  const menuLocked = Boolean(menu) && ((menuMode === 'pro' && !isPaid) || (menuMode === 'max' && !isMax))
 
   useEffect(() => {
     if (!menu) return
@@ -65,6 +68,16 @@ export default function GatedSelect({ menuKey, value, onChange, options, label, 
       <FormControl fullWidth size='small' className={className || ''}>
         <Select
           value={selected}
+          open={open}
+          onOpen={() => {
+            if (menuLocked) {
+              requireFeature(menu.key, { label: label || menu.label })
+              setOpen(false)
+              return
+            }
+            setOpen(true)
+          }}
+          onClose={() => setOpen(false)}
           onChange={event => {
             const next = event.target.value
             const option = visible.find(item => item.value === next)
@@ -75,7 +88,7 @@ export default function GatedSelect({ menuKey, value, onChange, options, label, 
         >
           {visible.map(option => (
             <MenuItem key={option.value} value={option.value}>
-              <ProLabel featureKey={option.featureKey}>{option.label}</ProLabel>
+              {option.featureKey ? <ProLabel featureKey={option.featureKey}>{option.label}</ProLabel> : option.label}
             </MenuItem>
           ))}
         </Select>

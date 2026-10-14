@@ -100,7 +100,14 @@ function stripLeadingHeading(html, heading) {
 }
 
 function waitHtml(index, text) {
-  const safe = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const raw = String(text || '').trim()
+  const isWritingStatus = !raw || /^writing\b/i.test(raw)
+
+  if (isWritingStatus) {
+    return `<p class="wait-section wait-anchor wait-section-${index}" data-wait-section="${index}" style="display:none;margin:0;padding:0;height:0;overflow:hidden;border:0;background:transparent;">&#8203;</p>`
+  }
+
+  const safe = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
   return `<p class="wait-section wait-section-${index}" data-wait-section="${index}" style="background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px;line-height:1.5;">${safe}</p>`
 }
@@ -1259,10 +1266,11 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       const flushed = new Array(groupedSections.length).fill(false)
       let nextInsertIdx = 0
 
-      // Show ordered wait markers immediately so sections appear in outline order as they finish
+      // Hidden anchors keep finished sections in outline order.
+      // Do not show "Writing: {title}" — "AI is currently writing" already names the section.
+      // Yellow boxes are only inserted later for a wait or retry message.
       for (let wi = 0; wi < groupedSections.length; wi++) {
-        const title = groupedSections[wi]?.h2?.text || `Section ${wi + 1}`
-        upsertWaitInEditor(editor, wi, `Writing: ${title}`)
+        upsertWaitInEditor(editor, wi, '')
       }
 
       const liveUsedMedia = new Set((settings.usedImageUrls || []).map(mediaKey).filter(Boolean))
@@ -1506,6 +1514,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
           const setWait = msg => {
             setWaitBanner(msg)
+            if (msg) upsertWaitInEditor(editor, i, msg)
           }
 
           try {
@@ -2020,6 +2029,15 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                 .ProseMirror .retry-section-btn:hover { background: #7C3AED; }
                 .ProseMirror .retry-section-btn:disabled { opacity: 0.72; cursor: wait; }
                 .ProseMirror .retry-section-btn i { pointer-events: none; }
+                .ProseMirror p.wait-anchor {
+                  display: none !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  height: 0 !important;
+                  overflow: hidden !important;
+                  border: 0 !important;
+                  background: transparent !important;
+                }
                 .ProseMirror h2[data-failed-heading] {
                   display: flex;
                   align-items: center;

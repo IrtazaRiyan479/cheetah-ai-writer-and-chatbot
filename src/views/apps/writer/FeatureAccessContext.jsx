@@ -17,44 +17,90 @@ const FeatureAccessContext = createContext({
   isPaid: false,
   isMax: false,
   featureModes: {},
+  modesReady: false,
   requireFeature: () => true,
   isProFeature: () => false,
   isMaxFeature: () => false,
-  modeOf: () => 'pro'
+  modeOf: () => 'free',
+  refreshModes: () => {}
 })
+
+async function fetchModesAndUser() {
+  const [pricing, settings] = await Promise.all([
+    fetch('/api/pricing/copy')
+      .then(res => (res.ok ? res.json() : {}))
+      .catch(() => ({})),
+    fetch('/api/user/settings')
+      .then(async res => {
+        if (res.status === 401) return { guest: true }
+        if (!res.ok) return { guest: true }
+        return res.json()
+      })
+      .catch(() => ({ guest: true }))
+  ])
+
+  const modes = pricing.modes || settings.featureModes || {}
+  const paid = Boolean(settings.user?.paid)
+  const isMax = Boolean(settings.user?.isMax)
+  return { modes, paid, isMax }
+}
 
 export function FeatureAccessProvider({ children }) {
   const [isPaid, setIsPaid] = useState(false)
   const [isMax, setIsMax] = useState(false)
   const [featureModes, setFeatureModes] = useState({})
+  const [modesReady, setModesReady] = useState(false)
   const [premiumOpen, setPremiumOpen] = useState(false)
   const [premiumMessage, setPremiumMessage] = useState('')
   const [dialogTitle, setDialogTitle] = useState('Pro feature')
 
-  useEffect(() => {
-    let active = true
-    fetch('/api/user/settings')
-      .then(res => res.json())
-      .then(data => {
-        if (!active) return
-        setIsPaid(Boolean(data.user?.paid))
-        setIsMax(Boolean(data.user?.isMax))
-        setFeatureModes(data.featureModes || {})
-      })
-      .catch(() => {})
-    return () => {
-      active = false
+  const refreshModes = useCallback(async () => {
+    try {
+      const { modes, paid, isMax: maxUser } = await fetchModesAndUser()
+      setFeatureModes(modes || {})
+      setIsPaid(paid)
+      setIsMax(maxUser)
+      setModesReady(true)
+    } catch {
+      setModesReady(true)
     }
   }, [])
 
+  useEffect(() => {
+    let active = true
+    const run = async () => {
+      if (!active) return
+      await refreshModes()
+    }
+    run()
+    const onFocus = () => run()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') run()
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisible)
+    const interval = window.setInterval(run, 12000)
+    return () => {
+      active = false
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.clearInterval(interval)
+    }
+  }, [refreshModes])
+
   const modeOf = useCallback(
-    key => featureModes[key] || (FREE_FEATURES.has(key) ? 'free' : 'pro'),
+    key => {
+      if (!key) return 'free'
+      if (Object.prototype.hasOwnProperty.call(featureModes, key)) return featureModes[key]
+      return FREE_FEATURES.has(key) ? 'free' : 'pro'
+    },
     [featureModes]
   )
-  const isProFeature = useCallback(key => modeOf(key) === 'pro', [modeOf])
-  const isMaxFeature = useCallback(key => modeOf(key) === 'max', [modeOf])
+  const isProFeature = useCallback(key => Boolean(key) && modeOf(key) === 'pro', [modeOf])
+  const isMaxFeature = useCallback(key => Boolean(key) && modeOf(key) === 'max', [modeOf])
   const requireFeature = useCallback(
     (featureKey, { label } = {}) => {
+      if (!featureKey) return true
       const mode = modeOf(featureKey)
       const name = label || FEATURE_META[featureKey]?.label || featureKey
       if (mode === 'off') {
@@ -81,8 +127,19 @@ export function FeatureAccessProvider({ children }) {
   )
 
   const value = useMemo(
-    () => ({ isPaid, isMax, featureModes, requireFeature, isProFeature, isMaxFeature, modeOf, OPTION_FEATURE_MAP }),
-    [isPaid, isMax, featureModes, requireFeature, isProFeature, isMaxFeature, modeOf]
+    () => ({
+      isPaid,
+      isMax,
+      featureModes,
+      modesReady,
+      requireFeature,
+      isProFeature,
+      isMaxFeature,
+      modeOf,
+      refreshModes,
+      OPTION_FEATURE_MAP
+    }),
+    [isPaid, isMax, featureModes, modesReady, requireFeature, isProFeature, isMaxFeature, modeOf, refreshModes]
   )
 
   return (
@@ -144,6 +201,7 @@ export function FlagSwitch({ featureKey, checked, onChange, label }) {
 
 export function ProLabel({ featureKey, children }) {
   const { isProFeature, isMaxFeature, isPaid, isMax } = useFeatureAccess()
+  if (!featureKey) return children
   const showPro = isProFeature(featureKey) && !isPaid
   const showMax = isMaxFeature(featureKey) && !isMax
   return (

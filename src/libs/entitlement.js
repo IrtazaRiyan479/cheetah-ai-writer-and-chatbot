@@ -240,7 +240,7 @@ const baseMeta = {
   'enable-first-hand-experience': { label: 'First-hand experience', group: 'Writer options' },
   'enable-condensed-mode': { label: 'Condensed mode', group: 'Writer options' },
   'generate-unique-map-images': { label: 'Unique map images', group: 'Writer options' },
-  'enable-caption-rewriting': { label: 'Rewrite captions', group: 'Writer options' },
+  'enable-caption-rewriting': { label: 'Directly rewrite captions', group: 'Writer options' },
   'model-gemini-flash-lite': { label: 'Gemini Flash Lite', group: 'Models' },
   'model-gemini-flash': { label: 'Gemini Flash', group: 'Models' },
   'model-gemini-pro': { label: 'Gemini Pro', group: 'Models' },
@@ -255,6 +255,201 @@ export const FEATURE_META = {
   ...Object.fromEntries(MODULE_FEATURES.map(item => [item.key, { label: item.label, group: 'App modules' }])),
   ...Object.fromEntries(menuFlagEntries().map(([key, label]) => [key, { label, group: 'Writer menus', pricing: false }]))
 }
+
+const menuByKey = key => WRITER_MENUS.find(menu => menu.key === key)
+
+const flagNode = (key, label, children, hint) => {
+  const node = { key, label }
+  if (hint) node.hint = hint
+  if (children?.length) node.children = children
+  return node
+}
+
+const menuNode = key => {
+  const menu = menuByKey(key)
+  return flagNode(
+    menu.key,
+    menu.label,
+    (menu.options || []).map(option => flagNode(option.featureKey, option.label))
+  )
+}
+
+const mediaNode = () => {
+  const menu = menuByKey('menu-royalty-media')
+  return flagNode(
+    menu.key,
+    menu.label,
+    menu.options.map(option =>
+      option.value === 'auto'
+        ? flagNode(option.featureKey, option.label, [
+            flagNode('menu-image-limit', 'Image limit'),
+            flagNode('menu-video-limit', 'YouTube video limit')
+          ])
+        : flagNode(option.featureKey, option.label)
+    )
+  )
+}
+
+const linkingNodes = () => [
+  flagNode('menu-internal-linking', 'Automatic internal linking'),
+  flagNode('menu-custom-internal-urls', 'Custom internal URLs')
+]
+
+const voiceNodes = ({ country = true } = {}) => [
+  menuNode('menu-tone'),
+  flagNode('menu-language', 'Language'),
+  ...(country ? [flagNode('menu-country', 'Country')] : []),
+  menuNode('menu-point-of-view')
+]
+
+const realtimeNode = () => flagNode('real-time-data', 'Real-Time Data', [menuNode('menu-realtime-source')])
+
+const blogFields = () => [
+  ...linkingNodes(),
+  menuNode('menu-seo-optimization'),
+  mediaNode(),
+  menuNode('menu-article-length'),
+  ...voiceNodes(),
+  realtimeNode(),
+  flagNode('automatic-external-links', 'Automatic external links'),
+  flagNode('deep-search', 'Deep Search'),
+  flagNode('outline-editor', 'Use outline editor'),
+  flagNode('include-faq', 'Include FAQ section'),
+  flagNode('include-key-takeaways', 'Include key takeaways'),
+  flagNode('improve-readability', 'Improve readability')
+]
+
+const listicleFields = () => [
+  ...linkingNodes(),
+  menuNode('menu-seo-optimization'),
+  mediaNode(),
+  ...voiceNodes(),
+  flagNode('menu-list-item-prompt', 'List item custom prompt'),
+  realtimeNode(),
+  flagNode('enable-auto-length', 'Enable auto length'),
+  flagNode('automatic-external-links', 'Automatic external links'),
+  flagNode('outline-editor', 'Use outline editor'),
+  flagNode('enable-supplemental-information', 'Enable supplemental information'),
+  flagNode('include-faq', 'Include FAQ section'),
+  flagNode('improve-readability', 'Improve readability'),
+  flagNode('use-descending-order', 'Use descending order'),
+  menuNode('menu-list-numbering')
+]
+
+const amazonRoundupFields = () => [
+  ...linkingNodes(),
+  menuNode('menu-roundup-layout'),
+  menuNode('menu-amazon-domain'),
+  ...voiceNodes(),
+  flagNode('enable-first-hand-experience', 'Enable first-hand experience'),
+  flagNode('automatic-external-links', 'Automatic external links'),
+  flagNode('outline-editor', 'Use outline editor'),
+  flagNode('include-faq', 'Include FAQ section'),
+  flagNode('improve-readability', 'Improve readability')
+]
+
+const amazonReviewFields = () => [
+  ...linkingNodes(),
+  ...voiceNodes({ country: false }),
+  flagNode('enable-first-hand-experience', 'Enable first-hand experience'),
+  flagNode('enable-condensed-mode', 'Enable condensed mode'),
+  flagNode('automatic-external-links', 'Automatic external links'),
+  flagNode('outline-editor', 'Use outline editor'),
+  flagNode('include-faq', 'Include FAQ section'),
+  flagNode('improve-readability', 'Improve readability')
+]
+
+const youtubeFields = () => [
+  flagNode(
+    'enable-caption-rewriting',
+    'Directly rewrite captions',
+    null,
+    'YouTube only. Formats spoken captions into the article instead of writing a fresh post.'
+  ),
+  ...linkingNodes(),
+  ...voiceNodes(),
+  flagNode('outline-editor', 'Use outline editor'),
+  flagNode('improve-readability', 'Improve readability')
+]
+
+const localRoundupFields = () => [
+  ...linkingNodes(),
+  menuNode('menu-seo-optimization'),
+  ...voiceNodes(),
+  realtimeNode(),
+  flagNode('automatic-external-links', 'Automatic external links'),
+  flagNode('deep-search', 'Deep Search'),
+  flagNode('enable-auto-length', 'Enable auto length'),
+  flagNode('generate-unique-map-images', 'Generate unique map images'),
+  flagNode('enable-first-hand-experience', 'Enable first-hand experience'),
+  flagNode('enable-supplemental-information', 'Enable supplemental information'),
+  flagNode('outline-editor', 'Use outline editor'),
+  flagNode('include-faq', 'Include FAQ section'),
+  flagNode('improve-readability', 'Improve readability'),
+  flagNode('use-descending-order', 'Use descending order'),
+  menuNode('menu-list-numbering')
+]
+
+const rewriteFields = () => [
+  menuNode('menu-article-length'),
+  ...linkingNodes(),
+  menuNode('menu-seo-optimization'),
+  mediaNode(),
+  ...voiceNodes(),
+  realtimeNode(),
+  flagNode('automatic-external-links', 'Automatic external links'),
+  flagNode('outline-editor', 'Use outline editor'),
+  flagNode('include-faq', 'Include FAQ section'),
+  flagNode('include-key-takeaways', 'Include key takeaways'),
+  flagNode('improve-readability', 'Improve readability')
+]
+
+export const ADMIN_FLAG_TREE = [
+  {
+    group: 'Article types',
+    nodes: [
+      flagNode('standard', 'Blog Post', blogFields()),
+      flagNode('listicle', 'Listicle', listicleFields()),
+      flagNode('local-roundup', 'Local Places Roundup', localRoundupFields()),
+      flagNode('amazon-roundup', 'Amazon Product Roundup', amazonRoundupFields()),
+      flagNode('amazon-review', 'Amazon Single Product Review', amazonReviewFields()),
+      flagNode(
+        'product-comparison',
+        'Product Comparison',
+        null,
+        'Required inputs only: comparison topic plus two or three Amazon product URLs.'
+      ),
+      flagNode('youtube-blog', 'YouTube Video to Blog Post', youtubeFields()),
+      flagNode('rewrite', 'Rewrite Blog Post', rewriteFields()),
+      flagNode('amazon-roundup-rewrite', 'Rewrite Amazon Product Roundup', rewriteFields()),
+      flagNode('amazon-review-rewrite', 'Rewrite Amazon Single Product Review', rewriteFields())
+    ]
+  },
+  {
+    group: 'Publishing',
+    nodes: [
+      flagNode('wp-publish', 'WordPress publish'),
+      flagNode('image-standalone', 'Standalone images'),
+      flagNode('batch-generate', 'Batch generation')
+    ]
+  },
+  {
+    group: 'Models',
+    nodes: [
+      flagNode('model-gemini-flash-lite', 'Gemini Flash Lite'),
+      flagNode('model-gemini-flash', 'Gemini Flash'),
+      flagNode('model-gemini-pro', 'Gemini Pro'),
+      flagNode('model-gpt', 'GPT-5.2'),
+      flagNode('model-gpt-mini', 'GPT-5 Mini'),
+      flagNode('model-claude', 'Claude Sonnet'),
+      flagNode('model-grok', 'Grok')
+    ]
+  },
+  {
+    group: 'App modules',
+    nodes: MODULE_FEATURES.map(item => flagNode(item.key, item.label))
+  }
+]
 
 export const OPTION_FEATURE_MAP = {
   deepSearch: 'deep-search',
