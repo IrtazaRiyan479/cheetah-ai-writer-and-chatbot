@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { GoogleGenAI } from '@google/genai'
 
 import { interactionUsesPaidKeys, withGeminiKey } from '@/app/api/generate/utils/geminiKeys'
 import { runWithPaidKeys } from '@/app/api/generate/utils/providerKeys'
@@ -14,7 +15,10 @@ export async function GET(request) {
     const usePaidKeys = interactionUsesPaidKeys(id) || (await paidKeysEnabledFor(['deep-search']))
     return await runWithPaidKeys(usePaidKeys, async () => {
     const interaction = await withGeminiKey(async apiKey => {
-      const ai = new GoogleGenAI({ apiKey })
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { retryOptions: { attempts: 0 } }
+      })
       return ai.interactions.get(id)
     })
 

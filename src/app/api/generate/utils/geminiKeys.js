@@ -42,6 +42,14 @@ function classifyGeminiError(error) {
   return { kind: 'other', status: status || 0, message }
 }
 
+function failureWhy(kind) {
+  if (kind === 'rate_limit') return 'rate limit or quota exhausted'
+  if (kind === 'auth') return 'key rejected (invalid, expired, or forbidden)'
+  if (kind === 'unavailable') return 'model unavailable or overloaded'
+  if (kind === 'network') return 'timeout or network failure'
+  return 'request failed'
+}
+
 const paidInteractions = globalThis.__affigeniePaidInteractions || (globalThis.__affigeniePaidInteractions = new Set())
 
 export function rememberPaidInteraction(id) {
@@ -79,15 +87,16 @@ async function rotateGeminiKeys(keys, fn, paid, model) {
     } catch (error) {
       lastError = error
       const info = classifyGeminiError(error)
-      failures.push({ index: index + 1, ...info })
-      const snippet = String(info.message || '').replace(/\s+/g, ' ').slice(0, 180)
+      const why = failureWhy(info.kind)
+      failures.push({ index: index + 1, why, ...info })
+      const snippet = String(info.message || '').replace(/\s+/g, ' ').slice(0, 220)
       console.warn(
-        `[gemini] key ${index + 1}/${keys.length} failed kind=${info.kind} status=${info.status || 'n/a'} tier=${paid ? 'paid' : 'free'} msg="${snippet}"`
+        `[gemini] key ${index + 1}/${keys.length} failed why="${why}" kind=${info.kind} status=${info.status || 'n/a'} tier=${paid ? 'paid' : 'free'} detail="${snippet}"`
       )
     }
   }
 
-  const summary = failures.map(item => `#${item.index}:${item.kind}${item.status ? `(${item.status})` : ''}`).join(' | ')
+  const summary = failures.map(item => `#${item.index} why="${item.why}" kind=${item.kind}${item.status ? ` status=${item.status}` : ''}`).join(' | ')
   console.error(`[gemini] all ${keys.length} ${paid ? 'paid' : 'free'} keys exhausted: ${summary}`)
   const wrapped = new Error(serializeError(lastError))
   wrapped.code = failures.every(item => item.kind === 'rate_limit') ? 'GEMINI_RATE_LIMIT' : 'GEMINI_POOL_EXHAUSTED'
