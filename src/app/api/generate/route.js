@@ -235,6 +235,9 @@ export async function POST(request) {
     if (isPaidKeys) {
       return NextResponse.json({ success: false, error: 'Low credits.', code: 'PAID_KEYS_FAILED' }, { status: 502 })
     }
+    if (error?.code === 'ARTICLE_TYPE') {
+      return NextResponse.json({ success: false, error: msg, code: 'ARTICLE_TYPE' }, { status: 400 })
+    }
     const isCapacity =
       /429|quota|rate.?limit|503|high demand|unavailable|overloaded|OUTLINE_PARSE_FAILED|RATE_LIMIT/i.test(msg)
 

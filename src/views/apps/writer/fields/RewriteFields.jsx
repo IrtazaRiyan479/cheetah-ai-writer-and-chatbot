@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { clientSites } from '@/configs/clientSites'
 import { countries } from '@/configs/countries'
 import { languages } from '@/configs/languages'
+import { rewriteAcceptsSource, rewriteSourceError } from '@/app/api/generate/utils/articleHtml'
 
 import { FlagSwitch } from '../FeatureAccessContext'
 import GatedSelect, { GatedNumber, InternalLinkFields } from '../GatedSelect'
@@ -23,12 +24,14 @@ const RewriteFields = ({ settings, updateSetting }) => {
 
       if (!url || !url.startsWith('http')) {
         setStatusText('')
+        updateSetting('sourceArticleType', '')
         return
       }
 
       setIsValidating(true)
       setStatusText('Validating article URL...')
       setStatusColor('text-textSecondary')
+      updateSetting('sourceArticleType', '')
 
       try {
         const res = await fetch('/api/article-check', {
@@ -40,20 +43,18 @@ const RewriteFields = ({ settings, updateSetting }) => {
         const data = await res.json()
 
         if (res.ok && data.success) {
-          const type = data.detectedType || ''
+          const type = data.detectedType || 'unknown'
           updateSetting('sourceArticleType', type)
-          if (settings.type === 'amazon-roundup-rewrite' && type === 'amazon-review') {
-            setStatusText('This looks like a single-product review. Switch to Amazon review rewrite.')
-            setStatusColor('text-error')
-          } else if (settings.type === 'amazon-review-rewrite' && type === 'amazon-roundup') {
-            setStatusText('This looks like an Amazon roundup. Switch to Amazon roundup rewrite.')
+          if (!rewriteAcceptsSource(settings.type, type)) {
+            setStatusText(rewriteSourceError(settings.type))
             setStatusColor('text-error')
           } else {
-            setStatusText(`Successfully fetched: ${data.title}${type ? ` (${type})` : ''}`)
+            setStatusText(`Successfully fetched: ${data.title}${data.detectedType ? ` (${data.detectedType})` : ''}`)
             setStatusColor('text-success')
             if (data.title) updateSetting('targetKeyword', data.title)
           }
         } else {
+          updateSetting('sourceArticleType', '')
           setStatusText('Failed to fetch article data. Check URL or try another.')
           setStatusColor('text-error')
         }

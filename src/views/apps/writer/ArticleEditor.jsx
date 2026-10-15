@@ -51,7 +51,7 @@ import { serializeError } from '@/utils/serializeError'
 
 import { useFeatureAccess } from './FeatureAccessContext'
 
-import { getAffigenieArticleCss, prepareArticleHtml, finalizeArticleHtml, linkMapSnapshots } from '@/app/api/generate/utils/articleHtml'
+import { getAffigenieArticleCss, prepareArticleHtml, finalizeArticleHtml, linkMapSnapshots, buildArticleIdentityMarker } from '@/app/api/generate/utils/articleHtml'
 
 function mediaKey(item) {
   if (!item) return ''
@@ -907,7 +907,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         language: settings.language,
         metaTitle: metaTitle,
         metaDescription: metaDescription,
-        articleType: settings.type || ''
+        articleType: settings.type || '',
+        settings
       }
 
       const res = await fetch('/api/publish', {
@@ -961,7 +962,11 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: publishTitle || settings?.generatedTitle || 'Untitled Draft',
-          content: linkMapSnapshots(editor?.getHTML() || ''),
+          content: finalizeArticleHtml(linkMapSnapshots(editor?.getHTML() || ''), {
+            language: settings.language,
+            articleType: settings.type || '',
+            settings
+          }),
           outline: outline && outline.length > 0 ? JSON.stringify(outline) : null,
           status: 'draft',
           targetSite: siteSelectionType !== 'custom' ? siteSelectionType : null
@@ -1967,8 +1972,14 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
     if (!editor) return
     const currentHtml = linkMapSnapshots(editor.getHTML())
     const fileNameBase = (settings.generatedTitle || 'article').replace(/[^a-z0-9]/gi, ' ').toLowerCase()
-
-    const exportHtml = finalizeArticleHtml(currentHtml, { language: settings.language })
+    const identity = {
+      language: settings.language,
+      articleType: settings.type || '',
+      settings
+    }
+    const exportHtml = finalizeArticleHtml(currentHtml, identity)
+    const identityComment = buildArticleIdentityMarker(settings.type, settings).match(/<!--([\s\S]*?)-->/)
+    const markdown = `${convertHtmlToMarkdown(currentHtml)}${identityComment ? `\n\n<!--${identityComment[1]}-->` : ''}`
 
     if (action === 'copy-html') {
       handleCopyClipboard(exportHtml)
@@ -1982,10 +1993,10 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         'text/html'
       )
     } else if (action === 'copy-md') {
-      handleCopyClipboard(convertHtmlToMarkdown(currentHtml))
+      handleCopyClipboard(markdown)
     } else if (action === 'download-md') {
       handleDownloadFile(
-        convertHtmlToMarkdown(currentHtml),
+        markdown,
         `${fileNameBase
           .split(' ')
           .map(word => word.charAt(0).toUpperCase() + word.slice(1))

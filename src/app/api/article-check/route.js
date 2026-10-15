@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { fetchArticleData } from '../generate/utils/helpers';
+import { fetchArticleData, fetchRawArticleHtml } from '../generate/utils/helpers';
 import { detectSourceArticleType } from '../generate/services/rewrite';
 
 export async function POST(request) {
@@ -10,13 +10,13 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'Invalid URL format' }, { status: 400 });
     }
 
-    const data = await fetchArticleData(url);
+    const [data, rawHtml] = await Promise.all([fetchArticleData(url), fetchRawArticleHtml(url)]);
 
     if (data.success && data.text && data.text.trim().length > 100) {
       return NextResponse.json({
         success: true,
         title: data.title || 'Article extracted successfully',
-        detectedType: detectSourceArticleType(data.text || data.html || '')
+        detectedType: detectSourceArticleType(`${rawHtml}\n${data.text || ''}`)
       });
     } else {
       return NextResponse.json({

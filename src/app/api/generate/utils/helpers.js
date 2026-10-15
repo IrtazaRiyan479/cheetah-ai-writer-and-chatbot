@@ -1062,6 +1062,31 @@ export async function fetchArticleData(url) {
   }
 }
 
+export async function fetchRawArticleHtml(url) {
+  if (!url) return ''
+
+  try {
+    const res = await fetch(url, {
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000),
+      headers: {
+        Accept: 'text/html,application/xhtml+xml',
+        'User-Agent': 'Mozilla/5.0 (compatible; AffiGenie/1.0; +https://affigenie.com)'
+      }
+    })
+
+    if (!res.ok) return ''
+
+    const html = await res.text()
+
+    return String(html || '').slice(0, 500000)
+  } catch (error) {
+    console.error('Raw article HTML fetch error:', error?.message || error)
+
+    return ''
+  }
+}
+
 export async function fetchSerperOutlineData(query) {
   if (!process.env.SERPER_API_KEY) return { organic: [], faqs: [], related: [], authorityLinks: [] }
 

@@ -15,12 +15,13 @@ import {
   generateFallbackImage,
   getMediaInstruction,
   getRealTimeInstruction,
-  fetchSerperOutlineData
+  fetchSerperOutlineData,
+  fetchRawArticleHtml
 } from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
-import { buildCheckPriceButton, extractAsin, withRequiredCheckPrice } from '../utils/articleHtml'
+import { buildCheckPriceButton, extractAsin, rewriteAcceptsSource, rewriteSourceError, withRequiredCheckPrice } from '../utils/articleHtml'
 
 function firstAmazonUrl(text) {
   const match = String(text || '').match(/https?:\/\/(?:www\.)?(?:amazon\.[^\s)"'<>]+|amzn\.to\/[^\s)"'<>]+)/i)
@@ -45,21 +46,22 @@ function isAmazonRewriteType(type) {
   return type === 'amazon-roundup-rewrite' || type === 'amazon-review-rewrite'
 }
 
-const ARTICLE_TYPE_MARKER = 'affigenie-article-type'
-
 export function detectSourceArticleType(htmlOrText = '') {
   const source = String(htmlOrText || '')
-  const marker = source.match(/data-affigenie-type=["']([^"']+)["']/i) || source.match(/affigenie-article-type:([a-z0-9-]+)/i)
-  if (marker?.[1]) return marker[1].toLowerCase()
+  const marker =
+    source.match(/data-affigenie-type=["']([a-z0-9-]+)["']/i) ||
+    source.match(/affigenie-article-type:([a-z0-9-]+)/i)
 
-  const amazonLinks = (source.match(/https?:\/\/(?:www\.)?(?:amazon\.[^\s)"'<>]+|amzn\.to\/[^\s)"'<>]+)/gi) || []).length
-  const hasProsCons = /\bpros\b[\s\S]{0,40}\bcons\b/i.test(source)
-  const hasTopPick = /top pick|our top \d|product table/i.test(source)
-  const productHeadings = (source.match(/<h2[^>]*>\s*\d+\./gi) || []).length
+  return marker?.[1] ? marker[1].toLowerCase() : ''
+}
 
-  if (amazonLinks >= 3 || hasTopPick || productHeadings >= 3) return 'amazon-roundup'
-  if (amazonLinks >= 1 && hasProsCons) return 'amazon-review'
-  return 'standard'
+function assertRewriteSource(writerType, detectedType) {
+  if (rewriteAcceptsSource(writerType, detectedType)) return
+
+  const error = new Error(rewriteSourceError(writerType))
+
+  error.code = 'ARTICLE_TYPE'
+  throw error
 }
 
 function lengthInstruction(articleLength, customSectionCount) {
@@ -89,20 +91,19 @@ export async function generateRewriteOutline(body, genAI) {
     articleUrlToRewrite
   } = settings
 
-  const articleData = await fetchArticleData(articleUrlToRewrite)
+  const [articleData, rawHtml] = await Promise.all([
+    fetchArticleData(articleUrlToRewrite),
+    fetchRawArticleHtml(articleUrlToRewrite)
+  ])
 
   if (!articleData.success) {
     throw new Error('Failed to fetch the target article. Please check the URL and try again.')
   }
 
   const sourceText = articleData.text || ''
-  const detectedType = detectSourceArticleType(sourceText)
-  if (settings.type === 'amazon-roundup-rewrite' && detectedType === 'amazon-review') {
-    throw new Error('This URL looks like a single-product Amazon review. Use "Amazon review rewrite" instead of "Amazon roundup rewrite".')
-  }
-  if (settings.type === 'amazon-review-rewrite' && detectedType === 'amazon-roundup') {
-    throw new Error('This URL looks like an Amazon roundup. Use "Amazon roundup rewrite" instead of "Amazon review rewrite".')
-  }
+  const detectedType = detectSourceArticleType(`${rawHtml}\n${sourceText}`)
+
+  assertRewriteSource(settings.type, detectedType)
 
   const langObj = languages ? languages[language] : null
   const langName = langObj ? langObj.name : language || 'English'
@@ -374,8 +375,17 @@ export async function generateRewriteSection(body, genAI) {
   const countryName = countryObj ? countryObj.name : country || 'United States'
   const baseSystemInstruction = getBaseSystemInstruction(langName, countryName)
 
-  const articleData = await fetchArticleData(articleUrlToRewrite)
+  const [articleData, rawHtml] = await Promise.all([
+    fetchArticleData(articleUrlToRewrite),
+    fetchRawArticleHtml(articleUrlToRewrite)
+  ])
   const sourceText = articleData.text || ''
+
+  if (!articleData.success && !String(rawHtml || '').trim()) {
+    throw new Error('Failed to fetch the target article. Please check the URL and try again.')
+  }
+
+  assertRewriteSource(settings.type, detectSourceArticleType(`${rawHtml}\n${sourceText}`))
 
   const sectionModel = genAI.getGenerativeModel({
     model: model || 'gemini-3.1-pro-preview'

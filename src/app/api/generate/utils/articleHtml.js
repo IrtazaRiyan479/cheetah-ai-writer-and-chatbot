@@ -358,6 +358,71 @@ function upgradeTables(html, options) {
   })
 }
 
+const ARTICLE_TYPE_ALIASES = {
+  standard: 'blog',
+  rewrite: 'blog',
+  'amazon-roundup-rewrite': 'amazon-roundup',
+  'amazon-review-rewrite': 'amazon-review'
+}
+
+export function canonicalArticleType(type) {
+  const key = String(type || '')
+    .trim()
+    .toLowerCase()
+
+  if (!key) return ''
+
+  return ARTICLE_TYPE_ALIASES[key] || key
+}
+
+function encodeBase64(text) {
+  const bytes = new TextEncoder().encode(String(text || ''))
+  let binary = ''
+
+  for (let index = 0; index < bytes.length; index += 1) binary += String.fromCharCode(bytes[index])
+
+  return btoa(binary)
+}
+
+export function buildArticleIdentityMarker(type, settings) {
+  const writerType = String(type || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '')
+  const articleType = canonicalArticleType(writerType).replace(/[^a-z0-9-]/g, '')
+
+  if (!articleType) return ''
+
+  let encoded = ''
+
+  try {
+    encoded = encodeBase64(JSON.stringify(settings ?? {})).replace(/[^A-Za-z0-9+/=]/g, '')
+  } catch {
+    encoded = ''
+  }
+
+  return `<div data-affigenie-marker="1" data-affigenie-type="${articleType}" data-affigenie-writer-type="${writerType}" data-affigenie-settings="${encoded}" style="display:none!important;height:0;width:0;overflow:hidden;font-size:0;line-height:0;mso-hide:all;" aria-hidden="true"><!-- affigenie-article-type:${articleType} affigenie-writer-type:${writerType} affigenie-article-settings:${encoded} -->affigenie-article-type:${articleType}</div>`
+}
+
+export function rewriteAcceptsSource(writerType, detectedType) {
+  if (writerType === 'amazon-roundup-rewrite') return canonicalArticleType(detectedType) === 'amazon-roundup'
+  if (writerType === 'amazon-review-rewrite') return canonicalArticleType(detectedType) === 'amazon-review'
+
+  return true
+}
+
+export function rewriteSourceError(writerType) {
+  if (writerType === 'amazon-roundup-rewrite') {
+    return 'This URL is not an Amazon product roundup. Amazon roundup rewrite only accepts Amazon roundup articles.'
+  }
+
+  if (writerType === 'amazon-review-rewrite') {
+    return 'This URL is not an Amazon single-product review. This rewrite only accepts Amazon single-product review articles.'
+  }
+
+  return ''
+}
+
 export function linkMapSnapshots(html) {
   return String(html || '').replace(
     /<img\b[^>]*\bdata-map-href=(["'])([\s\S]*?)\1[^>]*>/gi,
@@ -392,7 +457,14 @@ export function withRequiredCheckPrice(text, options = {}) {
 }
 
 export function finalizeArticleHtml(html, options = {}) {
-  const prepared = linkMapSnapshots(prepareArticleHtml(html, options))
+  let prepared = linkMapSnapshots(prepareArticleHtml(html, options))
+
+  if (options.articleType) {
+    prepared = prepared.replace(/<div\b[^>]*data-affigenie-marker=["']1["'][^>]*>[\s\S]*?<\/div>/gi, '')
+    const marker = buildArticleIdentityMarker(options.articleType, options.settings)
+
+    if (marker) prepared = `${marker}\n${prepared}`
+  }
 
   if (prepared.includes('id="affigenie-article-styles"')) return prepared
 

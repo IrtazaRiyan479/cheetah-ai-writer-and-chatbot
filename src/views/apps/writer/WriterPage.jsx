@@ -20,6 +20,7 @@ import TextField from '@mui/material/TextField'
 import { toast } from 'react-toastify'
 
 import { serializeError } from '@/utils/serializeError'
+import { rewriteAcceptsSource, rewriteSourceError } from '@/app/api/generate/utils/articleHtml'
 
 import BlogFields from './fields/BlogFields'
 import ListicleFields from './fields/ListicleFields'
@@ -150,6 +151,20 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
       toast.error('Please provide an article URL to rewrite.')
 
       return
+    }
+
+    if (settings.type === 'amazon-roundup-rewrite' || settings.type === 'amazon-review-rewrite') {
+      if (!settings.sourceArticleType) {
+        toast.error('Wait for the article URL to finish validating.')
+
+        return
+      }
+
+      if (!rewriteAcceptsSource(settings.type, settings.sourceArticleType)) {
+        toast.error(rewriteSourceError(settings.type))
+
+        return
+      }
     }
 
     if (!settings.targetKeyword || settings.targetKeyword.trim() === '') {
