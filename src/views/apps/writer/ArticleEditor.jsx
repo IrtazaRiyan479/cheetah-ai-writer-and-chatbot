@@ -51,7 +51,7 @@ import { serializeError } from '@/utils/serializeError'
 
 import { useFeatureAccess } from './FeatureAccessContext'
 
-import { getAffigenieArticleCss, prepareArticleHtml, finalizeArticleHtml } from '@/app/api/generate/utils/articleHtml'
+import { getAffigenieArticleCss, prepareArticleHtml, finalizeArticleHtml, linkMapSnapshots } from '@/app/api/generate/utils/articleHtml'
 
 function mediaKey(item) {
   if (!item) return ''
@@ -601,12 +601,41 @@ const extensions = [
     }
   }),
   Placeholder.configure({ placeholder: 'Document ready.' }),
-  Image.configure({
+  Image.extend({
+    addAttributes() {
+      return {
+        ...this.parent?.(),
+        mapHref: {
+          default: null,
+          parseHTML: element => {
+            const own = element.getAttribute('data-map-href')
+
+            if (own) return own
+
+            const parent = element.parentElement
+
+            if (parent && parent.tagName === 'A') {
+              const parentHref = parent.getAttribute('href')
+
+              if (parentHref && parentHref !== '#') return parentHref
+            }
+
+            return null
+          },
+          renderHTML: attributes => {
+            if (!attributes.mapHref) return {}
+
+            return { 'data-map-href': attributes.mapHref }
+          }
+        }
+      }
+    }
+  }).configure({
     inline: true,
     allowBase64: true,
     HTMLAttributes: {
       style:
-        'border-radius: 12px; max-width: 100%; width: 672px; margin: 32px auto; display: block; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); aspect-ratio: 16/9; object-fit: cover;'
+        'border-radius: 12px; max-width: 100%; width: 672px; margin: 32px auto; display: block; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); aspect-ratio: 16/9; object-fit: cover; cursor: pointer;'
     }
   }),
   Link.configure({
@@ -673,7 +702,15 @@ const convertHtmlToMarkdown = html => {
   md = md.replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
   md = md.replace(/<br\s*\/?>/gi, '\n')
   md = md.replace(/<hr[^>]*\/?>/gi, '---\n\n')
+  md = md.replace(/<img\b[^>]*data-map-href=(["'])([\s\S]*?)\1[^>]*>/gi, tag => {
+    const src = (tag.match(/\bsrc=(["'])([\s\S]*?)\1/i) || [])[2] || ''
+    const href = (tag.match(/\bdata-map-href=(["'])([\s\S]*?)\1/i) || [])[2] || ''
+    const alt = (tag.match(/\balt=(["'])([\s\S]*?)\1/i) || [])[2] || 'Map'
 
+    if (!src || !href) return tag
+
+    return `[![${alt}](${src})](${href})`
+  })
   md = md.replace(/<[^>]*>?/gm, '')
 
   md = md
@@ -824,6 +861,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         finalContent = tempDiv.innerHTML
       }
 
+      finalContent = linkMapSnapshots(finalContent)
+
       let finalHeroImage = heroImageUrl
 
       if (!finalHeroImage) {
@@ -922,7 +961,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: publishTitle || settings?.generatedTitle || 'Untitled Draft',
-          content: editor?.getHTML() || '',
+          content: linkMapSnapshots(editor?.getHTML() || ''),
           outline: outline && outline.length > 0 ? JSON.stringify(outline) : null,
           status: 'draft',
           targetSite: siteSelectionType !== 'custom' ? siteSelectionType : null
@@ -1096,6 +1135,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
             parts.push(mediaHtml)
           }
         }
+
+        if (data.mapHtml) parts.push(data.mapHtml)
 
         return parts.join('')
       }
@@ -1797,7 +1838,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         })
       }
 
-      const bodyHtml = sectionTextToHtml(data.text, ctx.settings?.language) + mediaHtml
+      const bodyHtml = sectionTextToHtml(data.text, ctx.settings?.language) + mediaHtml + (data.mapHtml || '')
       const replacement = headingHtml + bodyHtml
 
       let html = editor.getHTML()
@@ -1865,9 +1906,38 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
     const onClick = e => {
       const btn = e.target?.closest?.('[data-retry-section]')
 
-      if (!btn) return
+      if (btn) {
+        e.preventDefault()
+        retrySection(Number(btn.getAttribute('data-retry-section')))
+
+        return
+      }
+
+      const mapImg = e.target?.closest?.('img[data-map-href]')
+
+      if (mapImg) {
+        const href = mapImg.getAttribute('data-map-href')
+
+        if (href && href !== '#') {
+          e.preventDefault()
+          e.stopPropagation()
+          window.open(href, '_blank', 'noopener,noreferrer')
+        }
+
+        return
+      }
+
+      const anchor = e.target?.closest?.('a[href]')
+
+      if (!anchor || !root.contains(anchor)) return
+
+      const href = anchor.getAttribute('href') || ''
+
+      if (!/google\.com\/maps|maps\.google\.com|maps\.app\.goo\.gl/i.test(href) || href === '#') return
+
       e.preventDefault()
-      retrySection(Number(btn.getAttribute('data-retry-section')))
+      e.stopPropagation()
+      window.open(href, '_blank', 'noopener,noreferrer')
     }
 
     root.addEventListener('click', onClick)
@@ -1895,7 +1965,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
   const performExport = action => {
     if (!editor) return
-    const currentHtml = editor.getHTML()
+    const currentHtml = linkMapSnapshots(editor.getHTML())
     const fileNameBase = (settings.generatedTitle || 'article').replace(/[^a-z0-9]/gi, ' ').toLowerCase()
 
     const exportHtml = finalizeArticleHtml(currentHtml, { language: settings.language })

@@ -21,6 +21,317 @@ import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
 
+const STRUCTURAL_HEADING =
+  /introduction|key takeaways|frequently asked|\bfaq\b|conclusion|final thoughts|\bsummary\b|what to (?:look|know|expect)|how to (?:choose|pick)|tips for|supplemental/i
+
+const LOCATION_LABEL =
+  'Location|Address|Ubicación|Ubicacion|Dirección|Direccion|Adresse|Localisation|Standort|Localização|Localizacao|Locatie|Posizione|所在地'
+
+let geocodeChain = Promise.resolve()
+let lastGeocodeAt = 0
+
+function escAttr(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&')
+    .replace(/"/g, '"')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+}
+
+function cleanLabel(value, fallback) {
+  const text = String(value || '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\*\*/g, '')
+    .replace(/\[|\]/g, '')
+    .trim()
+
+  return text || fallback || 'View map'
+}
+
+export function isPlaceHeading(heading) {
+  const text = String(heading || '').trim()
+
+  if (!text) return false
+
+  return !STRUCTURAL_HEADING.test(text)
+}
+
+export function placeNameFromHeading(heading) {
+  return String(heading || '')
+    .replace(/^\s*(?:\d+\s*[:.)]\s*)+/, '')
+    .replace(/^\s*#+\s*/, '')
+    .trim()
+}
+
+export function normalizePlace(place) {
+  if (!place || typeof place !== 'object') return null
+
+  const lat = Number(place.latitude ?? place.lat ?? place.gpsCoordinates?.latitude)
+  const lng = Number(place.longitude ?? place.lng ?? place.gpsCoordinates?.longitude)
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)
+
+  return {
+    title: place.title || place.name || '',
+    address: place.address || '',
+    latitude: hasCoords ? lat : null,
+    longitude: hasCoords ? lng : null,
+    phone: place.phoneNumber || place.phone || '',
+    website: place.website || '',
+    rating: place.rating || '',
+    ratingCount: place.ratingCount ?? '',
+    cid: place.cid || ''
+  }
+}
+
+export function googleMapsUrl({ lat, lng, label }) {
+  if (Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)) {
+    return `https://www.google.com/maps/search/?api=1&query=${Number(lat).toFixed(6)},${Number(lng).toFixed(6)}`
+  }
+
+  const q = String(label || '').trim()
+
+  if (!q) return ''
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`
+}
+
+export function yandexStaticMapUrl(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return ''
+
+  const latStr = Number(lat).toFixed(6)
+  const lngStr = Number(lng).toFixed(6)
+
+  return `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lngStr},${latStr}&z=16&l=map&size=650,350&pt=${lngStr},${latStr},pm2rdm`
+}
+
+export function buildMapImageHtml({ src, href, title }) {
+  if (!src || !href) return ''
+
+  const alt = `Map of ${title || 'this place'}`
+
+  return `<img src="${escAttr(src)}" alt="${escAttr(alt)}" title="${escAttr(alt)}" data-map-href="${escAttr(href)}" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 32px 0; width: 100%; max-width: 100%; aspect-ratio: 2 / 1; object-fit: cover; display: block; cursor: pointer;" />`
+}
+
+function placeFromOutline(outlineContext, heading) {
+  const items = Array.isArray(outlineContext) ? outlineContext : []
+  const exact = items.find(item => item?.place && item.text === heading)
+
+  if (exact?.place) return normalizePlace(exact.place)
+
+  const name = placeNameFromHeading(heading).toLowerCase()
+
+  if (!name) return null
+
+  const fuzzy = items.find(item => {
+    const title = String(item?.place?.title || '').toLowerCase()
+
+    return title && (name.includes(title) || title.includes(name))
+  })
+
+  return fuzzy?.place ? normalizePlace(fuzzy.place) : null
+}
+
+function geocodePlace(query, country) {
+  const q = String(query || '').trim()
+
+  if (!q || q.split(/\s+/).length > 12) return Promise.resolve(null)
+
+  const run = async () => {
+    const wait = Math.max(0, 1100 - (Date.now() - lastGeocodeAt))
+
+    if (wait) await new Promise(resolve => setTimeout(resolve, wait))
+
+    lastGeocodeAt = Date.now()
+
+    const cc = String(country || '')
+      .trim()
+      .toLowerCase()
+    const countryParam = /^[a-z]{2}$/.test(cc) ? `&countrycodes=${cc}` : ''
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}${countryParam}`,
+      {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'AffiGenieLocalRoundup/1.0 (place map snapshot)'
+        },
+        signal: AbortSignal.timeout(8000)
+      }
+    )
+
+    if (!res.ok) return null
+
+    const data = await res.json()
+    const hit = Array.isArray(data) ? data[0] : null
+
+    if (!hit) return null
+
+    const lat = Number(hit.lat)
+    const lng = Number(hit.lon)
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+
+    return { latitude: lat, longitude: lng, address: hit.display_name || '' }
+  }
+
+  const task = geocodeChain.then(run, run)
+
+  geocodeChain = task.then(
+    () => {},
+    () => {}
+  )
+
+  return task
+}
+
+async function ensurePlaceCoordinates(place, country, keyword) {
+  const normalized = normalizePlace(place)
+
+  if (!normalized) return null
+  if (normalized.latitude != null && normalized.longitude != null) return normalized
+
+  const queries = [
+    [normalized.title, normalized.address].filter(Boolean).join(', '),
+    [normalized.title, keyword].filter(Boolean).join(', ')
+  ].filter((query, index, all) => query && all.indexOf(query) === index)
+
+  for (const query of queries) {
+    const geo = await geocodePlace(query, country)
+
+    if (!geo) continue
+
+    return {
+      ...normalized,
+      latitude: geo.latitude,
+      longitude: geo.longitude,
+      address: normalized.address || geo.address || ''
+    }
+  }
+
+  return normalized
+}
+
+async function resolvePlace({ heading, keyword, country, language, outlineContext }) {
+  const named = placeFromOutline(outlineContext, heading)
+  const cleaned = placeNameFromHeading(heading) || named?.title || ''
+
+  if (named?.latitude != null && named?.longitude != null) return { ...named, title: named.title || cleaned }
+
+  let place = named
+  const queries = [cleaned, [cleaned, keyword].filter(Boolean).join(' ')].filter(
+    (query, index, all) => query && all.indexOf(query) === index
+  )
+
+  for (const query of queries) {
+    const rows = await fetchSerperPlacesData(query, 1, country, language)
+    const next = normalizePlace(rows[0])
+
+    if (!next?.title && !next?.address) continue
+
+    place = {
+      title: next.title || place?.title || cleaned,
+      address: next.address || place?.address || '',
+      latitude: next.latitude ?? place?.latitude ?? null,
+      longitude: next.longitude ?? place?.longitude ?? null,
+      phone: next.phone || place?.phone || '',
+      website: next.website || place?.website || '',
+      rating: next.rating || place?.rating || '',
+      ratingCount: next.ratingCount || place?.ratingCount || '',
+      cid: next.cid || place?.cid || ''
+    }
+
+    if (place.latitude != null && place.longitude != null) break
+  }
+
+  if ((place?.latitude == null || place?.longitude == null) && cleaned) {
+    const geoQueries = [
+      [place?.title || cleaned, place?.address].filter(Boolean).join(', '),
+      cleaned,
+      [cleaned, keyword].filter(Boolean).join(', ')
+    ].filter((query, index, all) => query && all.indexOf(query) === index)
+
+    for (const query of geoQueries) {
+      const geo = await geocodePlace(query, country)
+
+      if (!geo) continue
+
+      place = {
+        title: place?.title || cleaned,
+        address: place?.address || geo.address || '',
+        latitude: geo.latitude,
+        longitude: geo.longitude,
+        phone: place?.phone || '',
+        website: place?.website || '',
+        rating: place?.rating || '',
+        ratingCount: place?.ratingCount || '',
+        cid: place?.cid || ''
+      }
+      break
+    }
+  }
+
+  return place
+}
+
+export function applyExactLocationLink(text, mapLink, address) {
+  const source = String(text || '')
+  const href = String(mapLink || '').trim()
+
+  if (!source || !href) return source
+
+  const safeHref = escAttr(href)
+  const lineRe = new RegExp(
+    `^([ \\t]*(?:[-*][ \\t]+)?(?:\\*\\*)?(?:${LOCATION_LABEL})(?:\\*\\*)?\\s*:\\s*(?:\\*\\*)?\\s*)(.*)$`,
+    'gim'
+  )
+  let replaced = false
+  let next = source.replace(lineRe, (full, prefix, rest) => {
+    replaced = true
+    const anchor = String(rest).match(/<a\b[^>]*>([\s\S]*?)<\/a>/i)
+    const markdown = String(rest).match(/\[([^\]]+)\]\([^)]*\)/)
+    const label = cleanLabel(anchor?.[1] || markdown?.[1] || rest, address)
+
+    return `${prefix}<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${escAttr(label)}</a>`
+  })
+
+  if (!replaced) {
+    const htmlRe = new RegExp(
+      `((?:<(?:strong|b)>)?(?:${LOCATION_LABEL})(?:<\\/(?:strong|b)>)?\\s*:\\s*)(?:<a\\b[^>]*>[\\s\\S]*?<\\/a>|[^<\\n]+)`,
+      'gi'
+    )
+
+    next = next.replace(htmlRe, (full, prefix) => {
+      const anchor = full.match(/<a\b[^>]*>([\s\S]*?)<\/a>/i)
+      const plain = full.slice(String(prefix || '').length)
+      const label = cleanLabel(anchor?.[1] || plain, address)
+
+      replaced = true
+
+      return `${prefix}<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${escAttr(label)}</a>`
+    })
+  }
+
+  if (!next.includes(safeHref) && !next.includes(href)) {
+    next = next.replace(
+      /<a\b([^>]*?)href=(["'])(?:#|https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.google\.com)[^"']*)\2([^>]*)>/gi,
+      full => {
+        const current = (full.match(/href=(["'])([\s\S]*?)\1/i) || [])[2] || ''
+
+        if (/[?&](?:query|q)=-?\d+(?:\.\d+)?(?:%2C|,)-?\d+/i.test(current)) return full
+
+        replaced = true
+
+        return full.replace(/href=(["'])[\s\S]*?\1/i, `href="${safeHref}"`)
+      }
+    )
+  }
+
+  return next
+}
+
+function mapsToggleOn(value) {
+  return value === true || value === 'true' || value === 1 || value === '1'
+}
+
 export async function generateLocalRoundupOutline(body, genAI) {
   const { prompt, settings } = body
 
@@ -192,25 +503,21 @@ export async function generateLocalRoundupOutline(body, genAI) {
   if (placesData && placesData.length > 0) {
     let currentPlaceIndex = 0
 
-    parsedData.outline.forEach(item => {
-      if (item.type === 'h2') {
-        const lowerText = item.text.toLowerCase()
+    for (const item of parsedData.outline) {
+      if (item.type !== 'h2' || !isPlaceHeading(item.text)) continue
+      if (currentPlaceIndex >= placesData.length) break
 
-        if (
-          !lowerText.includes('introduction') &&
-          !lowerText.includes('key takeaways') &&
-          !lowerText.includes('frequently asked') &&
-          !lowerText.includes('conclusion')
-        ) {
-          if (currentPlaceIndex < placesData.length) {
-            const prefix = numberingArray[currentPlaceIndex] ? `${numberingArray[currentPlaceIndex]} ` : ''
+      const place = await ensurePlaceCoordinates(
+        placesData[currentPlaceIndex],
+        country,
+        targetKeyword || prompt
+      )
+      const prefix = numberingArray[currentPlaceIndex] ? `${numberingArray[currentPlaceIndex]} ` : ''
 
-            item.text = `${prefix}${placesData[currentPlaceIndex].title}`
-            currentPlaceIndex++
-          }
-        }
-      }
-    })
+      item.text = `${prefix}${place?.title || placesData[currentPlaceIndex].title}`
+      if (place) item.place = place
+      currentPlaceIndex++
+    }
   }
 
   const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
@@ -282,7 +589,6 @@ export async function generateLocalRoundupOutline(body, genAI) {
 export async function generateLocalRoundupSection(body, genAI) {
   const {
     heading,
-    subheadings,
     settings,
     externalLinks,
     internalLinks,
@@ -369,47 +675,51 @@ export async function generateLocalRoundupSection(body, genAI) {
   let povInstruction = getPovInstruction(pointOfView)
   let readabilityInstruction = getReadabilityInstruction(improveReadability)
 
-  const isCoreLocation =
-    (!subheadings || subheadings.length === 0) &&
-    !heading.toLowerCase().includes('introduction') &&
-    !heading.toLowerCase().includes('faq') &&
-    !heading.toLowerCase().includes('supplemental')
+  const isPlaceSection = isPlaceHeading(heading)
 
   let narrativeRequirement = ''
   let placeDataStr = ''
+  let mapLink = ''
+  let mapAddress = ''
+  let mapTitle = placeNameFromHeading(heading)
+  let mapHtml = ''
 
-  if (isCoreLocation) {
-    const placeInfo = await fetchSerperPlacesData(`${heading} ${targetKeyword || ''}`, 1, country, language)
-    const p = placeInfo.length > 0 ? placeInfo[0] : null
+  if (isPlaceSection) {
+    const place = await resolvePlace({
+      heading,
+      keyword: targetKeyword || '',
+      country,
+      language,
+      outlineContext
+    })
 
-    if (p) {
-      const lat = Number(p.latitude ?? p.lat ?? p.gpsCoordinates?.latitude)
-      const lng = Number(p.longitude ?? p.lng ?? p.gpsCoordinates?.longitude)
-      const hasCoords = Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)
-      const placeLabel = `${p.title || heading}${p.address ? ', ' + p.address : ''}`.trim()
-      const query = encodeURIComponent(placeLabel)
-      const mapLink = p.cid
-        ? `https://www.google.com/maps?cid=${encodeURIComponent(p.cid)}`
-        : hasCoords
-          ? `https://www.google.com/maps?q=${lat},${lng}+(${query})`
-          : `https://www.google.com/maps/search/?api=1&query=${query}`
+    mapTitle = place?.title || mapTitle
+    mapAddress = place?.address || ''
+    mapLink = googleMapsUrl({
+      lat: place?.latitude,
+      lng: place?.longitude,
+      label: [mapTitle, mapAddress || targetKeyword || ''].filter(Boolean).join(', ')
+    })
 
-      if (generateUniqueMapImages) {
-        const mapImgUrl = hasCoords
-          ? `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=16&l=map&size=650,350&pt=${lng},${lat},pm2rdm`
-          : `https://placehold.co/800x400/e8eef7/1d4ed8?text=${encodeURIComponent('Open map: ' + (p.title || heading))}`
+    if (mapsToggleOn(generateUniqueMapImages) && place?.latitude != null && place?.longitude != null) {
+      mapHtml = buildMapImageHtml({
+        src: yandexStaticMapUrl(place.latitude, place.longitude),
+        href: mapLink,
+        title: mapTitle || heading
+      })
+      mediaInstruction += `\n[NOTE: A map snapshot of this exact place is inserted after the section. Do NOT output any map image, iframe, or map HTML. The Location link MUST use this exact URL and no other: ${mapLink}]`
+    } else if (mapLink) {
+      mediaInstruction += `\n[NOTE: The Location link MUST use this exact URL and no other: ${mapLink}. Do not use "#" or a generic Google Maps URL.]`
+    }
 
-        assignedMediaElement = `<a href="${mapLink}" target="_blank" rel="noopener noreferrer" style="display:block;width:100%;margin:24px 0;"><img src="${mapImgUrl}" alt="Map of ${String(p.title || heading).replace(/"/g, '')}" style="width:100%;height:auto;border-radius:12px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);border:1px solid #e5e7eb;object-fit:cover;aspect-ratio:2/1;" /></a>`
-        mediaInstruction = `\n[NOTE: A map image linking to this exact place has already been inserted. Do NOT output any map image HTML. The Location link MUST use this exact URL: ${mapLink}]`
-      }
-
+    if (place) {
       placeDataStr = `
           REAL LOCATION DATA TO USE (do not invent different values):
-          - Ratings: ${p.rating ? `${p.rating} / 5 (${p.ratingCount || p.ratingCount === 0 ? p.ratingCount : 'n/a'} reviews)` : 'Not Available'}
-          - Address: ${p.address || 'Address Not Available'}
+          - Ratings: ${place.rating ? `${place.rating} / 5 (${place.ratingCount || place.ratingCount === 0 ? place.ratingCount : 'n/a'} reviews)` : 'Not Available'}
+          - Address: ${place.address || 'Address Not Available'}
           - Map URL (use this exact URL for the Location link): ${mapLink}
-          - Phone: ${p.phoneNumber || p.phone || 'Not Available'}
-          - Website URL: ${p.website || 'Not Available'}
+          - Phone: ${place.phone || 'Not Available'}
+          - Website URL: ${place.website || 'Not Available'}
         `
     }
 
@@ -430,7 +740,7 @@ export async function generateLocalRoundupSection(body, genAI) {
     ` tags:
 
               * **Ratings:** [Insert Rating Data]
-              * **Location:** <a href="[Insert Map URL]" target="_blank">[Insert Address]</a>
+              * **Location:** <a href="${mapLink || '[Insert Map URL]'}" target="_blank" rel="noopener noreferrer">${mapAddress || '[Insert Address]'}</a>
               * **Contact Info:** [Insert Phone]
               * **Visit Website:** <a href="[Insert Website URL]" target="_blank" rel="noopener nofollow">View Website</a>
 
@@ -508,10 +818,15 @@ export async function generateLocalRoundupSection(body, genAI) {
     result = { response: { text: () => alt.text } }
   }
 
+  let text = result.response.text()
+
+  if (isPlaceSection && mapLink) text = applyExactLocationLink(text, mapLink, mapAddress || mapTitle)
+
   return {
     success: true,
-    text: result.response.text(),
+    text,
     mediaHtml: assignedMediaElement,
+    mapHtml,
     mediaUrl: mediaUrl,
     internalLinkUrl: internalLinkUrl
   }

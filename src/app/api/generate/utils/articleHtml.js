@@ -358,6 +358,21 @@ function upgradeTables(html, options) {
   })
 }
 
+export function linkMapSnapshots(html) {
+  return String(html || '').replace(
+    /<img\b[^>]*\bdata-map-href=(["'])([\s\S]*?)\1[^>]*>/gi,
+    (tag, _quote, href, offset, source) => {
+      if (!href || href === '#') return tag
+
+      const before = String(source || '').slice(Math.max(0, offset - 220), offset)
+
+      if (/<a\b[^>]*>\s*$/i.test(before)) return tag
+
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer" data-map-link="true">${tag}</a>`
+    }
+  )
+}
+
 export function prepareArticleHtml(html, options = {}) {
   const normalized = normalizeCtas(html, options)
 
@@ -377,7 +392,7 @@ export function withRequiredCheckPrice(text, options = {}) {
 }
 
 export function finalizeArticleHtml(html, options = {}) {
-  const prepared = prepareArticleHtml(html, options)
+  const prepared = linkMapSnapshots(prepareArticleHtml(html, options))
 
   if (prepared.includes('id="affigenie-article-styles"')) return prepared
 
