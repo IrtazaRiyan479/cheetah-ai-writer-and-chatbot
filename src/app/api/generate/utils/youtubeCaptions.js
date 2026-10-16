@@ -20,39 +20,6 @@ const PLAYER_CLIENTS = [
       'X-YouTube-Client-Name': '3',
       'X-YouTube-Client-Version': '20.10.38'
     }
-  },
-  {
-    client: {
-      clientName: 'ANDROID',
-      clientVersion: '21.26.364',
-      androidSdkVersion: 30,
-      osName: 'Android',
-      osVersion: '11',
-      hl: 'en',
-      gl: 'US'
-    },
-    headers: {
-      'User-Agent': 'com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip',
-      'X-YouTube-Client-Name': '3',
-      'X-YouTube-Client-Version': '21.26.364'
-    }
-  },
-  {
-    client: {
-      clientName: 'ANDROID_VR',
-      clientVersion: '1.65.10',
-      deviceMake: 'Oculus',
-      deviceModel: 'Quest 3',
-      androidSdkVersion: 32,
-      hl: 'en',
-      gl: 'US'
-    },
-    headers: {
-      'User-Agent':
-        'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip',
-      'X-YouTube-Client-Name': '28',
-      'X-YouTube-Client-Version': '1.65.10'
-    }
   }
 ]
 
@@ -154,27 +121,19 @@ function textFromVtt(raw) {
       .replace(/^WEBVTT[^\n]*$/gm, ' ')
       .replace(/^\d+$/gm, ' ')
       .replace(/\d{1,2}:\d{2}(?::\d{2})?[.,]\d{3}\s+-->\s+\d{1,2}:\d{2}(?::\d{2})?[.,]\d{3}[^\n]*/g, ' ')
-      .replace(/<[^>]+>/g, ' ')
   )
 }
 
 function textFromCaptionPayload(payload, contentType = '') {
   const raw = String(payload || '')
   const trimmed = raw.trim()
+  const type = String(contentType || '').toLowerCase()
 
   if (!trimmed) return ''
 
-  const type = String(contentType || '').toLowerCase()
-
   if (trimmed.startsWith('WEBVTT') || type.includes('vtt')) return textFromVtt(trimmed)
 
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-    const jsonText = textFromJsonCaptions(trimmed)
-
-    if (jsonText) return jsonText
-  }
-
-  if (type.includes('json') && !trimmed.startsWith('<')) {
+  if (trimmed.startsWith('{') || trimmed.startsWith('[') || (type.includes('json') && !trimmed.startsWith('<'))) {
     const jsonText = textFromJsonCaptions(trimmed)
 
     if (jsonText) return jsonText
@@ -183,7 +142,7 @@ function textFromCaptionPayload(payload, contentType = '') {
   return cleanCaptionText(trimmed)
 }
 
-async function fetchText(url, headers, timeout = 12000) {
+async function fetchText(url, headers, timeout = 8000) {
   const response = await fetch(url, {
     headers,
     signal: AbortSignal.timeout(timeout),
@@ -214,12 +173,12 @@ async function fetchVisitorData(videoId) {
 
   for (const page of pages) {
     try {
-      const response = await fetchText(page, headers, 4000)
+      const response = await fetchText(page, headers, 3500)
       const visitorData = String(response.text || '').match(/"visitorData":"([^"]+)"/)?.[1] || ''
 
       if (visitorData) return visitorData
     } catch {
-      /* next embed page */
+      /* next */
     }
   }
 
@@ -241,8 +200,7 @@ async function fetchPlayer(videoId, spec, visitorData = '') {
       contentCheckOk: true,
       racyCheckOk: true
     }),
-    signal: AbortSignal.timeout(5000),
-    cache: 'no-store'
+    signal: AbortSignal.timeout(5000)
   })
 
   if (!response.ok) return null
@@ -269,7 +227,7 @@ async function fetchOembed(videoId) {
   try {
     const response = await fetch(
       `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&format=json`,
-      { signal: AbortSignal.timeout(4000), cache: 'no-store' }
+      { signal: AbortSignal.timeout(4000) }
     )
 
     if (!response.ok) return { ok: false, status: response.status }
@@ -324,24 +282,18 @@ function captionCandidates(baseUrl) {
   }
 
   const out = []
-
   const push = value => {
     const next = String(value || '')
 
     if (next && !out.includes(next)) out.push(next)
   }
 
-  push(parsed.toString())
-
   const json3 = new URL(parsed.toString())
 
   json3.searchParams.set('fmt', 'json3')
   push(json3.toString())
 
-  const vtt = new URL(parsed.toString())
-
-  vtt.searchParams.set('fmt', 'vtt')
-  push(vtt.toString())
+  push(parsed.toString())
 
   return out
 }
@@ -358,19 +310,195 @@ async function readCaptionTrack(track, videoId) {
 
   for (const candidate of captionCandidates(track.baseUrl)) {
     try {
-      const response = await fetchText(candidate, headers, 6000)
+      const response = await fetchText(candidate, headers, 5000)
 
-      if (!response.ok) continue
+      if (!response.ok || !response.text) continue
 
       const text = textFromCaptionPayload(response.text, response.contentType)
 
       if (text.length > 40) return text
     } catch {
-      /* next caption url */
+      /* next */
     }
   }
 
   return ''
+}
+
+async function fetchViaYoutubeTranscriptPackage(videoId) {
+  try {
+    const mod = await import('youtube-transcript')
+    const YoutubeTranscript = mod.YoutubeTranscript || mod.default?.YoutubeTranscript || mod.default
+
+    if (!YoutubeTranscript?.fetchTranscript) return { text: '', source: '' }
+
+    for (const lang of [undefined, 'en', 'hi']) {
+      try {
+        const items = lang
+          ? await YoutubeTranscript.fetchTranscript(videoId, { lang })
+          : await YoutubeTranscript.fetchTranscript(videoId)
+
+        if (!Array.isArray(items) || !items.length) continue
+
+        const text = cleanCaptionText(items.map(item => item?.text || '').join(' '))
+
+        if (text.length > 40) {
+          return { text, source: `youtube-transcript:${lang || items[0]?.lang || 'auto'}` }
+        }
+      } catch {
+        /* next lang */
+      }
+    }
+  } catch (error) {
+    console.error('[youtube] youtube-transcript package failed', error?.message || error)
+  }
+
+  return { text: '', source: '' }
+}
+
+/**
+ * Approach B — Gemini YouTube video understanding.
+ * Does NOT use timedtext / PO tokens. Gemini fetches the public YouTube URL server-side
+ * and returns spoken content. Uses existing GEMINI_API_KEYS from env.
+ */
+function listGeminiKeysLocal() {
+  const keys = []
+  const push = value => {
+    const next = String(value || '').trim()
+
+    if (next && !keys.includes(next)) keys.push(next)
+  }
+
+  const csv = process.env.GEMINI_API_KEYS || ''
+
+  for (const part of csv.split(',')) push(part)
+
+  for (let i = 1; i <= 20; i++) {
+    push(process.env[`GEMINI_API_KEY_${i}`])
+    push(process.env[`GEMINI_FREE_API_KEY_${i}`])
+  }
+
+  push(process.env.GEMINI_FREE_API_KEY)
+  push(process.env.GEMINI_API_KEY)
+
+  return keys
+}
+
+async function fetchViaGeminiYoutube(videoId, title = '') {
+  const keys = listGeminiKeysLocal()
+
+  if (!keys.length) {
+    console.error('[youtube] gemini fallback skipped: no GEMINI_API_KEYS')
+    return { text: '', source: '' }
+  }
+
+  const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`
+  const prompt = [
+    'Extract the full spoken transcript of this YouTube video as continuous plain text.',
+    'Include everything the speakers say in order from start to finish.',
+    'Do not summarize. Do not add headings, timestamps, speaker labels, or commentary.',
+    'If the speech is not in English, keep the original language.',
+    title ? `Video title hint: ${title}` : ''
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  // Prefer flash-lite first (fast + cheap). On 429/503 rotate KEYS before switching model.
+  const models = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.5-flash']
+  const keyPool = keys.slice(0, 12) // walk up to 12 keys from GEMINI_API_KEYS / numbered env
+
+  console.info('[youtube] gemini fallback keys available', keyPool.length)
+
+  for (const model of models) {
+    let modelMissing = false
+
+    for (let keyIndex = 0; keyIndex < keyPool.length; keyIndex++) {
+      const apiKey = keyPool[keyIndex]
+
+      try {
+        const url = new URL(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`
+        )
+
+        url.searchParams.set('key', apiKey)
+
+        const response = await fetch(url.toString(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(50000),
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  { fileData: { fileUri: youtubeUrl } },
+                  { text: prompt }
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.2,
+              maxOutputTokens: 8192
+            }
+          })
+        })
+
+        const data = await response.json().catch(() => ({}))
+
+        if (!response.ok) {
+          const msg = data?.error?.message || `HTTP ${response.status}`
+          const status = response.status
+
+          console.error('[youtube] gemini video fail', {
+            model,
+            keyIndex: keyIndex + 1,
+            keysTotal: keyPool.length,
+            status,
+            msg: String(msg).slice(0, 160)
+          })
+
+          // Model gone / not found → skip remaining keys for this model
+          if (status === 404 || /no longer available|is not found/i.test(String(msg))) {
+            modelMissing = true
+            break
+          }
+
+          // Auth/permission on this key → try next key
+          if (status === 400 || status === 401 || status === 403) continue
+
+          // Rate limit / high demand → try next key on same model
+          if (status === 429 || status === 503) continue
+
+          continue
+        }
+
+        const text = cleanCaptionText(
+          (data?.candidates || [])
+            .flatMap(c => c?.content?.parts || [])
+            .map(p => p?.text || '')
+            .join(' ')
+        )
+
+        if (text.length > 80) {
+          return {
+            text,
+            source: `gemini-youtube:${model}:key${keyIndex + 1}`
+          }
+        }
+      } catch (error) {
+        console.error('[youtube] gemini video error', {
+          model,
+          keyIndex: keyIndex + 1,
+          err: error?.message || error
+        })
+        // network/timeout → next key
+      }
+    }
+
+    if (modelMissing) continue
+  }
+
+  return { text: '', source: '' }
 }
 
 function failureMessage({ valid, title, reason }) {
@@ -407,19 +535,25 @@ function withTimeout(promise, ms, fallback) {
   })
 }
 
-function resultFromTrack(base, text, track) {
+function resultFromTrack(base, text, trackOrSource) {
+  const source =
+    typeof trackOrSource === 'string'
+      ? trackOrSource
+      : `player:${trackOrSource?.languageCode || 'und'}:${trackOrSource?.kind || 'manual'}`
+
   return {
     ...base,
     success: true,
     transcript: text,
     wordCount: text.split(/\s+/).filter(Boolean).length,
-    source: `player:${track.languageCode || 'und'}:${track.kind || 'manual'}`
+    source
   }
 }
 
 async function loadYoutubeVideo(videoId) {
   const attempts = []
   const oembedPromise = fetchOembed(videoId)
+  const packagePromise = fetchViaYoutubeTranscriptPackage(videoId)
   const visitorData = await fetchVisitorData(videoId)
 
   attempts.push(visitorData ? 'visitor:ok' : 'visitor:empty')
@@ -427,11 +561,9 @@ async function loadYoutubeVideo(videoId) {
   let player = null
   let transcript = ''
   let winningTrack = null
-  const clients = PLAYER_CLIENTS.filter(
-    spec => spec.client.clientName === 'ANDROID' || spec.client.clientName === 'ANDROID_VR'
-  )
 
-  for (const spec of clients) {
+  // Fast caption path — single Android client only
+  for (const spec of PLAYER_CLIENTS) {
     const label = `${spec.client.clientName}${spec.client.clientVersion || ''}`
 
     try {
@@ -442,23 +574,13 @@ async function loadYoutubeVideo(videoId) {
         continue
       }
 
-      if (!player) player = nextPlayer
-      else {
-        if (!player.title && nextPlayer.title) player = { ...player, title: nextPlayer.title }
-        if (!player.durationSeconds && nextPlayer.durationSeconds) {
-          player = { ...player, durationSeconds: nextPlayer.durationSeconds }
-        }
-        if (!player.thumbnails?.length && nextPlayer.thumbnails?.length) {
-          player = { ...player, thumbnails: nextPlayer.thumbnails }
-        }
-      }
+      player = nextPlayer
 
       if (!nextPlayer.tracks.length) {
         attempts.push(`${label}:${nextPlayer.playability || 'no-tracks'}`)
         continue
       }
 
-      player = { ...player, tracks: nextPlayer.tracks, playability: nextPlayer.playability, reason: nextPlayer.reason }
       attempts.push(`${label}:tracks:${nextPlayer.tracks.length}`)
 
       const orderedTracks = [...nextPlayer.tracks].sort((a, b) => rankTrack(b) - rankTrack(a)).slice(0, 2)
@@ -473,9 +595,7 @@ async function loadYoutubeVideo(videoId) {
         }
       }
 
-      if (transcript) break
-
-      attempts.push(`${label}:caption-empty`)
+      if (!transcript) attempts.push(`${label}:caption-empty`)
     } catch (error) {
       attempts.push(`${label}:${error?.message || error}`)
     }
@@ -499,7 +619,35 @@ async function loadYoutubeVideo(videoId) {
 
   if (transcript && winningTrack) return resultFromTrack(base, transcript, winningTrack)
 
-  console.error('[youtube] caption fetch failed', { videoId, valid, attempts: attempts.slice(0, 8) })
+  // Package fallback
+  try {
+    const pkg = await packagePromise
+
+    if (pkg.text?.length > 40) {
+      attempts.push(`pkg:${pkg.source}`)
+      return resultFromTrack(base, pkg.text, pkg.source)
+    }
+
+    attempts.push('pkg:empty')
+  } catch (error) {
+    attempts.push(`pkg:${error?.message || error}`)
+  }
+
+  // Approach B — Gemini watches the YouTube URL (no timedtext / no PO token)
+  try {
+    const gemini = await fetchViaGeminiYoutube(videoId, title)
+
+    if (gemini.text?.length > 80) {
+      attempts.push(`gemini:${gemini.source}`)
+      return resultFromTrack(base, gemini.text, gemini.source)
+    }
+
+    attempts.push('gemini:empty')
+  } catch (error) {
+    attempts.push(`gemini:${error?.message || error}`)
+  }
+
+  console.error('[youtube] caption fetch failed', { videoId, valid, attempts: attempts.slice(0, 14) })
 
   return {
     ...base,
@@ -518,7 +666,7 @@ export async function fetchYoutubeVideoData(url) {
     return { success: false, valid: false, error: 'That is not a YouTube video URL.' }
   }
 
-  return withTimeout(loadYoutubeVideo(videoId), 18000, {
+  return withTimeout(loadYoutubeVideo(videoId), 55000, {
     success: false,
     valid: true,
     videoId,

@@ -44,7 +44,7 @@ const YoutubeBlogFields = ({ settings, updateSetting }) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url }),
-          signal: AbortSignal.timeout(20000)
+          signal: AbortSignal.timeout(65000)
         })
 
         const data = await res.json()
