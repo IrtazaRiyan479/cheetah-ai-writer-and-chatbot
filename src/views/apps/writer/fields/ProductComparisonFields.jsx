@@ -3,11 +3,19 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import FormHelperText from '@mui/material/FormHelperText'
 
+const normalizeAmazonInput = value => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) return raw
+  if (/^(?:www\.)?(?:amazon\.[a-z.]+|amzn\.to)\/.+/i.test(raw)) return `https://${raw}`
+  return raw
+}
+
 const ProductComparisonFields = ({ settings, updateSetting }) => {
   const links = Array.isArray(settings.productComparisonUrls) ? settings.productComparisonUrls : ['', '', '']
   const validLinkCount = links.filter(value => {
     try {
-      return ['http:', 'https:'].includes(new URL(String(value || '').trim()).protocol)
+      return ['http:', 'https:'].includes(new URL(normalizeAmazonInput(value)).protocol)
     } catch {
       return false
     }
@@ -15,7 +23,7 @@ const ProductComparisonFields = ({ settings, updateSetting }) => {
 
   const updateLink = (index, value) => {
     const next = [...links]
-    next[index] = value
+    next[index] = normalizeAmazonInput(value)
     updateSetting('productComparisonUrls', next)
   }
 
@@ -27,7 +35,7 @@ const ProductComparisonFields = ({ settings, updateSetting }) => {
     {links.map((link, index) => {
       let invalid = false
       if (link) {
-        try { invalid = !['http:', 'https:'].includes(new URL(String(link).trim()).protocol) } catch { invalid = true }
+        try { invalid = !['http:', 'https:'].includes(new URL(normalizeAmazonInput(link)).protocol) } catch { invalid = true }
       }
 
       return <Grid key={index} size={{ xs: 12 }}>

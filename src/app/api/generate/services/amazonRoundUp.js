@@ -41,6 +41,7 @@ export async function fetchInternalAmazonData(keyword, settings) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           keyword: keyword,
+          asins: Array.isArray(settings.asins) ? settings.asins : undefined,
           domain: settings.amazonDomain || 'www.amazon.com',
           partnerTag: process.env.AMAZON_PARTNER_TAG
         }),

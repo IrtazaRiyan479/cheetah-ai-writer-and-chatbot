@@ -1,8 +1,8 @@
 import { callLLM } from '../utils/llm'
 import { parseJsonSafe } from '../utils/lightLLM'
-import { fetchSerperOutlineData, pickRelevantImages, buildBrandedHero } from '../utils/helpers'
-import { buildCheckPriceButton, escapeHtml, extractAsin, renderResponsiveTable, resolveAffiliateUrl } from '../utils/articleHtml'
-import { fetchInternalAmazonData, formatAmazonProducts } from './amazonRoundUp'
+import { pickRelevantImages, buildBrandedHero } from '../utils/helpers'
+import { buildCheckPriceButton, escapeHtml, extractAsin, renderResponsiveTable, resolveAffiliateUrl, titleCaseWords } from '../utils/articleHtml'
+import { fetchInternalAmazonData } from './amazonRoundUp'
 
 function productLabel(url, index) {
   try {
@@ -11,202 +11,595 @@ function productLabel(url, index) {
     const slug = marker > 0 ? parts[marker - 1] : ''
     const name = decodeURIComponent(slug).replace(/[-_]+/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
     return name && !/^[A-Z0-9]{10}$/i.test(name) ? name : `Product ${index + 1}`
-  } catch { return `Product ${index + 1}` }
+  } catch {
+    return `Product ${index + 1}`
+  }
+}
+
+export function normalizeComparisonUrl(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+
+  const withProto = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw)
+    ? raw
+    : /^(?:www\.)?(?:amazon\.[a-z.]+|amzn\.to)(?:\/|$)/i.test(raw)
+      ? `https://${raw}`
+      : raw
+
+  try {
+    const url = new URL(withProto)
+    if (!['http:', 'https:'].includes(url.protocol)) return ''
+    return url.toString()
+  } catch {
+    return ''
+  }
 }
 
 export function validateProductComparisonUrls(value) {
-  const urls = Array.isArray(value) ? value.map(item => String(item || '').trim()).filter(Boolean) : []
-  if (urls.length < 2 || urls.length > 3) return { ok: false, urls }
-  for (const value of urls) {
-    try {
-      const url = new URL(value)
-      if (!['http:', 'https:'].includes(url.protocol)) return { ok: false, urls }
-    } catch { return { ok: false, urls } }
-  }
+  const raw = Array.isArray(value) ? value.map(item => String(item || '').trim()).filter(Boolean) : []
+  if (raw.length < 2 || raw.length > 3) return { ok: false, urls: [] }
+  const urls = raw.map(normalizeComparisonUrl)
+  if (urls.some(url => !url)) return { ok: false, urls: [] }
   return { ok: true, urls }
 }
 
 function amazonDomain(url, settings) {
-  try { return new URL(url).hostname.replace(/^www\./, '') } catch { return settings.amazonDomain || 'www.amazon.com' }
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return settings.amazonDomain || 'www.amazon.com'
+  }
 }
 
-async function fetchProduct(url, index, settings) {
-  const asin = extractAsin(url)
-  const keyword = asin || productLabel(url, index)
-  const domain = amazonDomain(url, settings)
-  let raw
-  try {
-    raw = await fetchInternalAmazonData(keyword, { ...settings, amazonDomain: domain })
-  } catch (error) {
-    const msg = String(error?.message || error)
-    if (/credits|quota|429/i.test(msg)) {
-      throw new Error(`Amazon API out of credits while loading product ${index + 1}. Wait and try again.`)
-    }
-    throw new Error(`Could not load product ${index + 1} from Amazon (${msg.slice(0, 160)}).`)
-  }
-  const candidates = formatAmazonProducts(raw, { ...settings, numberOfProducts: 20, amazonDomain: domain }) || []
-  const result =
-    candidates.find(item => asin && String(item.asin || '').toUpperCase() === asin.toUpperCase()) || candidates[0]
-  if (!result) {
-    throw new Error(
-      `No Amazon product matched comparison URL ${index + 1}${asin ? ` (ASIN ${asin})` : ''}. Check the link and marketplace domain.`
-    )
-  }
-  const source =
-    raw?.data?.searchResult?.items?.find(
-      item => String(item.asin || '').toUpperCase() === String(result.asin || '').toUpperCase()
-    ) || null
-  const rating = source?.customerReviews?.starRating || result.rating || null
-  const image = result.imageUrl || ''
+function shortProductName(name, index) {
+  const cleaned = String(name || '')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\b(for|with|and|the|a|an|womens|women's|women|mens|men's|men|unisex|kids|kid)\b/gi, ' ')
+    .replace(/[^A-Za-z0-9' ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const words = cleaned.split(' ').filter(word => word.length > 1).slice(0, 2)
+  const label = titleCaseWords(words.join(' '))
+  return label || `Product ${index + 1}`
+}
+
+function cleanImage(url) {
+  return String(url || '').replace(/\._[A-Za-z0-9_]+_\./, '.')
+}
+
+function xml(value) {
+  return String(value || '')
+    .replace(/&/g, '&')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+    .replace(/"/g, '"')
+}
+
+function readAmazonItems(raw) {
+  const data = raw?.data || raw || {}
+  const items = data?.searchResult?.items || data?.itemResults?.items || data?.itemsResult?.items || []
+  return Array.isArray(items) ? items : []
+}
+
+function mapAmazonItem(item, fallbackUrl, domain, settings, index) {
+  const asin = String(item?.asin || extractAsin(fallbackUrl) || '').toUpperCase()
+  const productName = item?.itemInfo?.title?.displayValue || productLabel(fallbackUrl, index)
+  const imageUrl = cleanImage(item?.images?.primary?.large?.url || item?.images?.primary?.medium?.url || '')
+  const variants = item?.images?.variants
+  const variantEntry = Array.isArray(variants)
+    ? variants.find(entry => entry?.large?.url || entry?.medium?.url)
+    : null
+  let variantImageUrl = cleanImage(
+    variantEntry?.large?.url ||
+      variantEntry?.medium?.url ||
+      (Array.isArray(variants?.large) ? variants.large[0]?.url : variants?.large?.url) ||
+      ''
+  )
+  if (!variantImageUrl || variantImageUrl === imageUrl) variantImageUrl = ''
   const partnerTag = settings.amazonTrackingId || process.env.AMAZON_PARTNER_TAG || ''
 
   return {
-    ...result,
-    imageUrl: image,
+    productName,
+    shortName: shortProductName(productName, index),
+    asin,
     amazonUrl: resolveAffiliateUrl({
-      url: result.amazonUrl || url,
-      asin: result.asin || asin,
+      url: item?.detailPageURL || fallbackUrl,
+      asin,
       domain,
       partnerTag,
       forceTag: settings.amazonTrackingId || ''
     }),
-    rating,
-    ratingCount: source?.customerReviews?.count || null,
-    features: Array.isArray(result.features) ? result.features : []
+    imageUrl,
+    variantImageUrl,
+    price: item?.offersV2?.listings?.[0]?.price?.money?.displayAmount || 'See listing',
+    rating: item?.customerReviews?.starRating || item?.customerReviews?.rating || null,
+    ratingCount: item?.customerReviews?.count || null,
+    features: Array.isArray(item?.itemInfo?.features?.displayValues) ? item.itemInfo.features.displayValues : []
   }
+}
+
+function findItem(items, asin) {
+  const wanted = String(asin || '').toUpperCase()
+  if (!wanted) return null
+  return (
+    items.find(item => String(item?.asin || '').toUpperCase() === wanted) ||
+    items.find(item => String(item?.parentASIN || item?.parentAsin || '').toUpperCase() === wanted) ||
+    null
+  )
+}
+
+async function searchItem(entry, domain, settings) {
+  const queries = [productLabel(entry.url, entry.index), entry.asin].filter(Boolean)
+
+  for (const keyword of queries) {
+    let raw
+    try {
+      raw = await fetchInternalAmazonData(keyword, { ...settings, asins: undefined, amazonDomain: domain })
+    } catch (error) {
+      const msg = String(error?.message || error)
+      if (/credits|quota|429/i.test(msg)) {
+        throw new Error(`Amazon API out of credits while loading product ${entry.index + 1}. Wait and try again.`)
+      }
+      continue
+    }
+    const match = findItem(readAmazonItems(raw), entry.asin)
+    if (match) return match
+  }
+
+  return null
+}
+
+async function loadComparisonProducts(urls, settings) {
+  const entries = urls.map((url, index) => ({ url, index, asin: extractAsin(url), domain: amazonDomain(url, settings) }))
+  const missingAsin = entries.find(entry => !entry.asin)
+  if (missingAsin) {
+    throw new Error(`Comparison URL ${missingAsin.index + 1} has no Amazon ASIN. Paste the product page link, not a search page.`)
+  }
+
+  const products = new Array(urls.length)
+  const domains = [...new Set(entries.map(entry => entry.domain))]
+
+  for (const domain of domains) {
+    const group = entries.filter(entry => entry.domain === domain)
+    let items = []
+
+    try {
+      const raw = await fetchInternalAmazonData(group[0].asin, {
+        ...settings,
+        asins: group.map(entry => entry.asin),
+        amazonDomain: domain
+      })
+      items = readAmazonItems(raw)
+    } catch (error) {
+      const msg = String(error?.message || error)
+      if (/credits|quota|429/i.test(msg)) {
+        throw new Error('Amazon API out of credits while loading comparison products. Wait and try again.')
+      }
+      items = []
+    }
+
+    for (const entry of group) {
+      let item = findItem(items, entry.asin)
+      if (!item) item = await searchItem(entry, domain, settings)
+      if (!item) {
+        throw new Error(
+          `No Amazon product matched comparison URL ${entry.index + 1} (ASIN ${entry.asin}). Check the link and marketplace domain.`
+        )
+      }
+      products[entry.index] = mapAmazonItem(item, entry.url, domain, settings, entry.index)
+    }
+  }
+
+  return products
+}
+
+function collectExtraImages(products, stock) {
+  const primaryCount = products.filter(product => product.imageUrl).length
+  const cap = Math.max(0, 5 - (1 + primaryCount))
+  const extras = []
+  const seen = new Set(products.map(product => product.imageUrl).filter(Boolean))
+
+  const push = (url, alt) => {
+    if (!url || seen.has(url) || extras.length >= cap) return
+    seen.add(url)
+    extras.push({ url, alt: alt || 'Product photo' })
+  }
+
+  products.forEach(product => push(product.variantImageUrl, product.productName))
+  ;(stock || []).forEach(image => push(image?.url, image?.alt || image?.tags || 'Comparison photo'))
+
+  return extras
+}
+
+async function loadBuffer(url) {
+  if (!url) return null
+  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(20000) })
+  if (!res.ok) return null
+  return Buffer.from(await res.arrayBuffer())
+}
+
+async function buildComparisonHero(products) {
+  const sharp = (await import('sharp')).default
+  const width = 1200
+  const height = 675
+  const count = products.length
+  const side = 48
+  const gap = 28
+  const vsW = 72
+  const colW = Math.floor((width - side * 2 - vsW * (count - 1) - gap * count) / count)
+  const imgTop = 148
+  const imgBoxH = 360
+  const overlays = []
+
+  const buffers = await Promise.all(products.map(product => loadBuffer(product.imageUrl).catch(() => null)))
+
+  for (let index = 0; index < count; index++) {
+    const buffer = buffers[index]
+    if (!buffer) continue
+    const png = await sharp(buffer)
+      .resize(colW, imgBoxH, { fit: 'contain', background: { r: 244, g: 245, b: 247 } })
+      .png()
+      .toBuffer()
+    const meta = await sharp(png).metadata()
+    const colX = side + index * (colW + gap + vsW)
+    overlays.push({
+      input: png,
+      left: colX + Math.max(0, Math.floor((colW - (meta.width || colW)) / 2)),
+      top: imgTop + Math.max(0, Math.floor((imgBoxH - (meta.height || imgBoxH)) / 2))
+    })
+  }
+
+  const names = products
+    .map((product, index) => {
+      const colX = side + index * (colW + gap + vsW) + colW / 2
+      return `<text x="${colX}" y="590" text-anchor="middle" fill="#6b7280" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="600">${xml(product.shortName)}</text>`
+    })
+    .join('')
+  const vs = products
+    .slice(0, -1)
+    .map((_, index) => {
+      const x = side + (index + 1) * (colW + gap) + index * vsW + vsW / 2
+      return `<text x="${x}" y="340" text-anchor="middle" fill="#c5c9d1" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700">Vs</text>`
+    })
+    .join('')
+  const svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+    <rect x="0" y="0" width="8" height="${height}" fill="#fb923c"/>
+    <rect x="28" y="26" width="34" height="34" rx="7" fill="#fb923c"/>
+    <text x="45" y="50" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">vs</text>
+    <text x="600" y="78" text-anchor="middle" fill="#9aa0a6" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="700">Which One You Will Prefer</text>
+    ${vs}
+    ${names}
+  </svg>`
+
+  const png = await sharp({
+    create: { width, height, channels: 3, background: { r: 244, g: 245, b: 247 } }
+  })
+    .composite([...overlays, { input: Buffer.from(svg), top: 0, left: 0 }])
+    .png()
+    .toBuffer()
+
+  return `data:image/png;base64,${png.toString('base64')}`
 }
 
 export async function generateProductComparisonOutline(body) {
   const settings = body.settings || {}
   const validation = validateProductComparisonUrls(settings.productComparisonUrls)
   if (!validation.ok) throw new Error('Provide two or three valid Amazon product URLs.')
-  const keyword = body.targetKeyword || settings.targetKeyword || validation.urls.map(productLabel).join(' vs ')
-  const metaResponse = await callLLM({
-    system: 'Create concise SEO metadata for a product comparison. Return JSON only and do not invent product facts.',
-    prompt: `Create title, metaTitle, metaDescription for a comparison of ${validation.urls.map(productLabel).join(', ')}. Topic: ${keyword}. Return JSON.`,
-    json: true,
-    maxTokens: 400,
-    model: settings.model
-  })
-  const metadata = parseJsonSafe(metaResponse.text) || {}
-  const title = metadata.title || `${validation.urls.map(productLabel).join(' vs ')}: Product Comparison`
-  const outlineResponse = await callLLM({
-    system: 'Return JSON only. Create a concise article outline for a product comparison.',
-    prompt: `For ${keyword}, return JSON {outline:[{type:"h2",text:"...",sectionType:"intro"}, {type:"h2",text:"...",sectionType:"comparison-article",subheadings:[{type:"h3",text:"...",sectionType:"product"}]}]}. There must be an intro, one comparison-article H2 containing H3s in this exact order: Product 1 features/pros/cons/customer feedback; Product 2 same; Product 3 same only if present; product comparison; FAQ; final verdict. Product names: ${validation.urls.map(productLabel).join(', ')}.`,
-    json: true,
-    maxTokens: 900,
-    model: settings.model
-  })
-  const outlineData = parseJsonSafe(outlineResponse.text) || {}
-  const products = await Promise.all(validation.urls.map((url, index) => fetchProduct(url, index, settings)))
-  const [serp, relevantImages] = await Promise.all([
-    fetchSerperOutlineData(keyword).catch(() => null),
-    pickRelevantImages(title, keyword, 5).catch(() => [])
+
+  const products = await loadComparisonProducts(validation.urls, settings)
+  const keyword =
+    String(body.targetKeyword || settings.targetKeyword || '').trim() || products.map(product => product.shortName).join(' vs ')
+  const names = products.map(product => product.productName).join(', ')
+
+  const [metaResponse, stock] = await Promise.all([
+    callLLM({
+      system: 'Create concise SEO metadata for a product comparison. Return JSON only and do not invent product facts.',
+      prompt: `Create title, metaTitle, metaDescription for a comparison of ${names}. Topic: ${keyword}. Return JSON.`,
+      json: true,
+      maxTokens: 400,
+      model: settings.model
+    }).catch(() => null),
+    pickRelevantImages(keyword, keyword, 2).catch(() => [])
   ])
-  const productHeadings = products.map((product, index) => ({ type: 'h3', text: `${index + 1}. ${product.productName}: Features, Pros, Cons & Amazon Customer Feedback`, sectionType: 'product', productIndex: index }))
-  const orderedSubheadings = [
+  const metadata = parseJsonSafe(metaResponse?.text) || {}
+  const title = metadata.title || `${products.map(product => product.shortName).join(' vs ')}: Which One You Will Prefer`
+  const extraImages = collectExtraImages(products, stock)
+  let heroImage = ''
+
+  try {
+    heroImage = await buildComparisonHero(products)
+  } catch {
+    heroImage = ''
+  }
+
+  if (!heroImage) {
+    heroImage = await buildBrandedHero({
+      title,
+      siteName: settings.siteName || settings.clientSite || settings.website || 'AffiGenie',
+      backgroundUrl: ''
+    }).catch(() => '')
+  }
+
+  const productHeadings = products.map((product, index) => ({
+    type: 'h2',
+    text: `${index + 1}. ${product.productName}: Features, Pros, Cons and Amazon Customer Feedback`,
+    sectionType: 'product',
+    productIndex: index
+  }))
+  const comparisonData = { products, images: extraImages }
+  const outline = [
+    { type: 'h2', text: `Introduction to ${keyword}`, sectionType: 'intro' },
     ...productHeadings,
-    { type: 'h3', text: `${products.map(product => product.productName).join(' vs ')}: Comparison`, sectionType: 'comparison' },
-    { type: 'h3', text: `Frequently Asked Questions About ${keyword}`, sectionType: 'faq' },
-    { type: 'h3', text: `Final Verdict: ${keyword}`, sectionType: 'verdict' }
+    {
+      type: 'h2',
+      text: `${products.map(product => product.shortName).join(' vs ')}: Comparison`,
+      sectionType: 'comparison',
+      comparisonData
+    },
+    { type: 'h2', text: `Frequently Asked Questions About ${keyword}`, sectionType: 'faq' },
+    { type: 'h2', text: `Final Verdict: ${keyword}`, sectionType: 'verdict' }
   ]
-  const outline = Array.isArray(outlineData.outline) ? outlineData.outline : []
-  const intro = outline.find(item => item.sectionType === 'intro') || { type: 'h2', text: `Introduction to ${keyword}`, sectionType: 'intro' }
-  const productImageCount = products.filter(product => product.imageUrl).length
-  const extraImagesNeeded = Math.max(0, Math.min(2, 4 - productImageCount - 1))
-  const extraImages = relevantImages.slice(1, 1 + extraImagesNeeded)
-  const comparison = { type: 'h2', text: `Product Comparison: ${keyword}`, sectionType: 'comparison-article', subheadings: orderedSubheadings, comparisonData: { products, serp, images: extraImages } }
-  const heroImage = await buildBrandedHero({ title, siteName: settings.siteName || settings.clientSite || settings.website || 'AffiGenie', backgroundUrl: relevantImages[0]?.url || '' }).catch(() => '')
 
   return {
     success: true,
     title,
     metaTitle: metadata.metaTitle || title.slice(0, 60),
-    metaDescription: metadata.metaDescription || `Compare ${products.map(product => product.productName).join(', ')} by their listed features, pros, and cons.`,
-    outline: [intro, comparison],
+    metaDescription: metadata.metaDescription || `Compare ${names} using listed features, price, pros, cons, and available Amazon feedback.`,
+    outline,
     heroImage,
     heroImageId: null,
-    heroImageSource: relevantImages[0] ? 'branded-photo' : 'branded-gradient',
-    comparisonShared: { products, serp, images: extraImages }
+    heroImageSource: 'comparison-hero',
+    comparisonShared: comparisonData
   }
 }
 
 function cta(product, settings) {
-  return buildCheckPriceButton(product.amazonUrl, { language: settings.language, asin: product.asin, domain: amazonDomain(product.amazonUrl, settings), partnerTag: settings.amazonTrackingId || process.env.AMAZON_PARTNER_TAG || '' })
+  return buildCheckPriceButton(product.amazonUrl, {
+    language: settings.language,
+    asin: product.asin,
+    domain: amazonDomain(product.amazonUrl, settings),
+    partnerTag: settings.amazonTrackingId || process.env.AMAZON_PARTNER_TAG || ''
+  })
 }
 
 async function generateWithOneRetry(prompt, system, json = false, maxTokens = 900, model) {
   let firstError
   for (let attempt = 0; attempt < 2; attempt++) {
-    try { return await callLLM({ system, prompt, json, maxTokens, model }) } catch (error) { firstError ||= error }
+    try {
+      return await callLLM({ system, prompt, json, maxTokens, model })
+    } catch (error) {
+      firstError ||= error
+    }
   }
   throw firstError || new Error('Section generation failed.')
 }
 
-function prosConsTable(pros, cons) {
-  return renderResponsiveTable({
-    headers: ['Pros', 'Cons'],
-    rows: [[`<ul>${pros.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`, `<ul>${cons.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`]]
-  })
+function plain(value) {
+  return escapeHtml(String(value || '').replace(/\s+/g, ' ').trim())
+}
+
+function productFigure(url, alt) {
+  if (!url) return ''
+  return `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" style="width:100%;max-width:480px;height:auto;object-fit:contain;border-radius:12px;margin:18px auto;display:block;background:#ffffff;" />`
+}
+
+function bulletList(items) {
+  const rows = (Array.isArray(items) ? items : []).map(item => `<li>${plain(item)}</li>`).join('')
+  return rows ? `<ul>${rows}</ul>` : '<div>Not listed for this product.</div>'
+}
+
+function feedbackFacts(product) {
+  if (product.rating) {
+    return `Amazon lists a rating of ${product.rating}${product.ratingCount ? ` from ${product.ratingCount} ratings` : ''}. Review quotes were not returned. Do not invent customer quotes.`
+  }
+  return 'Amazon customer feedback was not returned for this listing. Say that clearly. Do not invent reviews, quotes, star ratings, or rating counts.'
+}
+
+function readProducts(body, outline) {
+  return (
+    body.shared?.products ||
+    body.settings?.comparisonShared?.products ||
+    outline.find(item => item?.comparisonData?.products)?.comparisonData?.products ||
+    []
+  )
+}
+
+function readExtras(body, outline) {
+  return (
+    body.shared?.images ||
+    body.settings?.comparisonShared?.images ||
+    outline.find(item => item?.comparisonData?.images)?.comparisonData?.images ||
+    []
+  )
 }
 
 export async function generateProductComparisonSection(body) {
   const settings = body.settings || {}
   const outline = Array.isArray(body.outlineContext) ? body.outlineContext : []
   const section = outline.find(item => item.text === body.heading) || {}
-  const comparisonSection = outline.find(item => item.sectionType === 'comparison-article') || section || outline[0] || {}
-  const products = body.shared?.products || settings.comparisonShared?.products || comparisonSection.comparisonData?.products || []
+  const products = readProducts(body, outline)
   if (products.length < 2 || products.length > 3) throw new Error('Product comparison data must contain two or three products.')
-  const keyword = body.targetKeyword || settings.targetKeyword || body.heading || ''
-  if (section.sectionType === 'intro') {
-    const response = await generateWithOneRetry(`Write a concise introduction for ${keyword}, introducing a factual comparison of ${products.map(product => product.productName).join(', ')}. Do not invent facts or include cards/tables.`, 'Write only the article introduction.', false, 500, settings.model)
-    return { success: true, text: response.text }
-  }
-  const subheadings = comparisonSection.subheadings || body.subheadings || []
-  const html = []
 
-  for (let index = 0; index < products.length; index++) {
-    const product = products[index]
-    const heading = subheadings[index]?.text || `${index + 1}. ${product.productName}`
-    const prompt = `Evaluate ${product.productName} for ${keyword}. Facts: price ${product.price}; listed features ${product.features.join(' | ') || 'not provided'}; rating ${product.rating || 'not provided'}; rating count ${product.ratingCount || 'not provided'}. Do not invent reviews or product data. Return JSON: features[], pros[], cons[], customerFeedback, shortVerdict. Feedback must be based only on provided review/rating data; otherwise say unavailable.`
+  const keyword = body.targetKeyword || settings.targetKeyword || products.map(product => product.shortName).join(' vs ')
+  const extras = readExtras(body, outline)
+  const introImage = extras.length > 1 ? extras[0] : null
+  const comparisonImage = extras.length > 1 ? extras[1] : extras[0] || null
+  const facts = products.map(product => ({
+    name: product.productName,
+    price: product.price,
+    features: product.features,
+    rating: product.rating,
+    ratingCount: product.ratingCount
+  }))
+
+  if (section.sectionType === 'intro' || (!section.sectionType && /introduction/i.test(body.heading || ''))) {
+    let text = `This comparison looks at ${products.map(product => product.productName).join(', ')} using the details returned for each Amazon listing.`
     try {
-      const response = await generateWithOneRetry(prompt, 'Return factual product evaluation JSON only.', true, 850, settings.model)
-      const data = parseJsonSafe(response.text) || {}
-      const features = Array.isArray(data.features) && data.features.length ? data.features : product.features.slice(0, 4)
-      const pros = Array.isArray(data.pros) ? data.pros : []
-      const cons = Array.isArray(data.cons) ? data.cons : []
-      const image = product.imageUrl ? `<img src="${escapeHtml(product.imageUrl)}" alt="${escapeHtml(product.productName)}" style="width:100%;max-width:420px;height:auto;object-fit:contain;border-radius:12px;margin:18px auto;display:block;" />` : ''
-      const rating = product.rating ? `<p><strong>Rating:</strong> ${escapeHtml(product.rating)}${product.ratingCount ? ` (${escapeHtml(product.ratingCount)} ratings)` : ''}</p>` : ''
-      html.push(`<h3>${escapeHtml(heading)}</h3>${image}<p><strong>Price:</strong> ${escapeHtml(product.price)}</p>${rating}<h4>Features</h4><ul>${features.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul><h4>Pros and Cons</h4>${prosConsTable(pros, cons)}<h4>Amazon Customer Feedback</h4><p>${escapeHtml(data.customerFeedback || 'Customer feedback data was not available.')}</p><p>${escapeHtml(data.shortVerdict || '')}</p><div style="width:100%;max-width:100%;">${cta(product, settings)}</div>`)
+      const response = await generateWithOneRetry(
+        `Write a concise introduction for ${keyword}. Products: ${products.map(product => product.productName).join(', ')}. Mention that each product is reviewed on features, pros, cons, and available Amazon feedback before the comparison, FAQ, and final verdict. Do not invent prices, ratings, or features.`,
+        'Write only the article introduction as plain text.',
+        false,
+        500,
+        settings.model
+      )
+      if (response?.text?.trim()) text = response.text.trim()
     } catch {
-      html.push(`<h3>${escapeHtml(heading)}</h3><p>This product section could not be generated. Retry this section to try again.</p>`)
+      text = `This comparison looks at ${products.map(product => product.productName).join(', ')}. Each section covers listed features, pros, cons, and available Amazon customer feedback, followed by a side-by-side comparison, FAQs, and a final verdict.`
+    }
+    return { success: true, text: `${introImage ? productFigure(introImage.url, introImage.alt || keyword) : ''}<div>${plain(text)}</div>` }
+  }
+
+  if (section.sectionType === 'product') {
+    const index = Number.isInteger(section.productIndex) ? section.productIndex : products.findIndex(product => body.heading?.includes(product.productName))
+    const product = products[index]
+    if (!product) throw new Error('This comparison section is missing its product.')
+
+    let data = {}
+    try {
+      const response = await generateWithOneRetry(
+        `Evaluate ${product.productName}. Price: ${product.price}. Listed features: ${product.features.join(' | ') || 'none returned'}. ${feedbackFacts(product)} Return JSON with pros[], cons[], customerFeedback, shortVerdict. Pros and cons must come only from those listed features, the price, and the rating fields. customerFeedback must not invent quotes.`,
+        'Return factual product evaluation JSON only.',
+        true,
+        850,
+        settings.model
+      )
+      data = parseJsonSafe(response.text) || {}
+    } catch {
+      data = {}
+    }
+
+    const pros = Array.isArray(data.pros) && data.pros.length ? data.pros : []
+    const cons = Array.isArray(data.cons) && data.cons.length ? data.cons : []
+    const feedback = data.customerFeedback || (product.rating ? `Amazon lists this product at ${product.rating}${product.ratingCount ? ` from ${product.ratingCount} ratings` : ''}. Individual review text was not available.` : 'Amazon customer feedback was not available for this listing.')
+    const verdict = data.shortVerdict || 'Compare the listed features and price with the other products in this article.'
+    const rating = product.rating ? `<div><strong>Rating:</strong> ${plain(product.rating)}${product.ratingCount ? ` (${plain(product.ratingCount)} ratings)` : ''}</div>` : ''
+
+    return {
+      success: true,
+      text: [
+        productFigure(product.imageUrl, product.productName),
+        `<div><strong>Price:</strong> ${plain(product.price)}</div>`,
+        rating,
+        '<h4>Features</h4>',
+        bulletList(product.features.slice(0, 6)),
+        '<h4>Pros</h4>',
+        pros.length ? bulletList(pros) : '<div>Pros could not be derived from the listed product data.</div>',
+        '<h4>Cons</h4>',
+        cons.length ? bulletList(cons) : '<div>Cons could not be derived from the listed product data.</div>',
+        '<h4>Amazon Customer Feedback</h4>',
+        `<div>${plain(feedback)}</div>`,
+        `<div>${plain(verdict)}</div>`,
+        `<div>${cta(product, settings)}</div>`
+      ].join('')
     }
   }
 
-  const comparisonHeading = subheadings[products.length]?.text || 'Side-by-Side Comparison'
-  try {
-    const response = await generateWithOneRetry(`Compare these products only using supplied facts. Return JSON {rows:[{keyFeatures,strengths,tradeoffs}]}. ${JSON.stringify(products.map(product => ({ name: product.productName, price: product.price, features: product.features, rating: product.rating })))}`, 'Return factual comparison JSON only.', true, 1000, settings.model)
-    const result = parseJsonSafe(response.text) || {}
-    const rows = products.map((product, index) => {
-      const row = result.rows?.[index] || {}
-      return [escapeHtml(product.productName), escapeHtml(product.price), escapeHtml(row.keyFeatures || product.features.slice(0, 3).join('; ')), escapeHtml(row.strengths || ''), escapeHtml(row.tradeoffs || ''), cta(product, settings)]
-    })
-    html.push(`<h3>${escapeHtml(comparisonHeading)}</h3>${renderResponsiveTable({ headers: ['Product', 'Price', 'Key Features', 'Strengths', 'Tradeoffs', 'Check Price'], rows })}`)
-  } catch { html.push(`<h3>${escapeHtml(comparisonHeading)}</h3><p>Comparison generation failed. Retry this section to try again.</p>`) }
+  if (section.sectionType === 'comparison') {
+    let rows = products.map(product => [
+      escapeHtml(product.productName),
+      plain(product.price),
+      plain(product.features.slice(0, 3).join('; ') || 'Not listed'),
+      plain(product.rating || 'Not listed'),
+      cta(product, settings)
+    ])
+    try {
+      const response = await generateWithOneRetry(
+        `Compare these products using only the supplied facts. Return JSON {rows:[{strengths,tradeoffs}]} with one row per product in the same order. ${JSON.stringify(facts)}`,
+        'Return factual comparison JSON only.',
+        true,
+        900,
+        settings.model
+      )
+      const result = parseJsonSafe(response.text) || {}
+      rows = products.map((product, index) => {
+        const row = result.rows?.[index] || {}
+        return [
+          escapeHtml(product.productName),
+          plain(product.price),
+          plain(product.features.slice(0, 3).join('; ') || 'Not listed'),
+          plain(row.strengths || product.rating || 'Not listed'),
+          plain(row.tradeoffs || 'See listed features'),
+          cta(product, settings)
+        ]
+      })
+    } catch {
+      rows = products.map(product => [
+        escapeHtml(product.productName),
+        plain(product.price),
+        plain(product.features.slice(0, 3).join('; ') || 'Not listed'),
+        plain(product.rating || 'Not listed'),
+        'See the product section for listed features.',
+        cta(product, settings)
+      ])
+    }
 
-  const faqHeading = subheadings[products.length + 1]?.text || `Frequently Asked Questions About ${keyword}`
-  try {
-    const response = await generateWithOneRetry(`Write four FAQs in HTML about ${products.map(product => product.productName).join(', ')}. Use only these facts and mark unavailable information: ${JSON.stringify(products.map(product => ({ name: product.productName, price: product.price, features: product.features, rating: product.rating })))}`, 'Write factual FAQ HTML with h4 questions and p answers.', false, 900, settings.model)
-    html.push(`<h3>${escapeHtml(faqHeading)}</h3>${response.text}`)
-  } catch { html.push(`<h3>${escapeHtml(faqHeading)}</h3><p>FAQ generation failed. Retry this section to try again.</p>`) }
+    const headers = rows[0]?.length === 6 ? ['Product', 'Price', 'Key Features', 'Strengths', 'Tradeoffs', 'Check Price'] : ['Product', 'Price', 'Key Features', 'Rating', 'Check Price']
 
-  const verdictHeading = subheadings[products.length + 2]?.text || `Final Verdict: ${keyword}`
-  try {
-    const response = await generateWithOneRetry(`Return JSON {winnerIndex,verdict,bestFor[]} for these products, based only on the supplied facts. ${JSON.stringify(products.map(product => ({ name: product.productName, price: product.price, features: product.features, rating: product.rating })))}`, 'Return factual final verdict JSON only.', true, 700, settings.model)
-    const verdict = parseJsonSafe(response.text) || {}
+    return {
+      success: true,
+      text: `${comparisonImage ? productFigure(comparisonImage.url, comparisonImage.alt || keyword) : ''}<div>This table uses only the product details returned for each listing.</div>${renderResponsiveTable({ headers, rows })}`
+    }
+  }
+
+  if (section.sectionType === 'faq') {
+    let faqs = []
+    try {
+      const response = await generateWithOneRetry(
+        `Write exactly four FAQs about ${products.map(product => product.productName).join(', ')}. Use only these facts and say when a fact was not returned: ${JSON.stringify(facts)}. Return JSON {faqs:[{question,answer}]}.`,
+        'Return factual FAQ JSON only. Do not invent prices, ratings, or features.',
+        true,
+        900,
+        settings.model
+      )
+      const parsed = parseJsonSafe(response.text) || {}
+      faqs = Array.isArray(parsed.faqs) ? parsed.faqs.slice(0, 4) : []
+    } catch {
+      faqs = []
+    }
+
+    if (!faqs.length) {
+      faqs = products.slice(0, 2).map(product => ({
+        question: `What is listed for ${product.productName}?`,
+        answer: product.features[0] ? `${product.productName} lists: ${product.features.slice(0, 3).join('; ')}.` : `Feature details were not returned for ${product.productName}.`
+      }))
+    }
+
+    const html = faqs
+      .map(faq => `<h4>${plain(faq.question || 'Question')}</h4><div>${plain(faq.answer || 'That detail was not returned for these listings.')}</div>`)
+      .join('')
+
+    return { success: true, text: html }
+  }
+
+  if (section.sectionType === 'verdict') {
+    let verdict = {}
+    try {
+      const response = await generateWithOneRetry(
+        `Return JSON {winnerIndex,verdict,bestFor[]} for these products, based only on the supplied facts. winnerIndex is the zero-based index of the stronger listed option, or 0 if the facts do not support a winner. bestFor must have one entry per product. ${JSON.stringify(facts)}`,
+        'Return factual final verdict JSON only. Do not invent reviews or specifications.',
+        true,
+        700,
+        settings.model
+      )
+      verdict = parseJsonSafe(response.text) || {}
+    } catch {
+      verdict = {}
+    }
+
     const winnerIndex = Math.max(0, Math.min(products.length - 1, Number(verdict.winnerIndex) || 0))
-    html.push(`<h3>${escapeHtml(verdictHeading)}</h3><p>${escapeHtml(verdict.verdict || 'Compare the listed product information against your needs.')}</p><ul>${products.map((product, index) => `<li><strong>${escapeHtml(product.productName)}:</strong> ${escapeHtml(verdict.bestFor?.[index] || 'Review the listed features and price.')}</li>`).join('')}</ul><div style="width:100%;max-width:100%;">${cta(products[winnerIndex], settings)}</div>`)
-  } catch { html.push(`<h3>${escapeHtml(verdictHeading)}</h3><p>Final verdict generation failed. Retry this section to try again.</p>`) }
+    const summary = verdict.verdict || 'Choose the product whose listed features and price match what you need. Missing review text should not be treated as a verdict.'
+    const lines = products
+      .map((product, index) => `<li><strong>${escapeHtml(product.productName)}:</strong> ${plain(verdict.bestFor?.[index] || 'Review the listed features and price.')}</li>`)
+      .join('')
 
-  return { success: true, text: html.join('\n') }
+    return {
+      success: true,
+      text: `<div>${plain(summary)}</div><ul>${lines}</ul><div>${cta(products[winnerIndex], settings)}</div>`
+    }
+  }
+
+  return {
+    success: true,
+    text: `<div>This section sits outside the comparison structure. The article still covers each product, a comparison table, FAQs, and a final verdict for ${escapeHtml(keyword)}.</div>`
+  }
 }

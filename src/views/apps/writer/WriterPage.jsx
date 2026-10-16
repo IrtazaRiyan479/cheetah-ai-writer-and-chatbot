@@ -124,10 +124,18 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
       settings.type === 'rewrite' ||
       settings.type === 'amazon-roundup-rewrite' ||
       settings.type === 'amazon-review-rewrite'
+    let requestSettings = settings
 
     if (settings.type === 'product-comparison') {
+      const normalizeAmazonInput = value => {
+        const raw = String(value || '').trim()
+        if (!raw) return ''
+        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) return raw
+        if (/^(?:www\.)?(?:amazon\.[a-z.]+|amzn\.to)\/.+/i.test(raw)) return `https://${raw}`
+        return raw
+      }
       const links = Array.isArray(settings.productComparisonUrls)
-        ? settings.productComparisonUrls.map(value => String(value || '').trim()).filter(Boolean)
+        ? settings.productComparisonUrls.map(value => normalizeAmazonInput(value)).filter(Boolean)
         : []
 
       if (
@@ -145,6 +153,9 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
 
         return
       }
+
+      requestSettings = { ...settings, productComparisonUrls: links }
+      updateSetting('productComparisonUrls', links)
     }
 
     if (isRewriteType && !String(settings.articleUrlToRewrite || '').trim()) {
@@ -203,12 +214,12 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode: 'outline',
-          settings: settings,
-          targetKeyword: settings.targetKeyword || 'General Topic',
-          model: settings.model,
-          articleLength: settings.articleLength,
-          customArticleLength: settings.customArticleLength,
-          language: settings.language,
+          settings: requestSettings,
+          targetKeyword: requestSettings.targetKeyword || 'General Topic',
+          model: requestSettings.model,
+          articleLength: requestSettings.articleLength,
+          customArticleLength: requestSettings.customArticleLength,
+          language: requestSettings.language,
           country: settings.country,
           automaticExternalLinks: settings.automaticExternalLinks,
           includeFaq: settings.includeFaq,
