@@ -731,6 +731,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
   const { modeOf } = useFeatureAccess()
   const [isGenerating, setIsGenerating] = useState(true)
   const [currentIndex, setCurrentIndex] = useState(0)
+  const [sectionProgress, setSectionProgress] = useState({ done: 0, total: 0 })
 
   const [exportAnchorEl, setExportAnchorEl] = useState(null)
   const isExportMenuOpen = Boolean(exportAnchorEl)
@@ -744,7 +745,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
   const [waitBanner, setWaitBanner] = useState('')
 
   const progressColors = ['secondary', 'success', 'error', 'warning', 'info', 'primary']
-  const progressPercentage = outline && outline.length > 0 ? (currentIndex / outline.length) * 100 : 0
+  const progressPercentage =
+    sectionProgress.total > 0 ? Math.min(100, (sectionProgress.done / sectionProgress.total) * 100) : 0
   const currentProgressColor = progressColors[currentIndex % progressColors.length] || 'primary'
 
   const deepSearchColorPalette = ['info', 'secondary', 'primary', 'warning', 'success']
@@ -1085,6 +1087,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         }
       })
 
+      setSectionProgress({ done: 0, total: groupedSections.length })
+
       const processAndInsertSection = (i, group, data) => {
         if (!data || !data.success || !data?.text || data.text.trim().length < 30) {
           return failedSectionHtml(i, group.h2?.text, { showHeading: i !== 0 })
@@ -1305,9 +1309,11 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                 .run()
             }
           }
+
+          setSectionProgress({ done: i + 1, total: groupedSections.length })
         }
 
-        if (!isCancelled) {
+      if (!isCancelled) {
           setIsGenerating(false)
           setWaitBanner('')
           setCurrentIndex(outline.length)
@@ -1468,6 +1474,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         }
 
         const done = flushed.filter(Boolean).length
+
+        setSectionProgress({ done, total: groupedSections.length })
 
         if (done < groupedSections.length) {
           setWaitBanner(`Finished ${done} of ${groupedSections.length} sections`)

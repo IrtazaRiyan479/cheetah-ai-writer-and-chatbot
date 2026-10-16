@@ -16,7 +16,8 @@ import {
   getMediaInstruction,
   getRealTimeInstruction,
   fetchSerperOutlineData,
-  fetchRawArticleHtml
+  fetchRawArticleHtml,
+  pickRelevantImages
 } from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
@@ -320,6 +321,323 @@ function matchRewriteProduct(heading, outlineContext, products) {
   return null
 }
 
+function mergeRewriteProduct(primary, fallback) {
+  const next = { ...(fallback || {}) }
+  const incoming = primary || {}
+
+  for (const key of ['productName', 'asin', 'amazonUrl', 'imageUrl', 'price']) {
+    if (incoming[key]) next[key] = incoming[key]
+  }
+
+  if (Array.isArray(incoming.features) && incoming.features.length) next.features = incoming.features
+  else if (!Array.isArray(next.features)) next.features = []
+
+  return next
+}
+
+function reviewProductFromOutline(outlineContext) {
+  const items = Array.isArray(outlineContext) ? outlineContext : []
+  const withData = items.find(
+    item =>
+      item?.productData &&
+      (item.productData.imageUrl || item.productData.asin || item.productData.amazonUrl || item.productData.productName)
+  )
+
+  return withData?.productData || null
+}
+
+function groupRewriteOutline(outline) {
+  const groups = []
+
+  for (const item of Array.isArray(outline) ? outline : []) {
+    if (!item || typeof item !== 'object') continue
+
+    const type = item.type || 'h2'
+
+    if (type === 'h3' && groups.length) {
+      groups[groups.length - 1].children.push({ ...item, type: 'h3' })
+    } else {
+      groups.push({ item: { ...item, type: 'h2' }, children: [] })
+    }
+  }
+
+  return groups
+}
+
+function flattenRewriteGroups(groups) {
+  return groups.flatMap(group => [group.item, ...group.children])
+}
+
+function classifyReviewRewriteSection(text, index) {
+  const value = String(text || '')
+
+  if (index === 0) return 'intro'
+  if (/faq|frequently asked/i.test(value)) return 'faq'
+  if (/pros|cons/i.test(value)) return 'pros_cons'
+  if (/conclusion|verdict|final thoughts|final verdict|wrap-up|wrapping up/i.test(value)) return 'conclusion'
+
+  return 'features'
+}
+
+function normalizeAmazonReviewRewriteOutline(outline, settings, product) {
+  const keyword = settings.targetKeyword || product?.productName || ''
+  let groups = groupRewriteOutline(outline).map((group, index) => {
+    let sectionType = classifyReviewRewriteSection(group.item.text, index)
+
+    if (sectionType === 'faq' && !settings.includeFaq) sectionType = 'features'
+
+    return { ...group, item: { ...group.item, sectionType } }
+  })
+
+  const ensureKeyword = text => {
+    const value = String(text || '').trim()
+
+    if (!keyword || value.toLowerCase().includes(String(keyword).toLowerCase())) return value || keyword
+
+    return value ? `${value}: ${keyword}` : keyword
+  }
+
+  if (!groups.length || groups[0].item.sectionType !== 'intro') {
+    groups.unshift({
+      item: { type: 'h2', text: ensureKeyword(`Introduction to ${keyword || 'This Product'}`), sectionType: 'intro' },
+      children: []
+    })
+  } else {
+    groups[0] = { ...groups[0], item: { ...groups[0].item, sectionType: 'intro', text: ensureKeyword(groups[0].item.text) } }
+  }
+
+  groups = groups.map((group, index) => {
+    if (index === 0) return group
+
+    const sectionType = group.item.sectionType
+
+    if (sectionType === 'pros_cons' || sectionType === 'conclusion' || sectionType === 'faq') return group
+
+    return { ...group, item: { ...group.item, sectionType: 'features' } }
+  })
+
+  const featureDefaults = [
+    `Key Features of ${keyword || 'This Product'}`,
+    `Real-World Performance of ${keyword || 'This Product'}`
+  ]
+  let featureCount = groups.filter(group => group.item.sectionType === 'features').length
+  let insertAt = 1
+
+  while (featureCount < 2) {
+    groups.splice(insertAt, 0, {
+      item: { type: 'h2', text: featureDefaults[featureCount] || `Feature ${featureCount + 1}`, sectionType: 'features' },
+      children: []
+    })
+    featureCount += 1
+    insertAt += 1
+  }
+
+  const keepOne = (sectionType, fallbackText) => {
+    const matches = groups.filter(group => group.item.sectionType === sectionType)
+
+    if (!matches.length) {
+      const faqIndex = groups.findIndex(group => group.item.sectionType === 'faq')
+      const conclusionIndex = groups.findIndex(group => group.item.sectionType === 'conclusion')
+      const at =
+        sectionType === 'pros_cons'
+          ? conclusionIndex >= 0
+            ? conclusionIndex
+            : faqIndex >= 0
+              ? faqIndex
+              : groups.length
+          : sectionType === 'conclusion'
+            ? faqIndex >= 0
+              ? faqIndex
+              : groups.length
+            : groups.length
+
+      groups.splice(at, 0, { item: { type: 'h2', text: fallbackText, sectionType }, children: [] })
+
+      return
+    }
+
+    let seen = false
+
+    groups = groups.map(group => {
+      if (group.item.sectionType !== sectionType) return group
+      if (!seen) {
+        seen = true
+
+        return group
+      }
+
+      return { ...group, item: { ...group.item, sectionType: 'features' } }
+    })
+  }
+
+  keepOne('pros_cons', `Pros and Cons of ${keyword || 'This Product'}`)
+  keepOne('conclusion', ensureKeyword(`Final Verdict on ${keyword || 'This Product'}`))
+
+  if (settings.includeFaq) keepOne('faq', 'Frequently Asked Questions')
+  else {
+    groups = groups.map(group =>
+      group.item.sectionType === 'faq' ? { ...group, item: { ...group.item, sectionType: 'features' } } : group
+    )
+  }
+
+  const order = { intro: 0, features: 1, pros_cons: 2, conclusion: 3, faq: 4 }
+
+  groups.sort((a, b) => (order[a.item.sectionType] ?? 1) - (order[b.item.sectionType] ?? 1))
+
+  const conclusion = groups.find(group => group.item.sectionType === 'conclusion')
+
+  if (conclusion) conclusion.item.text = ensureKeyword(conclusion.item.text)
+
+  if (groups[0] && product) {
+    groups[0].item.productData = {
+      productName: product.productName || '',
+      amazonUrl: product.amazonUrl || '',
+      imageUrl: product.imageUrl || '',
+      price: product.price || '',
+      asin: product.asin || '',
+      features: Array.isArray(product.features) ? product.features : []
+    }
+  }
+
+  return flattenRewriteGroups(groups)
+}
+
+function amazonReviewRewriteOutlineDirective(settings, product, faqInstruction, relatedInstruction) {
+  const condensed = Boolean(settings.condensedMode || settings.enableCondensedMode)
+  const keyword = settings.targetKeyword || product?.productName || 'this product'
+  const featureNote = product?.features?.length
+    ? `Ground feature headings in these listing features when the source covers them: ${product.features.slice(0, 8).join(' | ')}.`
+    : 'Ground feature headings in the source article.'
+
+  return `LENGTH CONTROL: Ignore generic blog length presets. Use the Amazon Single Product Review layout.
+    TASK:
+    1. Read the SOURCE ARTICLE and keep its facts, product, and affiliate URL. Rewrite the structure. Do not copy sentences.
+    2. ${faqInstruction || (settings.includeFaq ? 'Include one FAQ H2.' : 'Do not include an FAQ section.')}
+    3. ${relatedInstruction || 'Do not add unrelated topics.'}
+    4. AMAZON SINGLE PRODUCT REVIEW LAYOUT (required, same order as a new Amazon Single Product Review):
+       - Every outline object needs "sectionType": "intro", "features", "pros_cons", "conclusion"${settings.includeFaq ? ', or "faq"' : ''}.
+       - 1) The first item is an H2 with sectionType "intro" and its text contains "${keyword}".
+       - 2) Next, 2 or 3 H2s with sectionType "features". ${condensed ? 'Do not add H3s.' : 'Add descriptive H3s under those feature H2s, taken from the source.'}
+       - 3) One H2 with sectionType "pros_cons".
+       - 4) One H2 with sectionType "conclusion" whose text contains "${keyword}".
+       - 5) ${settings.includeFaq ? 'The last H2 is exactly "Frequently Asked Questions" with sectionType "faq".' : 'Do not add an FAQ heading.'}
+       ${condensed ? '- CONDENSED MODE: essential H2s only. No filler.' : '- FULL REVIEW MODE: deep single-product review. Cover specifications, real-world performance, and durability when the source supports them. Target the same depth as a full Amazon single-product review without inventing a second product.'}
+       ${settings.enableFirstHandExperience ? '- FIRST-HAND EXPERIENCE: headings must reflect personal testing, such as "My Experience With..." or "How I Tested It".' : ''}
+       - ${featureNote}
+       - Product: ${product?.productName || keyword}. Price: ${product?.price || 'from the source'}. Affiliate URL: ${product?.amazonUrl || 'preserve the source URL'}.
+       - Do not create a product roundup, numbered multi-product list, competitor roundup table, or Top Pick section.
+       - The product image and Check Price button are inserted by the system. Do not request stock photos in the outline.`
+}
+
+function amazonReviewLinkOptions(settings, product) {
+  return {
+    language: settings.language,
+    asin: product?.asin,
+    domain: settings.amazonDomain || 'www.amazon.com',
+    partnerTag: settings.amazonTrackingId || settings.partnerTag || process.env.AMAZON_PARTNER_TAG || 'babiescarrier-20'
+  }
+}
+
+function amazonReviewImageHtml(product, keyword) {
+  const src = String(product?.imageUrl || '').trim()
+
+  if (!/^https?:/i.test(src)) return ''
+
+  const alt = escapeHtml(product?.productName || keyword || 'Product')
+
+  return `<div align="center" style="margin:20px 0;"><img src="${escapeHtml(src)}" alt="${alt}" style="max-width:420px;width:100%;height:auto;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.08);" /></div>`
+}
+
+function resolveAmazonReviewSectionType(heading, sectionIndex, outlineContext) {
+  const outlineItem = (Array.isArray(outlineContext) ? outlineContext : []).find(item => item?.text === heading)
+  let sectionType = outlineItem?.sectionType || ''
+
+  if (!sectionType) {
+    if (Number(sectionIndex) === 0 || /^introduction\b/i.test(heading || '')) sectionType = 'intro'
+    else if (/pros|cons/i.test(heading || '')) sectionType = 'pros_cons'
+    else if (/faq|frequently asked/i.test(heading || '')) sectionType = 'faq'
+    else if (/conclusion|verdict|final/i.test(heading || '')) sectionType = 'conclusion'
+    else sectionType = 'features'
+  }
+
+  if (sectionType === 'standard' || sectionType === 'product') {
+    sectionType = Number(sectionIndex) === 0 ? 'intro' : 'features'
+  }
+
+  return sectionType
+}
+
+function amazonReviewRewriteSectionDirective({
+  sectionType,
+  heading,
+  product,
+  priceButton,
+  productImageHtml,
+  settings,
+  subheadings,
+  targetKeyword
+}) {
+  const condensed = Boolean(settings.condensedMode || settings.enableCondensedMode)
+  const activeKeyword = targetKeyword || product?.productName || 'this product'
+  const cta = priceButton
+    ? `<div class="affigenie-cta" style="display:block;width:100%;max-width:100%;text-align:center;margin:25px 0;">\n${priceButton}\n</div>`
+    : ''
+  const productContext = product
+    ? `PRODUCT CONTEXT (do not invent a different product, price, or name):
+      - Product Name: ${product.productName || activeKeyword}
+      - Price: ${product.price || 'Check Amazon'}
+      - Core Features: ${product.features?.length ? product.features.join(' | ') : 'Use only features present in the source article.'}
+      - Affiliate URL: ${product.amazonUrl || ''}`
+    : ''
+  const shared = `
+    AMAZON SINGLE PRODUCT REVIEW LAYOUT for sectionType "${sectionType}":
+    Rewrite this part of the source in the same layout used by Amazon Single Product Review. One product only.
+    No roundup table, no Top Pick cards, and no list of competing products.
+    ${condensed ? 'CONDENSED MODE: paragraphs of 1-3 sentences. No fluff.' : 'Write detailed paragraphs. Do not leave the space under the heading blank.'}
+    ${settings.enableFirstHandExperience ? 'Write in first person as someone who tested this product. Use only experiences supported by the source.' : 'Write as an objective product reviewer. Do not invent hands-on tests that are not in the source.'}
+    Do NOT repeat the heading "${heading}" in the body.
+    ${productContext}
+  `
+
+  if (sectionType === 'intro') {
+    return `${shared}
+      TASK: Write the introduction of this single-product review, rewritten from the source.
+      STRICT LAYOUT:
+      1. Write 2-3 intro paragraphs.
+      2. Then insert this product image HTML exactly:
+      ${productImageHtml || '[no product image]'}
+      3. ${cta ? `Then insert this EXACT CTA HTML. Do not change the link or the label:\n${cta}` : 'Do not invent a purchase button.'}
+    `
+  }
+
+  if (sectionType === 'pros_cons') {
+    return `${shared}
+      TASK: Rewrite the pros and cons of this single product.
+      STRICT LAYOUT: Use one Markdown table with exactly two columns, "Pros" and "Cons". Do not use H3 headings and do not use a multi-product table.
+    `
+  }
+
+  if (sectionType === 'conclusion') {
+    return `${shared}
+      TASK: Write the final verdict, rewritten from the source.
+      ${cta ? `STRICT LAYOUT: End with this EXACT HTML block. Do not change the link or the label:\n${cta}` : ''}
+    `
+  }
+
+  if (sectionType === 'faq') {
+    return `${shared}
+      TASK: Rewrite 3 to 5 questions about this product as an FAQ.
+      ${subheadings?.length ? `Use these questions as H3s:\n${subheadings.join('\n')}` : ''}
+      STRICT LAYOUT: After the answers, add FAQPage JSON-LD inside a <script type="application/ld+json"> tag. Do not wrap that script in a markdown code fence.
+    `
+  }
+
+  return `${shared}
+    TASK: Rewrite this feature analysis from the source. Start with paragraphs only.
+    ${subheadings?.length ? `Cover these subheadings exactly as H3s:\n${subheadings.map(item => `### ${item}`).join('\n')}` : 'Use H3s only for subpoints already in the outline.'}
+  `
+}
+
 export function detectSourceArticleType(htmlOrText = '') {
   const source = String(htmlOrText || '')
   const marker =
@@ -398,10 +716,22 @@ export async function generateRewriteOutline(body, genAI) {
 
   const baseSystemInstruction = getBaseSystemInstruction(langName, countryName)
 
+  const reviewKeyword = targetKeyword || rewriteProducts[0]?.productName || 'main topic'
+  const reviewSchemaNote =
+    settings.type === 'amazon-review-rewrite'
+      ? ` Each outline object MUST also include "sectionType" set to "intro", "features", "pros_cons", "conclusion"${includeFaq ? ', or "faq"' : ''}. This rewrite MUST use the Amazon Single Product Review layout, not a roundup or a generic blog outline.`
+      : ''
+  const outlineKeyword = settings.type === 'amazon-review-rewrite' ? reviewKeyword : targetKeyword || 'main topic'
+
+  const closingRule =
+    settings.type === 'amazon-review-rewrite' && includeFaq
+      ? `- The conclusion H2 must contain the exact target keyword: "${outlineKeyword}". The final H2 must be "Frequently Asked Questions".`
+      : `- The VERY LAST "h2" object in the outline array MUST be a concluding heading and MUST also contain the exact target keyword: "${outlineKeyword}" in its "text" field.`
+
   const outlineModel = genAI.getGenerativeModel({
     model: model || 'gemini-3.1-flash-lite',
     generationConfig: { responseMimeType: 'application/json' },
-    systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline based on the provided SOURCE ARTICLE. You MUST return a JSON object with four keys: "metaTitle" (SEO title, max 60 chars), "metaDescription" (SEO desc, max 160 chars), "title" (A catchy, rewritten H1 Title) and "outline" (A flat JSON array of objects). Schema: { "metaTitle": "...", "metaDescription": "...", "title": "Catchy Title", "outline": [{ "type": "h2", "text": "Heading text" }] }\n\nCRITICAL OUTLINE RULES:\n- The "title" MUST contain the exact target keyword: "${targetKeyword || 'main topic'}".\n- The VERY FIRST "h2" object in the outline array MUST contain the exact target keyword: "${targetKeyword || 'main topic'}" in its "text" field.\n- The VERY LAST "h2" object in the outline array MUST be a concluding heading and MUST also contain the exact target keyword: "${targetKeyword || 'main topic'}" in its "text" field.`
+    systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline based on the provided SOURCE ARTICLE. You MUST return a JSON object with four keys: "metaTitle" (SEO title, max 60 chars), "metaDescription" (SEO desc, max 160 chars), "title" (A catchy, rewritten H1 Title) and "outline" (A flat JSON array of objects). Schema: { "metaTitle": "...", "metaDescription": "...", "title": "Catchy Title", "outline": [{ "type": "h2", "text": "Heading text", "sectionType": "intro" }] }${reviewSchemaNote}\n\nCRITICAL OUTLINE RULES:\n- The "title" MUST contain the exact target keyword: "${outlineKeyword}".\n- The VERY FIRST "h2" object in the outline array MUST contain the exact target keyword: "${outlineKeyword}" in its "text" field.\n${closingRule}`
   })
 
   let fetchedExternalLinks = []
@@ -449,7 +779,10 @@ export async function generateRewriteOutline(body, genAI) {
     SOURCE ARTICLE CONTENT (MARKDOWN FORMAT):
     ${sourceText ? sourceText.substring(0, 180000) : 'No content provided.'}
 
-    LENGTH CONTROL: ${lengthInstruction(settings.articleLength, settings.customSectionCount)}
+    ${
+      settings.type === 'amazon-review-rewrite'
+        ? amazonReviewRewriteOutlineDirective(settings, rewriteProducts[0], faqInstruction, relatedInstruction)
+        : `LENGTH CONTROL: ${lengthInstruction(settings.articleLength, settings.customSectionCount)}
 
     TASK:
     1. Extract the core concepts, topics, and structure of the SOURCE ARTICLE CONTENT below. Ground every heading in that content.
@@ -460,9 +793,8 @@ export async function generateRewriteOutline(body, genAI) {
     ${
       settings.type === 'amazon-roundup-rewrite'
         ? `6. Reshape this into an Amazon product ROUNDUP. sectionType must be "intro", then one "product" H2 per product below, then "conclusion". Number each product heading ("1. Product Name"). Put productName, amazonUrl, and imageUrl from this list on each product item. Use these original Amazon product images only. Never use Pexels, Pixabay, or Unsplash.\n${productListString || 'No product list was resolved; keep the products named in the source.'}`
-        : settings.type === 'amazon-review-rewrite'
-          ? `6. Reshape this into an Amazon SINGLE-PRODUCT review only. sectionType must be intro, features, pros_cons, conclusion, or faq, in that order. Preserve the affiliate URL exactly. The product image is inserted by the system from Amazon; do not request stock photos. Product: ${rewriteProducts[0]?.productName || targetKeyword || ''}.`
-          : '6. This is a standard blog rewrite. Keep a normal blog structure grounded in the source.'
+        : '6. This is a standard blog rewrite. Keep a normal blog structure grounded in the source.'
+    }`
     }
     Return ONLY valid JSON.
   `
@@ -605,26 +937,8 @@ export async function generateRewriteOutline(body, genAI) {
       jsonResult.outline = attachProductsToOutline(jsonResult.outline, rewriteProducts)
     }
 
-    if (settings.type === 'amazon-review-rewrite' && Array.isArray(jsonResult.outline)) {
-      const allowed = new Set(['intro', 'features', 'pros_cons', 'conclusion', 'faq', 'standard'])
-      const reviewProduct = rewriteProducts[0]
-
-      jsonResult.outline = jsonResult.outline.map((item, index) => {
-        const next = { ...item }
-        if (!next.sectionType) {
-          if (index === 0) next.sectionType = 'intro'
-          else if (/feature/i.test(next.text || '')) next.sectionType = 'features'
-          else if (/pros|cons/i.test(next.text || '')) next.sectionType = 'pros_cons'
-          else if (/faq|question/i.test(next.text || '')) next.sectionType = 'faq'
-          else if (/conclusion|verdict|final/i.test(next.text || '')) next.sectionType = 'conclusion'
-          else next.sectionType = 'standard'
-        }
-        if (!allowed.has(next.sectionType) || next.sectionType === 'product') {
-          next.sectionType = index === 0 ? 'intro' : 'standard'
-        }
-        if (index === 0 && reviewProduct) next.productData = reviewProduct
-        return next
-      })
+    if (settings.type === 'amazon-review-rewrite') {
+      jsonResult.outline = normalizeAmazonReviewRewriteOutline(jsonResult.outline, settings, rewriteProducts[0])
     }
 
     return {
@@ -699,6 +1013,25 @@ export async function generateRewriteSection(body, genAI) {
 
   assertRewriteSource(settings.type, detectSourceArticleType(`${rawHtml}\n${sourceText}`))
 
+  let reviewProduct = null
+  let reviewSectionType = ''
+  let reviewImageHtml = ''
+  let reviewPriceButton = ''
+
+  if (settings.type === 'amazon-review-rewrite') {
+    reviewSectionType = resolveAmazonReviewSectionType(heading, sectionIndex, outlineContext)
+    reviewProduct = reviewProductFromOutline(outlineContext)
+
+    if (!reviewProduct?.imageUrl || !reviewProduct?.amazonUrl || !reviewProduct?.productName) {
+      const loaded = await loadRewriteProducts(settings, sourceText, rawHtml)
+
+      reviewProduct = mergeRewriteProduct(reviewProduct, loaded.products?.[0])
+    }
+
+    reviewImageHtml = amazonReviewImageHtml(reviewProduct, targetKeyword)
+    reviewPriceButton = buildCheckPriceButton(reviewProduct?.amazonUrl, amazonReviewLinkOptions(settings, reviewProduct))
+  }
+
   const sectionModel = genAI.getGenerativeModel({
     model: model || 'gemini-3.1-pro-preview'
   })
@@ -748,12 +1081,21 @@ export async function generateRewriteSection(body, genAI) {
   const rewriteType = settings.type || 'rewrite'
   const typeLayout =
     rewriteType === 'amazon-review-rewrite'
-      ? `SINGLE-PRODUCT REVIEW LAYOUT: Write only about one product. Do not list multiple competing products, roundup tables, or "top picks". Do not add Pexels, Pixabay, Unsplash, or YouTube media. The original Amazon product image is inserted by the system.`
+      ? `SINGLE-PRODUCT REVIEW LAYOUT: Match Amazon Single Product Review. One product only. Intro has the product image and Check Price button, feature sections follow, pros and cons are one two-column table, and the conclusion ends with the Check Price button.`
       : rewriteType === 'amazon-roundup-rewrite'
         ? `ROUNDUP LAYOUT: This section may cover one product in a multi-product roundup. Keep product-focused structure. Do not add Pexels, Pixabay, Unsplash, or YouTube media. The original Amazon product image is inserted by the system.`
         : `STANDARD BLOG REWRITE: Follow a natural blog structure grounded in the source.`
 
-  let sectionStructureRequirements = `
+  let sectionStructureRequirements =
+    rewriteType === 'amazon-review-rewrite'
+      ? `
+    CRITICAL STRUCTURE REQUIREMENTS (AMAZON SINGLE PRODUCT REVIEW REWRITE):
+    1. Write only the section for "${heading}" using the Amazon Single Product Review layout in the layout block below.
+    2. DO NOT copy the source text verbatim. Rewrite it and keep facts from the SOURCE ARTICLE CONTENT.
+    3. If the source lacks a detail, omit it instead of inventing product claims.
+    4. The layout block at the end of this prompt overrides generic blog formatting.
+  `
+      : `
     CRITICAL STRUCTURE REQUIREMENTS (REWRITE MODE):
     1. Write a comprehensive section directly underneath the main heading: "${heading}".
     ${subheadings && subheadings.length > 0 ? `2. Cover these subheadings exactly as H3s (### [Title]):\n${subheadings.join('\n')}` : '2. Do not invent unrelated subtopics.'}
@@ -761,6 +1103,10 @@ export async function generateRewriteSection(body, genAI) {
     4. ${typeLayout}
     5. Prefer details that appear in the source. If the source lacks a detail, say so briefly instead of inventing product claims.
   `
+
+  if (rewriteType === 'amazon-review-rewrite' && settings.enableFirstHandExperience) {
+    povInstruction = `POINT OF VIEW: You MUST write in the First-Person ("I", "me", "my"). Speak directly to the reader as someone who currently owns, uses, and has rigorously tested this product. Only claim experiences that the source article supports.`
+  }
 
   const activeSEOKeyword = targetKeyword || articleTitle || heading
   const lsiData = await fetchPeopleAlsoSearchFor(activeSEOKeyword)
@@ -799,9 +1145,20 @@ export async function generateRewriteSection(body, genAI) {
     ${keywordSEOInstructions}
     ${realTimeInstruction}
     ${
-      isAmazonRewriteType(settings.type)
-        ? `Preserve every Amazon affiliate tag from the source. Never invent a new tag. If this section recommends a product, end with this exact button HTML (or omit the button if the HTML is empty): ${buildCheckPriceButton(amazonRewriteOptions(settings, sourceText).url, amazonRewriteOptions(settings, sourceText))}`
-        : ''
+      settings.type === 'amazon-review-rewrite'
+        ? amazonReviewRewriteSectionDirective({
+            sectionType: reviewSectionType,
+            heading,
+            product: reviewProduct,
+            priceButton: reviewPriceButton,
+            productImageHtml: reviewImageHtml,
+            settings,
+            subheadings,
+            targetKeyword
+          })
+        : isAmazonRewriteType(settings.type)
+          ? `Preserve every Amazon affiliate tag from the source. Never invent a new tag. If this section recommends a product, end with this exact button HTML (or omit the button if the HTML is empty): ${buildCheckPriceButton(amazonRewriteOptions(settings, sourceText).url, amazonRewriteOptions(settings, sourceText))}`
+          : ''
     }
   `
 
@@ -851,6 +1208,45 @@ export async function generateRewriteSection(body, genAI) {
     assignedMediaElement = null
     mediaUrl = null
 
+    if (settings.type === 'amazon-review-rewrite') {
+      const sectionType = reviewSectionType || resolveAmazonReviewSectionType(heading, sectionIndex, outlineContext)
+
+      if (
+        sectionType === 'intro' &&
+        reviewImageHtml &&
+        reviewProduct?.imageUrl &&
+        !text.includes(String(reviewProduct.imageUrl))
+      ) {
+        text = insertAfterFirstBlock(text, reviewImageHtml)
+      }
+
+      if (sectionType === 'intro' || sectionType === 'conclusion') {
+        text = withRequiredCheckPrice(text, {
+          url: reviewProduct?.amazonUrl,
+          asin: reviewProduct?.asin,
+          language: settings.language,
+          domain: settings.amazonDomain || 'www.amazon.com',
+          partnerTag: settings.amazonTrackingId || settings.partnerTag || process.env.AMAZON_PARTNER_TAG || 'babiescarrier-20'
+        })
+      }
+
+      const slot = Number(sectionIndex)
+
+      if ((slot === 2 || slot === 3) && sectionType !== 'intro') {
+        const extras = await pickRelevantImages(
+          heading || articleTitle || targetKeyword,
+          targetKeyword || reviewProduct?.productName || heading,
+          4
+        )
+        const chosen = (extras || []).find(image => image?.url && image.url !== reviewProduct?.imageUrl)
+
+        if (chosen?.url) {
+          const figure = `<figure style="margin:28px 0;text-align:center;"><img src="${escapeHtml(chosen.url)}" alt="${escapeHtml(chosen.alt || heading || 'Product')}" style="width:100%;max-width:560px;height:auto;border-radius:12px;display:inline-block;box-shadow:0 4px 12px rgba(0,0,0,0.06);" /></figure>`
+
+          text = `${text}\n\n${figure}`
+        }
+      }
+    } else {
     const outlineProducts = (Array.isArray(outlineContext) ? outlineContext : [])
       .map(item => item?.productData)
       .filter(product => product && (product.imageUrl || product.asin || product.productName))
@@ -904,13 +1300,9 @@ export async function generateRewriteSection(body, genAI) {
     }
 
     const productForImage =
-      settings.type === 'amazon-review-rewrite'
-        ? isIntro
-          ? products[0]
-          : null
-        : sectionType === 'product' || matchRewriteProduct(heading, outlineContext, products)
-          ? matchRewriteProduct(heading, outlineContext, products)
-          : null
+      sectionType === 'product' || matchRewriteProduct(heading, outlineContext, products)
+        ? matchRewriteProduct(heading, outlineContext, products)
+        : null
     const imageHtml = productImageHtml(productForImage, targetKeyword)
 
     if (imageHtml && !text.includes(String(productForImage.imageUrl))) {
@@ -928,6 +1320,7 @@ export async function generateRewriteSection(body, genAI) {
       : amazonRewriteOptions(settings, sourceText, text)
 
     text = withRequiredCheckPrice(text, buttonTarget)
+    }
   }
 
   return {
