@@ -51,7 +51,7 @@ import { serializeError } from '@/utils/serializeError'
 
 import { useFeatureAccess } from './FeatureAccessContext'
 
-import { getAffigenieArticleCss, prepareArticleHtml, finalizeArticleHtml, linkMapSnapshots, buildArticleIdentityMarker } from '@/app/api/generate/utils/articleHtml'
+import { getAffigenieArticleCss, prepareArticleHtml, finalizeArticleHtml, linkMapSnapshots, buildArticleIdentityMarker, titleCaseWords } from '@/app/api/generate/utils/articleHtml'
 
 function mediaKey(item) {
   if (!item) return ''
@@ -1048,6 +1048,12 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       }
 
       editor.commands.setContent(initialContent)
+
+      if (Array.isArray(outline)) {
+        outline.forEach(item => {
+          if (item && typeof item.text === 'string') item.text = titleCaseWords(item.text)
+        })
+      }
 
       const groupedSections = []
 

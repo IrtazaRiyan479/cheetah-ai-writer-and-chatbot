@@ -23,6 +23,7 @@ import {
   renderResponsiveTable,
   renderTopPickCards,
   resolveAffiliateUrl,
+  titleCaseWords,
   withRequiredCheckPrice
 } from '../utils/articleHtml'
 
@@ -314,6 +315,14 @@ export async function generateAmazonRoundupOutline(body, genAI) {
     }
 
     console.log(`[Hero Image] AI Generation Result: ${heroImageUrl ? 'Success' : 'Failed - Using Safety Backup'}`)
+  }
+
+  if (Array.isArray(parsedData.outline)) {
+    parsedData.outline = parsedData.outline.map(item => {
+      if (!item || typeof item.text !== 'string') return item
+
+      return { ...item, text: titleCaseWords(item.text) }
+    })
   }
 
   return {

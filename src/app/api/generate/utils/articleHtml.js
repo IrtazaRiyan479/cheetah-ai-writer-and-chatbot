@@ -181,10 +181,19 @@ export function renderResponsiveTable({ headers = [], rows = [] } = {}) {
   return `<table class="affigenie-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
 }
 
+/** Capitalize the first letter of each word. Leaves existing capitals and apostrophes alone (Men's, UGG). */
+export function titleCaseWords(value) {
+  return String(value || '').replace(
+    /(^|[^A-Za-z0-9'])([a-z])/g,
+    (_, prefix, letter) => prefix + letter.toUpperCase()
+  )
+}
+
 export function renderTopPickCards(products = [], options = {}) {
   const cards = products
     .map((product, index) => {
-      const name = escapeHtml(product.productName || 'Amazon Product')
+      const rawName = product.productName || product.title || 'Amazon Product'
+      const name = escapeHtml(titleCaseWords(rawName))
       const image = product.imageUrl
         ? `<img src="${escapeHtml(protectUrl(product.imageUrl))}" alt="${name}" style="display:block;width:100%;max-width:420px;height:auto;object-fit:contain;border-radius:10px;margin:12px auto;" />`
         : ''
@@ -196,16 +205,24 @@ export function renderTopPickCards(products = [], options = {}) {
       const cons = '<p><strong>Cons:</strong> Confirm product limitations and fit on the Amazon listing.</p>'
       const verdict = `<p>${index === 0 ? 'Our leading option based on its relevance to this roundup and the available listing details.' : 'A worthwhile alternative; compare its listing details against your needs.'}</p>`
       const button = buildCheckPriceButton(product.amazonUrl, { ...options, asin: product.asin })
+      const topPickHeading =
+        index === 0
+          ? '<h2 class="affigenie-top-pick" style="margin:0 0 12px;font-size:2.25rem;line-height:1.1;font-weight:800;letter-spacing:-0.03em;color:#111827;">Top Pick</h2>'
+          : ''
 
-      return `<article class="affigenie-product-card" style="box-sizing:border-box;width:100%;max-width:100%;margin:20px 0;padding:16px;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">${index === 0 ? '<div style="display:inline-block;background:#eef2ff;color:#3730a3;font-weight:700;padding:6px 10px;border-radius:999px;margin-bottom:8px;">Top Pick</div>' : ''}${image}<h3>${name}</h3>${rating}${verdict}${pros}${cons}<div style="width:100%;max-width:100%;">${button}</div></article>`
+      return `<article class="affigenie-product-card" style="box-sizing:border-box;width:100%;max-width:100%;margin:20px 0;padding:16px;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">${topPickHeading}${image}<h3>${name}</h3>${rating}${verdict}${pros}${cons}<div style="width:100%;max-width:100%;">${button}</div></article>`
     })
-    .join('')
+    .join(
+      '<hr class="affigenie-top-pick-separator" style="border:0;border-top:2px solid #d1d5db;margin:28px 0;height:0;clear:both;background:transparent;" />'
+    )
 
   return `<div class="affigenie-product-cards" style="width:100%;max-width:100%;">${cards}</div>`
 }
 
 export function getAffigenieArticleCss() {
   return `
+h2.affigenie-top-pick,.ProseMirror h2.affigenie-top-pick{font-size:2.25rem!important;line-height:1.1!important;font-weight:800!important;letter-spacing:-0.03em!important;margin:0 0 12px!important;color:#111827!important}
+hr.affigenie-top-pick-separator,.ProseMirror hr.affigenie-top-pick-separator{display:block!important;clear:both!important;border:0!important;border-top:2px solid #d1d5db!important;margin:28px 0!important;height:0!important;background:transparent!important}
 table.affigenie-table{width:100%;max-width:100%;border-collapse:collapse;table-layout:auto;display:table;overflow:visible;margin:24px 0}
 table.affigenie-table th,table.affigenie-table td{word-break:normal;overflow-wrap:break-word;white-space:normal;vertical-align:middle;text-align:left}
 #cheetah-article-wrapper table.affigenie-table{table-layout:auto!important;display:table!important;overflow:visible!important;width:100%!important}
