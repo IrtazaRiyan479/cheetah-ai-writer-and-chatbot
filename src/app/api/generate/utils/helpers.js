@@ -542,17 +542,76 @@ function heroSvg(title, siteName, hasPhoto) {
   </svg>`
 }
 
-export async function buildBrandedHero({ title, siteName, backgroundUrl }) {
-  const svg = Buffer.from(heroSvg(title, siteName, Boolean(backgroundUrl)))
+async function fetchHeroPhoto(url) {
+  const candidates = []
+  const raw = String(url || '').trim()
+
+  if (raw && !raw.startsWith('data:')) candidates.push(raw)
+
+  const stripped = raw.replace(/\._[A-Za-z0-9_,]+_\./, '.')
+
+  if (stripped && stripped !== raw) candidates.push(stripped)
+
+  for (const candidate of candidates) {
+    try {
+      const res = await fetch(candidate, {
+        redirect: 'follow',
+        signal: AbortSignal.timeout(12000),
+        headers: {
+          Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+          'User-Agent': 'Mozilla/5.0 (compatible; AffiGenie/1.0; +https://affigenie.com)'
+        }
+      })
+
+      if (!res.ok) continue
+
+      const type = res.headers.get('content-type') || ''
+
+      if (type && !/^image\//i.test(type)) continue
+
+      const buffer = Buffer.from(await res.arrayBuffer())
+
+      if (buffer.length < 800) continue
+
+      return buffer
+    } catch (error) {
+      console.warn('[hero] photo fetch failed', error?.message || error)
+    }
+  }
+
+  return null
+}
+
+export async function buildBrandedHero({ title, siteName, backgroundUrl, backgroundUrls, requirePhoto = false }) {
+  const urls = []
+
+  for (const url of [...(backgroundUrls || []), backgroundUrl]) {
+    if (url && !String(url).startsWith('data:') && !urls.includes(url)) urls.push(url)
+  }
+
+  let photoBuffer = null
+
+  for (const url of urls) {
+    photoBuffer = await fetchHeroPhoto(url)
+    if (photoBuffer) break
+  }
+
+  if (requirePhoto && urls.length && !photoBuffer) {
+    const error = new Error('HERO_PHOTO_UNAVAILABLE')
+
+    error.fallbackUrl = urls[0]
+    throw error
+  }
+
+  const svg = Buffer.from(heroSvg(title, siteName, Boolean(photoBuffer)))
   const sharp = (await import('sharp')).default
   let base = sharp({ create: { width: 1200, height: 675, channels: 3, background: '#1e3a8a' } })
 
-  if (backgroundUrl && !String(backgroundUrl).startsWith('data:')) {
-    const res = await fetch(backgroundUrl)
-
-    if (res.ok) {
-      base = sharp(Buffer.from(await res.arrayBuffer())).resize(1200, 675, { fit: 'cover' })
-    }
+  if (photoBuffer) {
+    base = sharp(photoBuffer).resize(1200, 675, {
+      fit: requirePhoto ? 'contain' : 'cover',
+      background: '#ffffff'
+    })
   }
 
   const png = await base.composite([{ input: svg, top: 0, left: 0 }]).png().toBuffer()
@@ -564,25 +623,54 @@ export async function attachBrandedHero(result, settings = {}) {
   if (!result?.success) return result
 
   const title = result.title || settings.targetKeyword || 'Article'
-  const photo = (await pickRelevantImages(title, settings.targetKeyword || title, 1))[0]
+  const productHero = settings.type === 'amazon-roundup-rewrite' || settings.type === 'amazon-review-rewrite'
+  const productUrls = productHero
+    ? [result.heroImage, ...(Array.isArray(result.productImages) ? result.productImages : [])].filter(
+        url => url && /^https?:/i.test(String(url)) && /amazon|media-amazon/i.test(String(url))
+      )
+    : []
+  const photo = productHero ? null : (await pickRelevantImages(title, settings.targetKeyword || title, 1))[0]
+  const backgroundUrls = productHero ? productUrls : photo?.url ? [photo.url] : []
   let heroImage = ''
 
   try {
-    heroImage = await buildBrandedHero({ title, siteName: siteLabel(settings), backgroundUrl: photo?.url || '' })
+    heroImage = await buildBrandedHero({
+      title,
+      siteName: siteLabel(settings),
+      backgroundUrl: backgroundUrls[0] || '',
+      backgroundUrls,
+      requirePhoto: productHero && productUrls.length > 0
+    })
   } catch (error) {
     console.error('[hero] branded raster failed', error?.message || error)
-  }
 
-  if (!heroImage) {
-    return {
-      ...result,
-      heroImage: result.heroImage || '',
-      heroImageId: result.heroImage ? result.heroImageId ?? null : null,
-      heroImageSource: result.heroImageSource || 'gradient'
+    if (productHero && (error?.fallbackUrl || productUrls[0])) {
+      return {
+        ...result,
+        heroImage: error?.fallbackUrl || productUrls[0],
+        heroImageId: null,
+        heroImageSource: 'amazon'
+      }
     }
   }
 
-  return { ...result, heroImage, heroImageId: null, heroImageSource: photo ? 'branded-photo' : 'branded-gradient' }
+  if (!heroImage) {
+    const fallback = productHero ? productUrls[0] || '' : result.heroImage || ''
+
+    return {
+      ...result,
+      heroImage: fallback,
+      heroImageId: fallback ? result.heroImageId ?? null : null,
+      heroImageSource: productHero && fallback ? 'amazon' : result.heroImageSource || 'gradient'
+    }
+  }
+
+  return {
+    ...result,
+    heroImage,
+    heroImageId: null,
+    heroImageSource: productHero && productUrls.length ? 'amazon-product' : photo ? 'branded-photo' : 'branded-gradient'
+  }
 }
 
 export function calculateRelevanceScore(altText, query, topic) {

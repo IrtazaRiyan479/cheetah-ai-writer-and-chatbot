@@ -29,6 +29,8 @@ import AmazonReviewFields from './fields/AmazonReviewFields'
 import YoutubeBlogFields from './fields/YoutubeBlogFields'
 import LocalRoundupFields from './fields/LocalRoundupFields'
 import RewriteFields from './fields/RewriteFields'
+import AmazonRoundupRewriteFields from './fields/AmazonRoundupRewriteFields'
+import AmazonReviewRewriteFields from './fields/AmazonReviewRewriteFields'
 import ProductComparisonFields from './fields/ProductComparisonFields'
 
 const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
@@ -53,8 +55,8 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
     'youtube-blog': YoutubeBlogFields,
     'local-roundup': LocalRoundupFields,
     rewrite: RewriteFields,
-    'amazon-roundup-rewrite': RewriteFields,
-    'amazon-review-rewrite': RewriteFields,
+    'amazon-roundup-rewrite': AmazonRoundupRewriteFields,
+    'amazon-review-rewrite': AmazonReviewRewriteFields,
     'product-comparison': ProductComparisonFields
   }
 

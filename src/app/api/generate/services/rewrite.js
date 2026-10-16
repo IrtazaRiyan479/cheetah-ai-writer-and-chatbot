@@ -21,7 +21,8 @@ import {
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
-import { buildCheckPriceButton, extractAsin, rewriteAcceptsSource, rewriteSourceError, withRequiredCheckPrice } from '../utils/articleHtml'
+import { buildCheckPriceButton, escapeHtml, extractAsin, renderResponsiveTable, renderTopPickCards, rewriteAcceptsSource, rewriteSourceError, withRequiredCheckPrice } from '../utils/articleHtml'
+import { fetchInternalAmazonData, formatAmazonProducts } from './amazonRoundUp'
 
 function firstAmazonUrl(text) {
   const match = String(text || '').match(/https?:\/\/(?:www\.)?(?:amazon\.[^\s)"'<>]+|amzn\.to\/[^\s)"'<>]+)/i)
@@ -44,6 +45,279 @@ function amazonRewriteOptions(settings, sourceText, extraText = '') {
 
 function isAmazonRewriteType(type) {
   return type === 'amazon-roundup-rewrite' || type === 'amazon-review-rewrite'
+}
+
+function decodeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&')
+    .replace(/"/g, '"')
+    .replace(/&#39;|'/g, "'")
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+}
+
+function imageRank(url) {
+  const value = String(url || '')
+
+  if (/sprite|badge|logo|pixel|spinner|transparent|icon/i.test(value)) return -1
+  if (/_SS(?:[1-9]\d?|1[0-4]\d)_|_SX(?:[1-9]\d?|1[0-4]\d)_|_SY(?:[1-9]\d?|1[0-4]\d)_/i.test(value)) return 1
+
+  const size = value.match(/_(?:SL|SX|SY|SS|AC_SX|AC_SY|AC_SL)(\d+)/i)
+
+  return size ? Number(size[1]) : 400
+}
+
+function addAmazonImage(found, raw) {
+  let url = decodeHtml(raw).trim().replace(/\\u0026/g, '&')
+
+  if (url.startsWith('//')) url = `https:${url}`
+  if (!/^https?:/i.test(url)) return
+  if (!/(?:m\.media-amazon\.com|images-amazon\.com|ssl-images-amazon\.com)/i.test(url)) return
+  if (imageRank(url) < 80) return
+  if (!found.includes(url)) found.push(url)
+}
+
+function extractAmazonImages(html) {
+  const found = []
+  const source = String(html || '')
+  const tagRe = /<img\b[^>]*>/gi
+  let tag
+
+  while ((tag = tagRe.exec(source))) {
+    const el = tag[0]
+    const srcset = el.match(/\bsrcset=["']([^"']+)["']/i)
+
+    if (srcset) {
+      const best = srcset[1]
+        .split(',')
+        .map(part => {
+          const bits = part.trim().split(/\s+/)
+          const width = Number(String(bits[1] || '').replace(/[^\d]/g, '')) || 0
+
+          return { url: bits[0], width }
+        })
+        .sort((a, b) => b.width - a.width)[0]
+
+      if (best?.url) addAmazonImage(found, best.url)
+    }
+
+    const src = el.match(/\b(?:src|data-src|data-original|data-lazy-src)=["']([^"']+)["']/i)
+
+    if (src) addAmazonImage(found, src[1])
+  }
+
+  const bare = source.match(/https?:\/\/[^\s"'<>]+(?:m\.media-amazon|images-amazon|ssl-images-amazon)[^\s"'<>]*/gi) || []
+
+  bare.forEach(url => addAmazonImage(found, url))
+
+  return found
+}
+
+function extractAsins(text) {
+  const ids = []
+  const source = String(text || '')
+  const re = /(?:dp|gp\/product|gp\/aw\/d|ASIN|product)\/([A-Z0-9]{10})(?=[/?&#\s"'<]|$)|data-asin=["']([A-Z0-9]{10})["']/gi
+  let match
+
+  while ((match = re.exec(source))) {
+    const asin = String(match[1] || match[2] || '').toUpperCase()
+
+    if (/^[A-Z0-9]{10}$/.test(asin) && !ids.includes(asin)) ids.push(asin)
+  }
+
+  return ids
+}
+
+function orderProducts(products, asins) {
+  const byAsin = new Map((products || []).map(product => [String(product?.asin || '').toUpperCase(), product]))
+  const ordered = (asins || []).map(asin => byAsin.get(String(asin).toUpperCase())).filter(Boolean)
+
+  return ordered.length ? ordered : products || []
+}
+
+function productImageHtml(product, keyword) {
+  const src = String(product?.imageUrl || '').trim()
+
+  if (!/^https?:/i.test(src)) return ''
+
+  const alt = escapeHtml(`${keyword || ''} ${product.productName || 'Product'}`.trim())
+  const title = escapeHtml(product.productName || keyword || 'Product')
+
+  return `<div align="center" style="margin: 25px 0;"><img src="${escapeHtml(src)}" alt="${alt}" title="${title}" style="max-width:100%; height:auto; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.05);" /></div>`
+}
+
+function stripStockMedia(text) {
+  return String(text || '')
+    .replace(/<img\b[^>]*src=["'][^"']*(?:images\.pexels\.com|images\.unsplash\.com|pixabay\.com|cdn\.pixabay)[^"']*["'][^>]*>/gi, '')
+    .replace(/!\[[^\]]*\]\((https?:\/\/[^)]*(?:pexels|pixabay|unsplash)[^)]*)\)/gi, '')
+    .replace(/<iframe\b[^>]*youtube[^>]*>[\s\S]*?<\/iframe>/gi, '')
+    .replace(/https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\/\S+/gi, '')
+}
+
+function insertAfterFirstBlock(body, snippet) {
+  if (!snippet) return body
+
+  const source = String(body || '')
+  const marker = snippet.slice(0, 80)
+
+  if (marker && source.includes(marker)) return source
+
+  const parts = source.split(/\n\n+/)
+
+  if (parts.length > 1) return [parts[0], snippet, ...parts.slice(1)].join('\n\n')
+
+  return `${source}\n\n${snippet}`
+}
+
+async function loadRewriteProducts(settings, sourceText, rawHtml) {
+  const blob = `${rawHtml || ''}\n${sourceText || ''}`
+  const limit =
+    settings.type === 'amazon-review-rewrite' ? 1 : Math.max(1, Math.min(10, Number(settings.numberOfProducts) || 5))
+  const asins = extractAsins(blob).slice(0, 10)
+  const scraped = extractAmazonImages(blob)
+  const lookupAsins = asins.slice(0, limit)
+  let products = []
+
+  try {
+    if (lookupAsins.length) {
+      const apiData = await fetchInternalAmazonData(settings.targetKeyword || lookupAsins[0], {
+        ...settings,
+        asins: lookupAsins,
+        numberOfProducts: lookupAsins.length
+      })
+
+      products = orderProducts(
+        formatAmazonProducts(apiData, { ...settings, numberOfProducts: lookupAsins.length }),
+        lookupAsins
+      )
+    } else if (settings.amazonProductUrl || settings.targetKeyword) {
+      const keyword =
+        settings.type === 'amazon-review-rewrite'
+          ? extractAsin(settings.amazonProductUrl) || settings.targetKeyword
+          : settings.targetKeyword
+
+      if (keyword) {
+        const apiData = await fetchInternalAmazonData(keyword, { ...settings, numberOfProducts: limit })
+
+        products = formatAmazonProducts(apiData, { ...settings, numberOfProducts: limit })
+      }
+    }
+  } catch (error) {
+    console.warn('[amazon-rewrite] product image lookup failed:', error?.message || error)
+  }
+
+  if (!products.length) {
+    const seeds = lookupAsins.length ? lookupAsins : scraped.slice(0, limit).map(() => '')
+
+    products = seeds.slice(0, limit).map((asin, index) => ({
+      productName: '',
+      asin: asin || '',
+      amazonUrl: '',
+      imageUrl: scraped[index] || '',
+      price: '',
+      features: []
+    }))
+  }
+
+  let imageCursor = 0
+
+  products = products.slice(0, limit).map(product => {
+    if (product.imageUrl && imageRank(product.imageUrl) >= 80) return product
+
+    const imageUrl = scraped[imageCursor] || scraped[0] || product.imageUrl || ''
+
+    imageCursor += 1
+
+    return { ...product, imageUrl }
+  }).filter(product => product.imageUrl || product.asin || product.productName)
+
+  const productImages = [...new Set([...products.map(product => product.imageUrl), ...scraped].filter(Boolean))]
+
+  return { products, productImages }
+}
+
+function attachProductsToOutline(outline, products) {
+  if (!Array.isArray(outline)) return outline
+
+  const used = new Set()
+
+  return outline.map(item => {
+    const text = String(item?.text || '')
+    const clean = text.replace(/^\d+\.\s*/, '').toLowerCase().trim()
+    const numbered = /^\d+\.\s+/.test(text)
+    const looksProduct = item?.sectionType === 'product' || numbered
+
+    if (!looksProduct) return item
+
+    let product = products.find((entry, index) => {
+      if (used.has(index)) return false
+
+      const name = String(entry.productName || '').toLowerCase()
+
+      if (!name || !clean) return false
+
+      return clean.includes(name.slice(0, 48)) || name.includes(clean.slice(0, 48))
+    })
+
+    if (!product) {
+      const number = text.match(/^(\d+)\./)
+      const index = number ? Number(number[1]) - 1 : products.findIndex((_, itemIndex) => !used.has(itemIndex))
+
+      if (products[index] && !used.has(index)) product = products[index]
+    }
+
+    if (!product) return { ...item, sectionType: 'product' }
+
+    used.add(products.indexOf(product))
+
+    return {
+      ...item,
+      sectionType: 'product',
+      productData: {
+        productName: product.productName,
+        amazonUrl: product.amazonUrl,
+        imageUrl: product.imageUrl,
+        price: product.price,
+        asin: product.asin
+      }
+    }
+  })
+}
+
+function matchRewriteProduct(heading, outlineContext, products) {
+  const outlineItem = (outlineContext || []).find(item => item?.text === heading && item?.productData)
+  const fromOutline = outlineItem?.productData
+
+  if (fromOutline?.imageUrl || fromOutline?.asin) return fromOutline
+
+  const clean = String(heading || '').replace(/^\d+\.\s*/, '').toLowerCase().trim()
+  const named = (products || []).find(product => {
+    const name = String(product.productName || '').toLowerCase()
+
+    if (!name || !clean) return false
+
+    return clean.includes(name.slice(0, 48)) || name.includes(clean.slice(0, 48))
+  })
+
+  if (named?.imageUrl) return named
+
+  const number = String(heading || '').match(/^(\d+)\./)
+
+  if (number && products[Number(number[1]) - 1]?.imageUrl) return products[Number(number[1]) - 1]
+
+  let productCursor = 0
+
+  for (const item of outlineContext || []) {
+    const isProduct = item?.sectionType === 'product' || item?.productData?.imageUrl || /^\d+\.\s+/.test(item?.text || '')
+
+    if (!isProduct) continue
+
+    if (item.text === heading) return products[productCursor] || item.productData || null
+
+    productCursor += 1
+  }
+
+  return null
 }
 
 export function detectSourceArticleType(htmlOrText = '') {
@@ -104,6 +378,18 @@ export async function generateRewriteOutline(body, genAI) {
   const detectedType = detectSourceArticleType(`${rawHtml}\n${sourceText}`)
 
   assertRewriteSource(settings.type, detectedType)
+
+  const amazonRewrite = isAmazonRewriteType(settings.type)
+  const loadedProducts = amazonRewrite
+    ? await loadRewriteProducts(settings, sourceText, rawHtml)
+    : { products: [], productImages: [] }
+  const rewriteProducts = loadedProducts.products || []
+  const productListString = rewriteProducts
+    .map(
+      (product, index) =>
+        `${index + 1}. ${product.productName || product.asin || 'Amazon product'}\n   URL: ${product.amazonUrl || ''}\n   Image: ${product.imageUrl || ''}`
+    )
+    .join('\n\n')
 
   const langObj = languages ? languages[language] : null
   const langName = langObj ? langObj.name : language || 'English'
@@ -173,9 +459,9 @@ export async function generateRewriteOutline(body, genAI) {
     5. ${relatedInstruction}
     ${
       settings.type === 'amazon-roundup-rewrite'
-        ? '6. Reshape this into an Amazon product ROUNDUP (multiple products). Use sectionType "intro", then one "product" H2 per product found in the source, then "conclusion". Put productName and the exact affiliate amazonUrl on each product item. Never strip affiliate tags. Do NOT produce a single-product review layout.'
+        ? `6. Reshape this into an Amazon product ROUNDUP. sectionType must be "intro", then one "product" H2 per product below, then "conclusion". Number each product heading ("1. Product Name"). Put productName, amazonUrl, and imageUrl from this list on each product item. Use these original Amazon product images only. Never use Pexels, Pixabay, or Unsplash.\n${productListString || 'No product list was resolved; keep the products named in the source.'}`
         : settings.type === 'amazon-review-rewrite'
-          ? '6. Reshape this into an Amazon SINGLE-PRODUCT review only. sectionType must be intro, features, pros_cons, conclusion, or faq, in that order. Preserve the affiliate URL exactly. Do NOT create multiple product H2 sections or a roundup table.'
+          ? `6. Reshape this into an Amazon SINGLE-PRODUCT review only. sectionType must be intro, features, pros_cons, conclusion, or faq, in that order. Preserve the affiliate URL exactly. The product image is inserted by the system from Amazon; do not request stock photos. Product: ${rewriteProducts[0]?.productName || targetKeyword || ''}.`
           : '6. This is a standard blog rewrite. Keep a normal blog structure grounded in the source.'
     }
     Return ONLY valid JSON.
@@ -231,74 +517,98 @@ export async function generateRewriteOutline(body, genAI) {
     throw lastOutlineError || new Error('OUTLINE_PARSE_FAILED')
   }
 
-  const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
-    fetchUnsplashImage(targetKeyword),
-    fetchPexelsImage(targetKeyword),
-    fetchPixabayImage(targetKeyword)
-  ])
-
-  let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url)
   let heroImageUrl = ''
   let heroImageId = null
   let heroImageSource = null
-  let fallbackToAiImageTag = false
-  let scoredCandidates = []
 
-  if (candidates.length > 0) {
-    scoredCandidates = candidates.map(c => ({
-      ...c,
-      score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
-    }))
+  if (!amazonRewrite) {
+    const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
+      fetchUnsplashImage(targetKeyword),
+      fetchPexelsImage(targetKeyword),
+      fetchPixabayImage(targetKeyword)
+    ])
 
-    scoredCandidates.sort((a, b) => b.score - a.score)
+    let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url)
+    let fallbackToAiImageTag = false
+    let scoredCandidates = []
 
-    if (scoredCandidates[0].score >= 2.0) {
-      heroImageUrl = scoredCandidates[0].url
-      heroImageId = scoredCandidates[0].id ?? null
-      heroImageSource = scoredCandidates[0].source || null
-      console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`)
+    if (candidates.length > 0) {
+      scoredCandidates = candidates.map(c => ({
+        ...c,
+        score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
+      }))
+
+      scoredCandidates.sort((a, b) => b.score - a.score)
+
+      if (scoredCandidates[0].score >= 2.0) {
+        heroImageUrl = scoredCandidates[0].url
+        heroImageId = scoredCandidates[0].id ?? null
+        heroImageSource = scoredCandidates[0].source || null
+        console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`)
+      } else {
+        console.log(
+          `[Hero Image] Top image score (${scoredCandidates[0].score}) below 2.0. Invoking AI generation logic.`
+        )
+        fallbackToAiImageTag = true
+      }
     } else {
-      console.log(
-        `[Hero Image] Top image score (${scoredCandidates[0].score}) below 2.0. Invoking AI generation logic.`
-      )
       fallbackToAiImageTag = true
     }
-  } else {
-    fallbackToAiImageTag = true
-  }
 
-  if (fallbackToAiImageTag) {
-    const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : ''
+    if (fallbackToAiImageTag) {
+      const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : ''
 
-    try {
-      const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`)
+      try {
+        const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`)
 
-      if (fallbackImage && fallbackImage.url) {
-        heroImageUrl = fallbackImage.url
+        if (fallbackImage && fallbackImage.url) {
+          heroImageUrl = fallbackImage.url
+        }
+      } catch (error) {
+        heroImageUrl = safetyBackup
+        console.log(`[Hero Image] AI Fallback failed to generate a URL.`)
       }
-    } catch (error) {
-      heroImageUrl = safetyBackup
-      console.log(`[Hero Image] AI Fallback failed to generate a URL.`)
-    }
 
-    console.log(`[Hero Image] AI Generation Result: ${heroImageUrl ? 'Success' : 'Failed - Using Safety Backup'}`)
+      console.log(`[Hero Image] AI Generation Result: ${heroImageUrl ? 'Success' : 'Failed - Using Safety Backup'}`)
+    }
   }
 
   try {
     const jsonResult = JSON.parse(responseText)
 
-    // Amazon rewrite hero: prefer a product image found in the source article
-    if (isAmazonRewriteType(settings.type) && !heroImageUrl) {
-      const imgMatch = sourceText.match(/https?:\/\/[^\s)"']+(?:ssl-images-amazon|images-amazon|m\.media-amazon)[^\s)"']+/i)
-      if (imgMatch?.[0]) {
-        heroImageUrl = imgMatch[0]
-        heroImageSource = 'source-amazon'
-      }
+    if (amazonRewrite) {
+      heroImageUrl = loadedProducts.productImages?.[0] || rewriteProducts.find(product => product.imageUrl)?.imageUrl || ''
+      heroImageId = null
+      heroImageSource = heroImageUrl ? 'amazon' : null
+      console.log(`[Hero Image] Amazon rewrite product photo: ${heroImageUrl ? 'found' : 'missing'}`)
     }
 
-    // For single-product review rewrite, force a single-product outline shape if the model drifted
+    if (settings.type === 'amazon-roundup-rewrite' && Array.isArray(jsonResult.outline)) {
+      const h2s = jsonResult.outline.filter(item => !item?.type || item.type === 'h2')
+      const hasProduct = jsonResult.outline.some(
+        item => item?.sectionType === 'product' || /^\d+\.\s+/.test(item?.text || '')
+      )
+
+      if (!hasProduct && rewriteProducts.length && h2s.length > 2) {
+        rewriteProducts.forEach((product, index) => {
+          const item = h2s[index + 1]
+
+          if (!item || index >= h2s.length - 2) return
+
+          item.sectionType = 'product'
+          if (product.productName && !/^\d+\./.test(item.text || '')) {
+            item.text = `${index + 1}. ${product.productName}`
+          }
+        })
+      }
+
+      jsonResult.outline = attachProductsToOutline(jsonResult.outline, rewriteProducts)
+    }
+
     if (settings.type === 'amazon-review-rewrite' && Array.isArray(jsonResult.outline)) {
       const allowed = new Set(['intro', 'features', 'pros_cons', 'conclusion', 'faq', 'standard'])
+      const reviewProduct = rewriteProducts[0]
+
       jsonResult.outline = jsonResult.outline.map((item, index) => {
         const next = { ...item }
         if (!next.sectionType) {
@@ -312,6 +622,7 @@ export async function generateRewriteOutline(body, genAI) {
         if (!allowed.has(next.sectionType) || next.sectionType === 'product') {
           next.sectionType = index === 0 ? 'intro' : 'standard'
         }
+        if (index === 0 && reviewProduct) next.productData = reviewProduct
         return next
       })
     }
@@ -323,6 +634,7 @@ export async function generateRewriteOutline(body, genAI) {
       heroImage: heroImageUrl,
       heroImageId,
       heroImageSource,
+      productImages: amazonRewrite ? loadedProducts.productImages || [] : undefined,
       metaTitle: jsonResult.metaTitle,
       metaDescription: jsonResult.metaDescription,
       externalLinks: fetchedExternalLinks,
@@ -408,17 +720,27 @@ export async function generateRewriteSection(body, genAI) {
     usedInternalLinks
   )
   let seoInstruction = await getSeoInstruction(seoOptimization, manualKeywords, targetKeyword)
-  let { mediaInstruction, assignedMediaElement, mediaUrl } = await getMediaInstruction(
-    uploadedMedia,
-    sectionIndex,
-    aiImagesAndVideos,
-    articleTitle,
-    targetKeyword,
-    heading,
-    genAI,
-    usedImageUrls,
-    settings
-  )
+  let mediaInstruction = ''
+  let assignedMediaElement = null
+  let mediaUrl = null
+
+  if (!isAmazonRewriteType(settings.type)) {
+    const media = await getMediaInstruction(
+      uploadedMedia,
+      sectionIndex,
+      aiImagesAndVideos,
+      articleTitle,
+      targetKeyword,
+      heading,
+      genAI,
+      usedImageUrls,
+      settings
+    )
+
+    mediaInstruction = media.mediaInstruction
+    assignedMediaElement = media.assignedMediaElement
+    mediaUrl = media.mediaUrl
+  }
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice)
   let povInstruction = getPovInstruction(pointOfView)
   let readabilityInstruction = getReadabilityInstruction(improveReadability)
@@ -426,9 +748,9 @@ export async function generateRewriteSection(body, genAI) {
   const rewriteType = settings.type || 'rewrite'
   const typeLayout =
     rewriteType === 'amazon-review-rewrite'
-      ? `SINGLE-PRODUCT REVIEW LAYOUT: Write only about one product. Do not list multiple competing products, roundup tables, or "top picks". Prefer review body, features, pros/cons, and verdict.`
+      ? `SINGLE-PRODUCT REVIEW LAYOUT: Write only about one product. Do not list multiple competing products, roundup tables, or "top picks". Do not add Pexels, Pixabay, Unsplash, or YouTube media. The original Amazon product image is inserted by the system.`
       : rewriteType === 'amazon-roundup-rewrite'
-        ? `ROUNDUP LAYOUT: This section may cover one product in a multi-product roundup. Keep product-focused structure. Do not collapse into a single long product review for unrelated items.`
+        ? `ROUNDUP LAYOUT: This section may cover one product in a multi-product roundup. Keep product-focused structure. Do not add Pexels, Pixabay, Unsplash, or YouTube media. The original Amazon product image is inserted by the system.`
         : `STANDARD BLOG REWRITE: Follow a natural blog structure grounded in the source.`
 
   let sectionStructureRequirements = `
@@ -524,22 +846,88 @@ export async function generateRewriteSection(body, genAI) {
 
   let text = result.response.text()
 
-  if (settings.type === 'amazon-review-rewrite') {
-    text = text
-      .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, '')
-      .replace(/https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\/\S+/gi, '')
-    assignedMediaElement = ''
+  if (isAmazonRewriteType(settings.type)) {
+    text = stripStockMedia(text)
+    assignedMediaElement = null
     mediaUrl = null
-    if (Number(sectionIndex) === 1) {
-      const img = String(sourceText || '').match(/https?:\/\/[^\s)"']+(?:ssl-images-amazon|images-amazon|m\.media-amazon)[^\s)"']+/i)
-      if (img?.[0] && !text.includes(img[0])) {
-        text += `\n\n<figure style="margin:24px 0;text-align:center;"><img src="${img[0]}" alt="${String(targetKeyword || 'Product').replace(/"/g, '')}" style="max-width:480px;width:100%;height:auto;border-radius:12px;" /></figure>`
+
+    const outlineProducts = (Array.isArray(outlineContext) ? outlineContext : [])
+      .map(item => item?.productData)
+      .filter(product => product && (product.imageUrl || product.asin || product.productName))
+    let products = outlineProducts.some(product => product.imageUrl) ? outlineProducts : []
+
+    if (!products.length) {
+      const loaded = await loadRewriteProducts(settings, sourceText, rawHtml)
+
+      products = loaded.products || []
+    }
+
+    const outlineItem = (Array.isArray(outlineContext) ? outlineContext : []).find(item => item?.text === heading)
+    const sectionType = outlineItem?.sectionType || (Number(sectionIndex) === 0 ? 'intro' : '')
+    const isIntro = sectionType === 'intro' || Number(sectionIndex) === 0
+
+    if (settings.type === 'amazon-roundup-rewrite' && isIntro && products.length) {
+      const linkOptions = {
+        language: settings.language,
+        domain: settings.amazonDomain || 'www.amazon.com',
+        partnerTag: settings.amazonTrackingId || process.env.AMAZON_PARTNER_TAG || ''
+      }
+      const layout =
+        settings.roundupLayout === 'top-pick'
+          ? renderTopPickCards(products, linkOptions)
+          : renderResponsiveTable({
+              headers: ['Image', 'Product', 'Link'],
+              rows: products.slice(0, 3).map(product => {
+                const safeTitle = escapeHtml(
+                  String(product.productName || product.asin || 'Amazon product').replace(/[\r\n]+/g, ' ')
+                )
+                const safeImageUrl = escapeHtml(String(product.imageUrl || ''))
+                const altText = escapeHtml(`${targetKeyword || ''} ${product.productName || ''}`.trim())
+                const button = buildCheckPriceButton(product.amazonUrl, { ...linkOptions, asin: product.asin })
+
+                return [
+                  safeImageUrl
+                    ? `<img src="${safeImageUrl}" alt="${altText}" title="${safeTitle}" style="width:80px;height:80px;max-width:100%;object-fit:contain;border-radius:8px;" />`
+                    : '',
+                  safeTitle,
+                  button
+                ]
+              })
+            })
+
+      if (settings.roundupLayout === 'top-pick') {
+        text = text.replace(/<table\b[\s\S]*?<\/table>/gi, '')
+        if (!/affigenie-product-cards/i.test(text)) text += `\n\n${layout}`
+      } else if (layout && !/<table[\s>]/i.test(text)) {
+        text += `\n\n${layout}`
       }
     }
-  }
 
-  if (isAmazonRewriteType(settings.type)) {
-    text = withRequiredCheckPrice(text, amazonRewriteOptions(settings, sourceText, text))
+    const productForImage =
+      settings.type === 'amazon-review-rewrite'
+        ? isIntro
+          ? products[0]
+          : null
+        : sectionType === 'product' || matchRewriteProduct(heading, outlineContext, products)
+          ? matchRewriteProduct(heading, outlineContext, products)
+          : null
+    const imageHtml = productImageHtml(productForImage, targetKeyword)
+
+    if (imageHtml && !text.includes(String(productForImage.imageUrl))) {
+      text = insertAfterFirstBlock(text, imageHtml)
+    }
+
+    const buttonTarget = productForImage?.amazonUrl
+      ? {
+          url: productForImage.amazonUrl,
+          asin: productForImage.asin,
+          language: settings.language,
+          domain: settings.amazonDomain || 'www.amazon.com',
+          partnerTag: settings.amazonTrackingId || process.env.AMAZON_PARTNER_TAG || ''
+        }
+      : amazonRewriteOptions(settings, sourceText, text)
+
+    text = withRequiredCheckPrice(text, buttonTarget)
   }
 
   return {

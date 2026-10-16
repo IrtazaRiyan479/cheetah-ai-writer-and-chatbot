@@ -421,8 +421,8 @@ export const ADMIN_FLAG_TREE = [
       ),
       flagNode('youtube-blog', 'YouTube Video to Blog Post', youtubeFields()),
       flagNode('rewrite', 'Rewrite Blog Post', rewriteFields()),
-      flagNode('amazon-roundup-rewrite', 'Rewrite Amazon Product Roundup', rewriteFields()),
-      flagNode('amazon-review-rewrite', 'Rewrite Amazon Single Product Review', rewriteFields())
+      flagNode('amazon-roundup-rewrite', 'Rewrite Amazon Product Roundup', amazonRoundupFields()),
+      flagNode('amazon-review-rewrite', 'Rewrite Amazon Single Product Review', amazonReviewFields())
     ]
   },
   {

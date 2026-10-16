@@ -13,7 +13,7 @@ import { rewriteAcceptsSource, rewriteSourceError } from '@/app/api/generate/uti
 import { FlagSwitch } from '../FeatureAccessContext'
 import GatedSelect, { GatedNumber, InternalLinkFields } from '../GatedSelect'
 
-const RewriteFields = ({ settings, updateSetting }) => {
+export const RewriteSourceField = ({ settings, updateSetting }) => {
   const [statusText, setStatusText] = useState('')
   const [statusColor, setStatusColor] = useState('text-textSecondary')
   const [isValidating, setIsValidating] = useState(false)
@@ -71,30 +71,36 @@ const RewriteFields = ({ settings, updateSetting }) => {
     }, 800)
 
     return () => clearTimeout(timeoutId)
-  }, [settings.articleUrlToRewrite])
+  }, [settings.articleUrlToRewrite, settings.type])
 
   return (
-    <>
-      <Grid size={{ xs: 12 }}>
-        <Typography variant='subtitle2' className='font-medium mbe-1'>
-          Article URL to Rewrite
+    <Grid size={{ xs: 12 }}>
+      <Typography variant='subtitle2' className='font-medium mbe-1'>
+        Article URL to Rewrite
+      </Typography>
+      <TextField
+        fullWidth
+        size='small'
+        placeholder='https://example.com/article'
+        value={settings.articleUrlToRewrite || ''}
+        onChange={e => updateSetting('articleUrlToRewrite', e.target.value)}
+        InputProps={{
+          endAdornment: isValidating ? <CircularProgress size={20} color='inherit' /> : null
+        }}
+      />
+      {statusText && (
+        <Typography variant='caption' className={`mt-1 block ${statusColor}`}>
+          {statusText}
         </Typography>
-        <TextField
-          fullWidth
-          size='small'
-          placeholder='https://example.com/article'
-          value={settings.articleUrlToRewrite || ''}
-          onChange={e => updateSetting('articleUrlToRewrite', e.target.value)}
-          InputProps={{
-            endAdornment: isValidating ? <CircularProgress size={20} color='inherit' /> : null
-          }}
-        />
-        {statusText && (
-          <Typography variant='caption' className={`mt-1 block ${statusColor}`}>
-            {statusText}
-          </Typography>
-        )}
-      </Grid>
+      )}
+    </Grid>
+  )
+}
+
+const RewriteFields = ({ settings, updateSetting }) => {
+  return (
+    <>
+      <RewriteSourceField settings={settings} updateSetting={updateSetting} />
 
       <Grid size={{ xs: 12 }}>
         <Typography variant='subtitle2' className='font-medium mbe-1'>
