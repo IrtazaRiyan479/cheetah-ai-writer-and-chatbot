@@ -252,6 +252,7 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
         if (data.youtubeDurationSeconds) updateSetting('youtubeDurationSeconds', data.youtubeDurationSeconds)
         if (data.youtubeThumbnail) updateSetting('youtubeThumbnail', data.youtubeThumbnail)
         if (data.youtubeVideoId) updateSetting('youtubeVideoId', data.youtubeVideoId)
+        if (data.youtubeTranscriptSource) updateSetting('youtubeTranscriptSource', data.youtubeTranscriptSource)
 
         if (data.comparisonShared) updateSetting('comparisonShared', data.comparisonShared)
         if (data.metaTitle) updateSetting('metaTitle', data.metaTitle)

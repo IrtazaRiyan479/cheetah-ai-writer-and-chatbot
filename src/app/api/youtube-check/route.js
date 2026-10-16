@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 
 import { fetchYoutubeVideoData } from '../generate/utils/youtubeCaptions'
 
+export const maxDuration = 20
+
 export async function POST(request) {
   try {
     const { url } = await request.json()
@@ -21,7 +23,8 @@ export async function POST(request) {
         thumbnail: data.thumbnail || '',
         videoId: data.videoId || '',
         durationSeconds: data.durationSeconds || 0,
-        durationLabel: data.durationLabel || ''
+        durationLabel: data.durationLabel || '',
+        source: data.source || ''
       })
     }
 
@@ -35,6 +38,7 @@ export async function POST(request) {
       durationLabel: data.durationLabel || '',
       wordCount: data.wordCount || 0,
       transcript: data.transcript,
+      source: data.source || '',
       message: 'Video and captions successfully linked!'
     })
   } catch (error) {

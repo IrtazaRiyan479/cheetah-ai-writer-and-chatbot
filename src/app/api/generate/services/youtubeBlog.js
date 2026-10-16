@@ -16,16 +16,26 @@ function h2Count(outline) {
   return (Array.isArray(outline) ? outline : []).filter(item => String(item?.type || '').toLowerCase() === 'h2').length
 }
 
+function sourceUnderstandingInstruction(source) {
+  const automatic = /asr|gemini|timedtext|youtube-transcript/i.test(String(source || ''))
+
+  if (automatic) {
+    return 'The source text is automatic speech recognition, not a finished article. It mishears names, numbers, and mixed languages. Use it only to understand what the video says. Recover the intended meaning. Do not copy broken lines, filler, or repeated caption text into the article.'
+  }
+
+  return 'The source text is the video subtitles. Use it to understand what was said, then write the article from that understanding. Do not paste the subtitle lines as the article.'
+}
+
 function captionRewriteInstruction(enabled, where) {
   if (enabled) {
     return where === 'outline'
-      ? `DIRECT CAPTION REWRITE: The article is the rewritten captions. There is no separate transcript view. Clean the spoken words into article prose in the video's order. Keep the facts, names, numbers, and about the same amount of detail. Do not add outside information. Do not shrink a long transcript into a short recap.`
-      : `DIRECT CAPTION REWRITE: Rewrite only the spoken captions that belong under this heading into clean article prose. Keep the video's order, facts, names, and numbers. Do not add outside information and do not recap the whole video here.`
+      ? 'VIDEO ORDER: The article follows the video from start to finish. Turn what was said into clean prose, in the same order, with the same facts, names, and numbers. Do not add outside information. Do not shrink a long video into a short recap. Do not paste captions.'
+      : 'VIDEO ORDER: Rewrite only what was said under this heading into clean article prose. Keep the video order, facts, names, and numbers. Do not add outside information, do not recap the whole video, and do not paste caption lines.'
   }
 
   return where === 'outline'
-    ? `FRESH POST: Write a standalone blog grounded in the full transcript. You may reorder it for readability, but cover the video from start to finish and keep the article about as long as the video.`
-    : `FRESH POST: Write this section as standalone blog prose grounded in the transcript. Cover only this heading. Do not add facts that are not in the video, and do not recap the whole video here.`
+    ? 'FRESH POST: Write a standalone blog from your understanding of the video. You may reorder it for readability, but cover the video from start to finish and keep the article about as long as the video. Do not treat the source text as a script to paraphrase line by line.'
+    : 'FRESH POST: Write this section as standalone blog prose from what the video actually says. Cover only this heading. Do not add facts that are not in the video, do not recap the whole video, and do not paste caption lines.'
 }
 
 export async function generateYoutubeBlogOutline(body, genAI) {
@@ -50,6 +60,7 @@ export async function generateYoutubeBlogOutline(body, genAI) {
   }
 
   const transcript = videoData.transcript || videoData.text || ''
+  const transcriptSource = videoData.source || settings.youtubeTranscriptSource || ''
   const videoTitle = videoData.title || settings.fetchedVideoTitle || 'YouTube Video'
   const durationSeconds = Number(videoData.durationSeconds || settings.youtubeDurationSeconds) || 0
   const plan = youtubeSectionPlan(durationSeconds, transcript)
@@ -76,14 +87,17 @@ export async function generateYoutubeBlogOutline(body, genAI) {
     Original Video Title: ${videoTitle}
     Video length: ${plan.minutes} minutes (${durationSeconds || 'unknown'} seconds), about ${plan.sourceWords} spoken words.
 
-    Video Transcript for Context:
+    Video source (${transcriptSource || 'subtitles'}):
     ${transcript.substring(0, 200000)}
 
-    TASK: Create a comprehensive blog post outline based STRICTLY on the content of the provided transcript.
+    ${sourceUnderstandingInstruction(transcriptSource)}
+
+    TASK: Create a comprehensive blog post outline from what the video actually says.
     CRITICAL EXECUTION INSTRUCTIONS:
-    1. Strict Source Grounding: Your content MUST be strictly grounded in the provided source video transcript. Extract facts, numbers, and context entirely from the transcript. Do not invent outside information.
-    2. Cross-Lingual Adaptation: If the source transcript is in a different language than the Target Output Language (${langName}), translate the core meaning and details accurately. Ensure the final output reads natively in ${langName}.
-    3. Granular Detail Extraction: Mine the transcript for specific entities (names, prices, locations, material descriptions, direct quotes). Use these to make the section highly authentic.
+    1. Understand the video from the source text, then outline that understanding. The source is evidence of what was said, not the article itself.
+    2. Do not invent facts, names, or numbers the video did not give. If a line is garbled, use the surrounding meaning instead of copying it.
+    3. Cross-Lingual Adaptation: If the source is in a different language than the Target Output Language (${langName}), translate the core meaning and details accurately. Ensure the final output reads natively in ${langName}.
+    4. Granular Detail Extraction: Mine the source for specific entities (names, prices, locations, material descriptions, direct quotes). Use these to make the section highly authentic.
     ${captionRewriteInstruction(enableCaptionRewriting, 'outline')}
 
     CRITICAL STRUCTURE REQUIREMENTS:
@@ -172,6 +186,7 @@ export async function generateYoutubeBlogOutline(body, genAI) {
     youtubeDurationSeconds: durationSeconds,
     youtubeThumbnail: thumbnail,
     youtubeVideoId: videoData.videoId || settings.youtubeVideoId || '',
+    youtubeTranscriptSource: transcriptSource,
     heroImage: thumbnail,
     heroImageId: videoData.videoId || settings.youtubeVideoId || null,
     heroImageSource: 'youtube-thumbnail',
@@ -198,11 +213,13 @@ export async function generateYoutubeBlogSection(body, genAI) {
   let transcriptText = fetchedTranscript || settings.fetchedTranscript || ''
   let videoTitle = fetchedVideoTitle || settings.fetchedVideoTitle || ''
   let durationSeconds = Number(settings.youtubeDurationSeconds) || 0
+  let transcriptSource = settings.youtubeTranscriptSource || ''
 
   if (transcriptText.trim().length < 40 && settings.youtubeUrl) {
     const videoData = await fetchYoutubeVideoData(settings.youtubeUrl)
 
     if (videoData?.transcript) transcriptText = videoData.transcript
+    if (videoData?.source) transcriptSource = videoData.source
     if (!videoTitle && videoData?.title) videoTitle = videoData.title
     if (!durationSeconds && videoData?.durationSeconds) durationSeconds = videoData.durationSeconds
 
@@ -296,15 +313,18 @@ export async function generateYoutubeBlogSection(body, genAI) {
         Original Video Title: ${videoTitle || 'YouTube Video'}
         Full Article Outline for Context: ${JSON.stringify(outlineContext)}
 
-        SOURCE VIDEO TRANSCRIPT:
+        SOURCE VIDEO (${transcriptSource || 'subtitles'}):
         ${transcriptText ? transcriptText.substring(0, 200000) : 'No transcript provided.'}
+
+        ${sourceUnderstandingInstruction(transcriptSource)}
 
         TASK: Write a comprehensive section focusing ONLY on the main heading: "${heading}".
         CRITICAL EXECUTION INSTRUCTIONS:
-        1. Strict Source Grounding: Your content MUST be strictly grounded in the provided source video transcript. Extract facts, numbers, and context entirely from the transcript. Do not invent outside information.
-        2. Cross-Lingual Adaptation: If the source transcript is in a different language than the Target Output Language (${langName}), translate the core meaning and details accurately. Ensure the final output reads natively in ${langName}.
-        3. Granular Detail Extraction: Mine the transcript for specific entities (names, prices, locations, material descriptions, direct quotes). Use these to make the section highly authentic.
-        4. Length match: This video is ${plan.minutes} minutes. A long video must produce a long article across all sections. This section should be about ${sectionWords} words and must use the transcript material for "${heading}" only.
+        1. Understand the video from the source text, then write this section from that understanding. The source is evidence of what was said, not the article itself.
+        2. Do not invent facts, names, or numbers the video did not give. If a line is garbled, use the surrounding meaning instead of copying it.
+        3. Cross-Lingual Adaptation: If the source is in a different language than the Target Output Language (${langName}), translate the core meaning and details accurately. Ensure the final output reads natively in ${langName}.
+        4. Granular Detail Extraction: Mine the source for specific entities (names, prices, locations, material descriptions, direct quotes). Use these to make the section highly authentic.
+        5. Length match: This video is ${plan.minutes} minutes. A long video must produce a long article across all sections. This section should be about ${sectionWords} words and must use only the material that belongs under "${heading}".
 
         ${captionRewriteInstruction(enableCaptionRewriting, 'section')}
         ${keywordSEOInstructions}

@@ -1,9 +1,10 @@
+import { useEffect, useRef, useState } from 'react'
+
 import CircularProgress from '@mui/material/CircularProgress'
 import Divider from '@mui/material/Divider'
 import Grid from '@mui/material/Grid'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-import { useEffect, useRef, useState } from 'react'
 
 import { clientSites } from '@/configs/clientSites'
 import { countries } from '@/configs/countries'
@@ -42,8 +43,10 @@ const YoutubeBlogFields = ({ settings, updateSetting }) => {
         const res = await fetch('/api/youtube-check', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url })
+          body: JSON.stringify({ url }),
+          signal: AbortSignal.timeout(20000)
         })
+
         const data = await res.json()
 
         if (requestId !== requestRef.current) return
@@ -52,12 +55,11 @@ const YoutubeBlogFields = ({ settings, updateSetting }) => {
           const words = Number(data.wordCount) || 0
           const length = data.durationLabel ? `${data.durationLabel} · ` : ''
 
-          setStatusText(
-            `✓ Linked to "${data.title}" · ${length}${words.toLocaleString()} caption words. Directly Rewrite Captions turns those spoken lines into the article. They are not shown in a separate box.`
-          )
+          setStatusText(`✓ Linked to "${data.title}" · ${length}${words.toLocaleString()} subtitle words.`)
           setStatusColor('text-success')
           updateSetting('targetKeyword', data.title || '')
           updateSetting('fetchedTranscript', data.transcript || '')
+          updateSetting('youtubeTranscriptSource', data.source || '')
           updateSetting('fetchedVideoTitle', data.title || '')
           updateSetting('youtubeDurationSeconds', data.durationSeconds || 0)
           updateSetting('youtubeThumbnail', data.thumbnail || '')
@@ -65,11 +67,14 @@ const YoutubeBlogFields = ({ settings, updateSetting }) => {
         } else if (data.valid) {
           setStatusText(`! ${data.error || 'This URL is valid, but captions could not be read. Try again.'}`)
           setStatusColor('text-warning')
+
           if (data.title) {
             updateSetting('targetKeyword', data.title)
             updateSetting('fetchedVideoTitle', data.title)
           }
+
           updateSetting('fetchedTranscript', '')
+          updateSetting('youtubeTranscriptSource', '')
           updateSetting('youtubeDurationSeconds', data.durationSeconds || 0)
           updateSetting('youtubeThumbnail', data.thumbnail || '')
           updateSetting('youtubeVideoId', data.videoId || videoId)
@@ -77,6 +82,7 @@ const YoutubeBlogFields = ({ settings, updateSetting }) => {
           setStatusText(`✕ ${data.error || 'Could not validate this YouTube URL.'}`)
           setStatusColor('text-error')
           updateSetting('fetchedTranscript', '')
+          updateSetting('youtubeTranscriptSource', '')
           updateSetting('youtubeThumbnail', '')
           updateSetting('youtubeDurationSeconds', 0)
           updateSetting('youtubeVideoId', '')
@@ -84,7 +90,11 @@ const YoutubeBlogFields = ({ settings, updateSetting }) => {
       } catch (error) {
         if (requestId !== requestRef.current) return
 
-        setStatusText('✕ Error connecting to validation server.')
+        const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError'
+
+        setStatusText(
+          timedOut ? '✕ YouTube took too long to respond. Try again.' : '✕ Error connecting to validation server.'
+        )
         setStatusColor('text-error')
       } finally {
         if (requestId === requestRef.current) setIsValidating(false)
@@ -134,9 +144,9 @@ const YoutubeBlogFields = ({ settings, updateSetting }) => {
             label='Directly Rewrite Captions'
           />
           <Typography variant='caption' className='text-textSecondary ml-10 -mt-2'>
-            On: the article is the rewritten captions, in video order, about as long as the video. Off: the article is a
-            fresh post grounded in the video. There is no separate captions panel. Short videos still get 5 to 7
-            sections; longer videos get a longer article.
+            On: the article follows the video in order. Off: the article is a fresh post. Either way it is written from
+            the subtitles, so the writer understands what was said instead of pasting caption lines. Short videos still
+            get 5 to 7 sections; longer videos get a longer article.
           </Typography>
         </div>
       </Grid>

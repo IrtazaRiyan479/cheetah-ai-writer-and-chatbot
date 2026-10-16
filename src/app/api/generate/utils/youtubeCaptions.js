@@ -1,9 +1,23 @@
 import { extractVideoId } from '@/utils/youtubeId'
 
+const ANDROID_USER_AGENT = 'com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip'
+
 const PLAYER_CLIENTS = [
   {
-    client: { clientName: 'ANDROID', clientVersion: '20.10.38', hl: 'en', gl: 'US' },
-    headers: {}
+    client: {
+      clientName: 'ANDROID',
+      clientVersion: '21.26.364',
+      androidSdkVersion: 30,
+      osName: 'Android',
+      osVersion: '11',
+      hl: 'en',
+      gl: 'US'
+    },
+    headers: {
+      'User-Agent': ANDROID_USER_AGENT,
+      'X-YouTube-Client-Name': '3',
+      'X-YouTube-Client-Version': '21.26.364'
+    }
   },
   {
     client: {
@@ -102,6 +116,11 @@ function cleanCaptionText(value) {
     .replace(/>/g, '>')
     .replace(/"/g, '"')
     .replace(/&#39;|'/g, "'")
+    .replace(/&#(\d+);/g, (match, code) => {
+      const value = Number(code)
+
+      return value > 0 && value <= 0x10ffff ? String.fromCodePoint(value) : match
+    })
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -142,17 +161,47 @@ async function fetchText(url, headers, timeout = 12000) {
   }
 }
 
-async function fetchPlayer(videoId, spec) {
+async function fetchVisitorData(videoId) {
+  const headers = {
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Accept-Language': 'en-US,en;q=0.9'
+  }
+  const pages = [
+    `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?hl=en`,
+    'https://www.youtube.com/embed/jNQXAC9IVRw?hl=en'
+  ]
+
+  for (const page of pages) {
+    try {
+      const response = await fetchText(page, headers, 4000)
+      const visitorData = String(response.text || '').match(/"visitorData":"([^"]+)"/)?.[1] || ''
+
+      if (visitorData) return visitorData
+    } catch {
+      /* next embed page */
+    }
+  }
+
+  return ''
+}
+
+async function fetchPlayer(videoId, spec, visitorData = '') {
+  const client = visitorData ? { ...spec.client, visitorData } : { ...spec.client }
   const response = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...spec.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...spec.headers,
+      ...(visitorData ? { 'X-Goog-Visitor-Id': visitorData } : {})
+    },
     body: JSON.stringify({
-      context: { client: spec.client },
+      context: { client },
       videoId,
       contentCheckOk: true,
       racyCheckOk: true
     }),
-    signal: AbortSignal.timeout(12000)
+    signal: AbortSignal.timeout(5000)
   })
 
   if (!response.ok) return null
@@ -179,7 +228,7 @@ async function fetchOembed(videoId) {
   try {
     const response = await fetch(
       `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&format=json`,
-      { signal: AbortSignal.timeout(10000) }
+      { signal: AbortSignal.timeout(4000) }
     )
 
     if (!response.ok) return { ok: false, status: response.status }
@@ -197,41 +246,10 @@ async function fetchOembed(videoId) {
   }
 }
 
-async function resolveThumbnail(videoId, thumbnails, oembedUrl) {
+function pickThumbnail(videoId, thumbnails, oembedUrl) {
   const ranked = [...(thumbnails || [])].filter(item => item?.url).sort((a, b) => (b.width || 0) - (a.width || 0))
 
-  if ((ranked[0]?.width || 0) >= 1280) return ranked[0].url
-
-  const candidates = [
-    `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
-    `https://i.ytimg.com/vi/${videoId}/sddefault.jpg`,
-    ranked[0]?.url,
-    oembedUrl,
-    `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
-  ].filter(Boolean)
-  const seen = new Set()
-
-  for (const url of candidates) {
-    const clean = String(url).split('?')[0]
-
-    if (seen.has(clean)) continue
-
-    seen.add(clean)
-
-    try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(8000), redirect: 'follow' })
-
-      if (!response.ok) continue
-
-      const buffer = Buffer.from(await response.arrayBuffer())
-
-      if (buffer.length > 5000) return clean
-    } catch {
-      /* try the next size */
-    }
-  }
-
-  return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+  return ranked[0]?.url || oembedUrl || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
 }
 
 function rankTrack(track) {
@@ -261,7 +279,14 @@ async function readCaptionTrack(track) {
 
   for (const candidate of candidates) {
     try {
-      const response = await fetchText(candidate)
+      const response = await fetchText(
+        candidate,
+        {
+          'User-Agent': ANDROID_USER_AGENT,
+          'Accept-Language': 'en-US,en;q=0.9'
+        },
+        5000
+      )
 
       if (!response.ok) continue
 
@@ -274,86 +299,6 @@ async function readCaptionTrack(track) {
   }
 
   return ''
-}
-
-function tracksFromHtml(html) {
-  const sources = [html, html.replace(/\\u0026/g, '&').replace(/\\"/g, '"').replace(/\\\//g, '/')]
-
-  for (const source of sources) {
-    const marker = '"captionTracks":'
-    const start = source.indexOf(marker)
-
-    if (start < 0) continue
-
-    const bracket = source.indexOf('[', start)
-
-    if (bracket < 0) continue
-
-    let depth = 0
-
-    for (let index = bracket; index < source.length && index < bracket + 250000; index++) {
-      const char = source[index]
-
-      if (char === '[') depth += 1
-      else if (char === ']') {
-        depth -= 1
-
-        if (depth === 0) {
-          try {
-            const parsed = JSON.parse(source.slice(bracket, index + 1))
-
-            if (Array.isArray(parsed)) return parsed
-          } catch {
-            break
-          }
-        }
-      }
-    }
-  }
-
-  return []
-}
-
-async function fetchWatchTracks(videoId) {
-  try {
-    const response = await fetchText(
-      `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&hl=en&bpctr=9999999999&has_verified=1`,
-      {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-        Cookie: 'CONSENT=YES+cb.20210328-17-p0.en+FX+667; SOCS=CAI'
-      },
-      10000
-    )
-
-    if (!response.ok) return []
-
-    return tracksFromHtml(response.text)
-  } catch {
-    return []
-  }
-}
-
-async function fetchTimedText(videoId, lang, kind) {
-  const kindQuery = kind ? `&kind=${encodeURIComponent(kind)}` : ''
-  const url = `https://www.youtube.com/api/timedtext?v=${encodeURIComponent(videoId)}&lang=${encodeURIComponent(lang)}${kindQuery}&fmt=json3`
-  const response = await fetchText(url)
-
-  if (!response.ok) return ''
-
-  return textFromCaptionPayload(response.text, response.contentType || 'application/json')
-}
-
-async function fetchPackageTranscript(videoId) {
-  try {
-    const { YoutubeTranscript } = await import('youtube-transcript')
-    const transcriptArray = await YoutubeTranscript.fetchTranscript(videoId)
-
-    return cleanCaptionText((transcriptArray || []).map(item => item.text).join(' '))
-  } catch {
-    return ''
-  }
 }
 
 function failureMessage({ valid, title, reason }) {
@@ -373,147 +318,126 @@ function failureMessage({ valid, title, reason }) {
   return `This YouTube URL is valid${title ? ` ("${title}")` : ''}, but captions could not be read. The video may have no subtitles, or YouTube blocked the caption request. Try again.`
 }
 
-export async function fetchYoutubeVideoData(url) {
-  const videoId = extractVideoId(url)
+function withTimeout(promise, ms, fallback) {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => resolve(fallback), ms)
 
-  if (!videoId) {
-    return { success: false, valid: false, error: 'That is not a YouTube video URL.' }
+    promise.then(
+      value => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      () => {
+        clearTimeout(timer)
+        resolve(fallback)
+      }
+    )
+  })
+}
+
+function resultFromTrack(base, text, track) {
+  return {
+    ...base,
+    success: true,
+    transcript: text,
+    wordCount: text.split(/\s+/).filter(Boolean).length,
+    source: `player:${track.languageCode || 'und'}:${track.kind || 'manual'}`
   }
+}
 
+async function loadYoutubeVideo(videoId) {
   const attempts = []
   const oembedPromise = fetchOembed(videoId)
-  let title = ''
-  let author = ''
-  let durationSeconds = 0
-  let thumbnails = []
-  let playability = ''
-  let reason = ''
-  const tracks = []
+  const visitorData = await fetchVisitorData(videoId)
 
-  for (const spec of PLAYER_CLIENTS) {
+  attempts.push(visitorData ? 'visitor:ok' : 'visitor:empty')
+
+  let player = null
+  const clients = [PLAYER_CLIENTS[0], PLAYER_CLIENTS[1]].filter(Boolean)
+
+  for (const spec of clients) {
     try {
-      const player = await fetchPlayer(videoId, spec)
+      const nextPlayer = await fetchPlayer(videoId, spec, visitorData)
 
-      if (!player) {
+      if (!nextPlayer) {
         attempts.push(`${spec.client.clientName}:empty`)
         continue
       }
 
-      if (!title && player.title) title = player.title
-      if (!author && player.author) author = player.author
-      if (!durationSeconds && player.durationSeconds) durationSeconds = player.durationSeconds
-      if (!thumbnails.length && player.thumbnails.length) thumbnails = player.thumbnails
-      if (!playability) playability = player.playability
-      if (!reason && player.reason) reason = player.reason
+      if (!player) player = nextPlayer
+      else {
+        if (!player.title && nextPlayer.title) player = { ...player, title: nextPlayer.title }
+        if (!player.durationSeconds && nextPlayer.durationSeconds) {
+          player = { ...player, durationSeconds: nextPlayer.durationSeconds }
+        }
+        if (!player.thumbnails?.length && nextPlayer.thumbnails?.length) {
+          player = { ...player, thumbnails: nextPlayer.thumbnails }
+        }
+      }
 
-      if (player.tracks.length) {
-        tracks.push(...player.tracks)
-        attempts.push(`${spec.client.clientName}:tracks:${player.tracks.length}`)
+      if (nextPlayer.tracks.length) {
+        player = { ...player, tracks: nextPlayer.tracks, playability: nextPlayer.playability, reason: nextPlayer.reason }
+        attempts.push(`${spec.client.clientName}:tracks:${nextPlayer.tracks.length}`)
         break
       }
 
-      attempts.push(`${spec.client.clientName}:${player.playability || 'no-tracks'}`)
+      attempts.push(`${spec.client.clientName}:${nextPlayer.playability || 'no-tracks'}`)
     } catch (error) {
       attempts.push(`${spec.client.clientName}:${error?.message || error}`)
     }
   }
 
   const oembed = await oembedPromise
-
-  if (!title && oembed.title) title = oembed.title
-  if (!author && oembed.author) author = oembed.author
-
-  const thumbnail = await resolveThumbnail(videoId, thumbnails, oembed.thumbnail || '')
+  const title = player?.title || oembed.title || ''
+  const author = player?.author || oembed.author || ''
+  const durationSeconds = Number(player?.durationSeconds) || 0
+  const thumbnail = pickThumbnail(videoId, player?.thumbnails, oembed.thumbnail || '')
   const valid = Boolean(title || oembed.ok || durationSeconds)
   const base = {
     valid,
-    title: title || '',
+    title,
     author,
     thumbnail,
     videoId,
     durationSeconds,
     durationLabel: formatYoutubeDuration(durationSeconds)
   }
-
-  const orderedTracks = [...tracks].sort((a, b) => rankTrack(b) - rankTrack(a)).slice(0, 6)
+  const orderedTracks = [...(player?.tracks || [])].sort((a, b) => rankTrack(b) - rankTrack(a)).slice(0, 3)
 
   for (const track of orderedTracks) {
     const text = await readCaptionTrack(track)
 
-    if (text.length > 40) {
-      return {
-        ...base,
-        success: true,
-        transcript: text,
-        wordCount: text.split(/\s+/).filter(Boolean).length,
-        source: `player:${track.languageCode || 'und'}:${track.kind || 'manual'}`
-      }
-    }
+    if (text.length > 40) return resultFromTrack(base, text, track)
   }
 
-  const packageText = await fetchPackageTranscript(videoId)
-
-  if (packageText.length > 40) {
-    return {
-      ...base,
-      success: true,
-      transcript: packageText,
-      wordCount: packageText.split(/\s+/).filter(Boolean).length,
-      source: 'youtube-transcript'
-    }
-  }
-
-  attempts.push('youtube-transcript:empty')
-
-  try {
-    const watchTracks = await fetchWatchTracks(videoId)
-
-    for (const track of [...watchTracks].sort((a, b) => rankTrack(b) - rankTrack(a)).slice(0, 4)) {
-      const text = await readCaptionTrack(track)
-
-      if (text.length > 40) {
-        return {
-          ...base,
-          success: true,
-          transcript: text,
-          wordCount: text.split(/\s+/).filter(Boolean).length,
-          source: `watch:${track.languageCode || 'und'}`
-        }
-      }
-    }
-
-    if (!watchTracks.length) attempts.push('watch:no-tracks')
-  } catch (error) {
-    attempts.push(`watch:${error?.message || error}`)
-  }
-
-  for (const lang of ['en', 'en-US']) {
-    for (const kind of ['', 'asr']) {
-      try {
-        const text = await fetchTimedText(videoId, lang, kind)
-
-        if (text.length > 40) {
-          return {
-            ...base,
-            success: true,
-            transcript: text,
-            wordCount: text.split(/\s+/).filter(Boolean).length,
-            source: `timedtext:${lang}${kind ? `:${kind}` : ''}`
-          }
-        }
-      } catch (error) {
-        attempts.push(`timedtext:${lang}:${error?.message || error}`)
-      }
-    }
-  }
-
-  console.error('[youtube] caption fetch failed', { videoId, valid, attempts: attempts.slice(0, 12) })
+  console.error('[youtube] caption fetch failed', { videoId, valid, attempts: attempts.slice(0, 8) })
 
   return {
     ...base,
     success: false,
     transcript: '',
     wordCount: 0,
-    error: failureMessage({ valid, title, reason: valid ? reason : reason || playability })
+    source: '',
+    error: failureMessage({ valid, title, reason: valid ? player?.reason : player?.reason || player?.playability })
   }
+}
+
+export async function fetchYoutubeVideoData(url) {
+  const videoId = extractVideoId(String(url || '').replace(/&/g, '&'))
+
+  if (!videoId) {
+    return { success: false, valid: false, error: 'That is not a YouTube video URL.' }
+  }
+
+  return withTimeout(loadYoutubeVideo(videoId), 12000, {
+    success: false,
+    valid: true,
+    videoId,
+    title: '',
+    thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    transcript: '',
+    wordCount: 0,
+    source: '',
+    error: 'YouTube took too long to respond. Try the link again.'
+  })
 }
