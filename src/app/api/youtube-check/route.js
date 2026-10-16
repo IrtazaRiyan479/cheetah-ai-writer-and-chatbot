@@ -1,22 +1,46 @@
-import { NextResponse } from 'next/server';
-import { fetchYoutubeVideoData } from '../generate/utils/helpers';
+import { NextResponse } from 'next/server'
+
+import { fetchYoutubeVideoData } from '../generate/utils/youtubeCaptions'
 
 export async function POST(request) {
   try {
-    const { url } = await request.json();
-    if (!url) return NextResponse.json({ success: false, error: 'No URL provided' }, { status: 400 });
+    const { url } = await request.json()
 
-    const data = await fetchYoutubeVideoData(url);
+    if (!url || !String(url).trim()) {
+      return NextResponse.json({ success: false, valid: false, error: 'No URL provided' }, { status: 400 })
+    }
+
+    const data = await fetchYoutubeVideoData(url)
+
     if (!data.success) {
-      return NextResponse.json({ success: false, error: 'Could not fetch captions. Video might be private or missing subtitles.' });
+      return NextResponse.json({
+        success: false,
+        valid: Boolean(data.valid),
+        error: data.error || 'Could not fetch captions.',
+        title: data.title || '',
+        thumbnail: data.thumbnail || '',
+        videoId: data.videoId || '',
+        durationSeconds: data.durationSeconds || 0,
+        durationLabel: data.durationLabel || ''
+      })
     }
 
     return NextResponse.json({
       success: true,
+      valid: true,
       title: data.title,
+      thumbnail: data.thumbnail || '',
+      videoId: data.videoId || '',
+      durationSeconds: data.durationSeconds || 0,
+      durationLabel: data.durationLabel || '',
+      wordCount: data.wordCount || 0,
+      transcript: data.transcript,
       message: 'Video and captions successfully linked!'
-    });
+    })
   } catch (error) {
-    return NextResponse.json({ success: false, error: 'Failed to validate URL.' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, valid: false, error: 'Failed to validate URL.' },
+      { status: 500 }
+    )
   }
 }

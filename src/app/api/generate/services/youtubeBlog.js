@@ -5,30 +5,58 @@ import {
   getPovInstruction,
   getToneInstruction,
   getBaseSystemInstruction,
-  fetchYoutubeVideoData,
-  fetchUnsplashImage,
-  fetchPexelsImage,
-  fetchPixabayImage,
-  calculateRelevanceScore,
-  fetchPeopleAlsoSearchFor,
-  generateFallbackImage
+  fetchPeopleAlsoSearchFor
 } from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
+import { fetchYoutubeVideoData, youtubeSectionPlan } from '../utils/youtubeCaptions'
+
+function h2Count(outline) {
+  return (Array.isArray(outline) ? outline : []).filter(item => String(item?.type || '').toLowerCase() === 'h2').length
+}
+
+function captionRewriteInstruction(enabled, where) {
+  if (enabled) {
+    return where === 'outline'
+      ? `DIRECT CAPTION REWRITE: The article is the rewritten captions. There is no separate transcript view. Clean the spoken words into article prose in the video's order. Keep the facts, names, numbers, and about the same amount of detail. Do not add outside information. Do not shrink a long transcript into a short recap.`
+      : `DIRECT CAPTION REWRITE: Rewrite only the spoken captions that belong under this heading into clean article prose. Keep the video's order, facts, names, and numbers. Do not add outside information and do not recap the whole video here.`
+  }
+
+  return where === 'outline'
+    ? `FRESH POST: Write a standalone blog grounded in the full transcript. You may reorder it for readability, but cover the video from start to finish and keep the article about as long as the video.`
+    : `FRESH POST: Write this section as standalone blog prose grounded in the transcript. Cover only this heading. Do not add facts that are not in the video, and do not recap the whole video here.`
+}
 
 export async function generateYoutubeBlogOutline(body, genAI) {
   const { prompt, settings } = body
   const { model, targetKeyword, language, country, youtubeUrl, enableCaptionRewriting } = settings
+  const cachedTranscript = String(settings.fetchedTranscript || '').trim()
 
-  const videoData = await fetchYoutubeVideoData(youtubeUrl)
+  const videoData =
+    cachedTranscript.length > 40
+      ? {
+          success: true,
+          title: settings.fetchedVideoTitle || '',
+          thumbnail: settings.youtubeThumbnail || '',
+          transcript: cachedTranscript,
+          durationSeconds: Number(settings.youtubeDurationSeconds) || 0,
+          videoId: settings.youtubeVideoId || ''
+        }
+      : await fetchYoutubeVideoData(youtubeUrl)
 
   if (!videoData.success) {
     throw new Error(videoData.error || 'Could not fetch captions. The video might be private, age-restricted, or missing subtitles.')
   }
 
   const transcript = videoData.transcript || videoData.text || ''
-  const videoTitle = videoData.title || 'YouTube Video'
+  const videoTitle = videoData.title || settings.fetchedVideoTitle || 'YouTube Video'
+  const durationSeconds = Number(videoData.durationSeconds || settings.youtubeDurationSeconds) || 0
+  const plan = youtubeSectionPlan(durationSeconds, transcript)
+  const thumbnail =
+    videoData.thumbnail ||
+    settings.youtubeThumbnail ||
+    (videoData.videoId ? `https://i.ytimg.com/vi/${videoData.videoId}/hqdefault.jpg` : '')
 
   const langObj = languages ? languages[language] : null
   const langName = langObj ? langObj.name : language || 'English'
@@ -40,16 +68,13 @@ export async function generateYoutubeBlogOutline(body, genAI) {
   const outlineModel = genAI.getGenerativeModel({
     model: model || 'gemini-3.1-flash-lite',
     generationConfig: { responseMimeType: 'application/json' },
-    systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline. You MUST return a JSON object with four keys: "metaTitle" (SEO title, max 60 chars), "metaDescription" (SEO desc, max 160 chars), "title" (A catchy, click-worthy, viral H1 Title based on the keyword) and "outline" (A flat JSON array of objects). Schema: { "metaTitle": "...", "metaDescription": "...", "title": "Catchy Title Here", "outline": [{ "type": "h2", "text": "Introduction" }, { "type": "h3", "text": "Subheading" }] }\n\nCRITICAL OUTLINE RULES:\n- The "title" MUST contain the exact target keyword: "${targetKeyword}".\n- The VERY FIRST "h2" object in the outline array MUST contain the exact target keyword: "${targetKeyword}" in its "text" field.\n- The VERY LAST "h2" object in the outline array MUST be a concluding heading and MUST also contain the exact target keyword: "${targetKeyword}" in its "text" field.`
+    systemInstruction: `${baseSystemInstruction}\n\nSPECIAL INSTRUCTION: Generate a highly engaging article outline. You MUST return a JSON object with four keys: "metaTitle" (SEO title, max 60 chars), "metaDescription" (SEO desc, max 160 chars), "title" (A catchy, click-worthy, viral H1 Title based on the keyword) and "outline" (A flat JSON array of objects). Schema: { "metaTitle": "...", "metaDescription": "...", "title": "Catchy Title Here", "outline": [{ "type": "h2", "text": "Introduction" }, { "type": "h3", "text": "Subheading" }] }\n\nCRITICAL OUTLINE RULES:\n- The "title" MUST contain the exact target keyword: "${targetKeyword}".\n- The VERY FIRST "h2" object in the outline array MUST contain the exact target keyword: "${targetKeyword}" in its "text" field.\n- The VERY LAST "h2" object in the outline array MUST be a concluding heading and MUST also contain the exact target keyword: "${targetKeyword}" in its "text" field.\n- Produce ${plan.minH2} to ${plan.maxH2} H2 sections. Never fewer than ${plan.minH2}.`
   })
-
-  const rewriteInstruction = enableCaptionRewriting
-    ? `REWRITING ENABLED: Use the video transcript as your core inspiration, but creatively restructure it into a standalone, highly engaging blog post. You do not need to follow the video's exact chronological order. Add logical headings that make it a better reading experience.`
-    : `STRICT ADHERENCE: Closely follow the chronological flow, exact arguments, and structure of the video. Your outline should act as a direct text adaptation of the video's timeline.`
 
   const outlinePrompt = `
     Target Keyword/Topic: ${targetKeyword || prompt}
     Original Video Title: ${videoTitle}
+    Video length: ${plan.minutes} minutes (${durationSeconds || 'unknown'} seconds), about ${plan.sourceWords} spoken words.
 
     Video Transcript for Context:
     ${transcript.substring(0, 200000)}
@@ -59,27 +84,36 @@ export async function generateYoutubeBlogOutline(body, genAI) {
     1. Strict Source Grounding: Your content MUST be strictly grounded in the provided source video transcript. Extract facts, numbers, and context entirely from the transcript. Do not invent outside information.
     2. Cross-Lingual Adaptation: If the source transcript is in a different language than the Target Output Language (${langName}), translate the core meaning and details accurately. Ensure the final output reads natively in ${langName}.
     3. Granular Detail Extraction: Mine the transcript for specific entities (names, prices, locations, material descriptions, direct quotes). Use these to make the section highly authentic.
-    ${rewriteInstruction}
+    ${captionRewriteInstruction(enableCaptionRewriting, 'outline')}
 
     CRITICAL STRUCTURE REQUIREMENTS:
-    1. Length: You MUST generate between 8 and 12 main H2 sections.
-    2. Depth: For every H2, you MUST include 2 to 3 related H3 subheadings in the array to provide depth.
-    3. Flatness: Keep the JSON array flat (no nesting).
+    1. Length: The finished article must be about ${plan.targetWords} words so it matches the video. A long video must become a long article. A short video must still be divided into ${plan.minH2} to ${plan.maxH2} H2 sections, even when each section is short. Never return fewer than ${plan.minH2} H2 objects.
+    2. Depth: Each H2 may include ${plan.h3min} to ${plan.h3max} H3 subheadings. On videos under 8 minutes, prefer no H3 unless the section has two distinct points. Do not pad a short video with filler sections.
+    3. Coverage: The H2s together must walk through the transcript from beginning to end, including the ending of a long video.
+    4. Flatness: Keep the JSON array flat (no nesting).
   `
 
   let parsedData = null
+  let best = null
   let lastOutlineError = null
+
+  const acceptCandidate = candidate => {
+    const count = h2Count(candidate?.outline)
+
+    if (!best || count > h2Count(best.outline)) best = candidate
+
+    if (count < plan.minH2) {
+      throw new Error(`Outline had ${count} H2 sections; need at least ${plan.minH2}`)
+    }
+
+    parsedData = candidate
+  }
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const result = await outlineModel.generateContent(outlinePrompt)
 
-      parsedData = JSON.parse(result.response.text())
-
-      if (!parsedData?.outline || !Array.isArray(parsedData.outline) || parsedData.outline.length === 0) {
-        throw new Error('Outline JSON missing outline array')
-      }
-
+      acceptCandidate(JSON.parse(result.response.text()))
       break
     } catch (err) {
       lastOutlineError = err
@@ -92,19 +126,23 @@ export async function generateYoutubeBlogOutline(body, genAI) {
         console.warn('[Outline] Gemini quota/high demand — using Groq/Mistral')
 
         const alt = await callLightLLM({
-          system: 'Return only valid JSON with keys metaTitle, metaDescription, title, outline. No markdown.',
+          system: `Return only valid JSON with keys metaTitle, metaDescription, title, outline. Include ${plan.minH2} to ${plan.maxH2} H2 items. No markdown.`,
           prompt:
             outlinePrompt +
-            '\n\nReturn JSON: {"metaTitle":"","metaDescription":"","title":"","outline":[{"type":"h2","text":""}]}',
+            `\n\nReturn JSON: {"metaTitle":"","metaDescription":"","title":"","outline":[{"type":"h2","text":""}]}\nThe outline must contain at least ${plan.minH2} objects with type h2.`,
           json: true,
-          max_tokens: 1600
+          max_tokens: Math.min(4000, 900 + plan.maxH2 * 180)
         })
 
         const parsed = parseJsonSafe(alt?.text)
 
         if (parsed?.outline?.length) {
-          parsedData = parsed
-          break
+          try {
+            acceptCandidate(parsed)
+            break
+          } catch (countError) {
+            lastOutlineError = countError
+          }
         }
 
         throw new Error('RATE_LIMIT: Gemini and Groq could not produce an outline. Wait ~60s and try again.')
@@ -114,66 +152,15 @@ export async function generateYoutubeBlogOutline(body, genAI) {
         await new Promise(r => setTimeout(r, 800 * attempt))
         continue
       }
-
-      throw new Error(`OUTLINE_PARSE_FAILED: Could not produce a valid outline after ${attempt} attempts. ${msg}`)
     }
   }
+
+  if (!parsedData && best && h2Count(best.outline) > 0) parsedData = best
 
   if (!parsedData) {
-    throw lastOutlineError || new Error('OUTLINE_PARSE_FAILED')
-  }
-
-  const [unsplashRes, pexelsRes, pixabayRes] = await Promise.all([
-    fetchUnsplashImage(targetKeyword),
-    fetchPexelsImage(targetKeyword),
-    fetchPixabayImage(targetKeyword)
-  ])
-
-  let candidates = [...unsplashRes, ...pexelsRes, ...pixabayRes].filter(img => img && img.url)
-  let heroImageUrl = ''
-  let heroImageId = null
-  let heroImageSource = null
-  let fallbackToAiImageTag = false
-  let scoredCandidates = []
-
-  if (candidates.length > 0) {
-    scoredCandidates = candidates.map(c => ({
-      ...c,
-      score: calculateRelevanceScore(c.alt || '', targetKeyword, targetKeyword)
-    }))
-
-    scoredCandidates.sort((a, b) => b.score - a.score)
-
-    if (scoredCandidates[0].score >= 2.0) {
-      heroImageUrl = scoredCandidates[0].url
-      heroImageId = scoredCandidates[0].id ?? null
-      heroImageSource = scoredCandidates[0].source || null
-      console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`)
-    } else {
-      console.log(
-        `[Hero Image] Top image score (${scoredCandidates[0].score}) below 2.0. Invoking AI generation logic.`
-      )
-      fallbackToAiImageTag = true
-    }
-  } else {
-    fallbackToAiImageTag = true
-  }
-
-  if (fallbackToAiImageTag) {
-    const safetyBackup = scoredCandidates.length > 0 ? scoredCandidates[0].url : ''
-
-    try {
-      const fallbackImage = await generateFallbackImage(`High quality, realistic photograph of ${targetKeyword}`)
-
-      if (fallbackImage && fallbackImage.url) {
-        heroImageUrl = fallbackImage.url
-      }
-    } catch (error) {
-      heroImageUrl = safetyBackup
-      console.log(`[Hero Image] AI Fallback failed to generate a URL.`)
-    }
-
-    console.log(`[Hero Image] AI Generation Result: ${heroImageUrl ? 'Success' : 'Failed - Using Safety Backup'}`)
+    throw new Error(
+      `OUTLINE_PARSE_FAILED: Could not produce a valid outline. ${lastOutlineError?.message || ''}`.trim()
+    )
   }
 
   return {
@@ -182,9 +169,12 @@ export async function generateYoutubeBlogOutline(body, genAI) {
     outline: parsedData.outline,
     fetchedTranscript: transcript,
     fetchedVideoTitle: videoTitle,
-    heroImage: heroImageUrl,
-    heroImageId,
-    heroImageSource,
+    youtubeDurationSeconds: durationSeconds,
+    youtubeThumbnail: thumbnail,
+    youtubeVideoId: videoData.videoId || settings.youtubeVideoId || '',
+    heroImage: thumbnail,
+    heroImageId: videoData.videoId || settings.youtubeVideoId || null,
+    heroImageSource: 'youtube-thumbnail',
     metaTitle: parsedData.metaTitle,
     metaDescription: parsedData.metaDescription
   }
@@ -200,10 +190,26 @@ export async function generateYoutubeBlogSection(body, genAI) {
     settings = {},
     externalLinks,
     internalLinks,
-    usedInternalLinks = []
+    usedInternalLinks = [],
+    sectionIndex = 0,
+    totalSections = 0
   } = body
 
-  let transcriptText = fetchedTranscript || ''
+  let transcriptText = fetchedTranscript || settings.fetchedTranscript || ''
+  let videoTitle = fetchedVideoTitle || settings.fetchedVideoTitle || ''
+  let durationSeconds = Number(settings.youtubeDurationSeconds) || 0
+
+  if (transcriptText.trim().length < 40 && settings.youtubeUrl) {
+    const videoData = await fetchYoutubeVideoData(settings.youtubeUrl)
+
+    if (videoData?.transcript) transcriptText = videoData.transcript
+    if (!videoTitle && videoData?.title) videoTitle = videoData.title
+    if (!durationSeconds && videoData?.durationSeconds) durationSeconds = videoData.durationSeconds
+
+    if (transcriptText.trim().length < 40) {
+      throw new Error(videoData?.error || 'Could not fetch captions for this video.')
+    }
+  }
 
   const {
     model,
@@ -221,6 +227,10 @@ export async function generateYoutubeBlogSection(body, genAI) {
     language,
     country
   } = settings
+
+  const plan = youtubeSectionPlan(durationSeconds, transcriptText)
+  const sectionTotal = Number(totalSections) || h2Count(outlineContext) || plan.minH2
+  const sectionWords = Math.max(40, Math.round(plan.targetWords / sectionTotal))
 
   const langObj = languages ? languages[language] : null
   const langName = langObj ? langObj.name : language || 'English'
@@ -263,11 +273,8 @@ export async function generateYoutubeBlogSection(body, genAI) {
           1. DO NOT output the H2 heading "${heading}" as text in your response. Start immediately with a strong, engaging introductory paragraph for this section.
           ${subheadings && subheadings.length > 0 ? `2. You MUST cover the following subheadings exactly as Markdown H3s (### [Title]):\n${subheadings.join('\n')}` : '2. Write the content directly without adding any new H3 subheadings.'}
           3. Format beautifully: Use bolding (**text**) for key terms, use bulleted lists for data, and keep paragraphs short (2-4 sentences max) for high web readability.
+          4. This is section ${Number(sectionIndex) + 1} of ${sectionTotal}. Write about ${sectionWords} words for this section. The full article is about ${plan.targetWords} words because the video is ${plan.minutes} minutes (${plan.sourceWords} spoken words). Do not summarize the entire video in this section.
         `
-
-  const rewriteInstruction = enableCaptionRewriting
-    ? `Approach this section as an expert author writing an original piece inspired by the video content. Add depth where necessary.`
-    : `Extract and summarize the information exactly as it was presented in the video for this specific section. Do not add outside information.`
 
   const activeSEOKeyword = targetKeyword || settings.generatedTitle || heading
   const lsiData = await fetchPeopleAlsoSearchFor(activeSEOKeyword)
@@ -286,7 +293,7 @@ export async function generateYoutubeBlogSection(body, genAI) {
 
   const sectionPrompt = `
         Article Topic Context: ${targetKeyword}
-        Original Video Title: ${fetchedVideoTitle || 'YouTube Video'}
+        Original Video Title: ${videoTitle || 'YouTube Video'}
         Full Article Outline for Context: ${JSON.stringify(outlineContext)}
 
         SOURCE VIDEO TRANSCRIPT:
@@ -297,8 +304,9 @@ export async function generateYoutubeBlogSection(body, genAI) {
         1. Strict Source Grounding: Your content MUST be strictly grounded in the provided source video transcript. Extract facts, numbers, and context entirely from the transcript. Do not invent outside information.
         2. Cross-Lingual Adaptation: If the source transcript is in a different language than the Target Output Language (${langName}), translate the core meaning and details accurately. Ensure the final output reads natively in ${langName}.
         3. Granular Detail Extraction: Mine the transcript for specific entities (names, prices, locations, material descriptions, direct quotes). Use these to make the section highly authentic.
+        4. Length match: This video is ${plan.minutes} minutes. A long video must produce a long article across all sections. This section should be about ${sectionWords} words and must use the transcript material for "${heading}" only.
 
-        ${rewriteInstruction}
+        ${captionRewriteInstruction(enableCaptionRewriting, 'section')}
         ${keywordSEOInstructions}
         ${sectionStructureRequirements}
         ${linkInstruction}
@@ -326,13 +334,12 @@ export async function generateYoutubeBlogSection(body, genAI) {
 
     const alt = await callLightLLM({
       system: 'You are an expert SEO article writer. Return only the section body in markdown. No preamble, no JSON.',
-      prompt: sectionPrompt.slice(0, 6000),
-      max_tokens: 1400,
+      prompt: sectionPrompt.slice(0, 12000),
+      max_tokens: Math.min(2200, Math.max(500, sectionWords * 2)),
       waitOn429: false
     })
 
     if (!alt?.text) {
-      // Do NOT throw — worker must continue other sections
       console.error('[Section] All providers exhausted. Skipping this heading.')
 
       return {

@@ -247,6 +247,12 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
           updateSetting('heroImageSource', data.heroImageSource)
         }
 
+        if (data.fetchedTranscript) updateSetting('fetchedTranscript', data.fetchedTranscript)
+        if (data.fetchedVideoTitle) updateSetting('fetchedVideoTitle', data.fetchedVideoTitle)
+        if (data.youtubeDurationSeconds) updateSetting('youtubeDurationSeconds', data.youtubeDurationSeconds)
+        if (data.youtubeThumbnail) updateSetting('youtubeThumbnail', data.youtubeThumbnail)
+        if (data.youtubeVideoId) updateSetting('youtubeVideoId', data.youtubeVideoId)
+
         if (data.comparisonShared) updateSetting('comparisonShared', data.comparisonShared)
         if (data.metaTitle) updateSetting('metaTitle', data.metaTitle)
         if (data.metaDescription) updateSetting('metaDescription', data.metaDescription)

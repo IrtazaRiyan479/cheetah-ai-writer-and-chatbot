@@ -145,7 +145,9 @@ export async function POST(request) {
 
       logStage('outline', started, type)
 
-      return NextResponse.json(type === 'product-comparison' ? result : await attachBrandedHero(result, settings))
+      const skipBrandedHero = type === 'product-comparison' || type === 'youtube-blog'
+
+      return NextResponse.json(skipBrandedHero ? result : await attachBrandedHero(result, settings))
     }
 
     if (mode === 'section') {

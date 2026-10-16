@@ -113,7 +113,7 @@ const AffiGenieWriter = () => {
   }
 
   const handleCreatePreset = async name => {
-    const { targetKeyword, ...settingsToSave } = settings
+    const { targetKeyword, fetchedTranscript, ...settingsToSave } = settings
 
     const res = await fetch('/api/presets', {
       method: 'POST',
@@ -129,7 +129,7 @@ const AffiGenieWriter = () => {
 
   const handleUpdatePreset = async () => {
     if (selectedPresetId === 'default') return
-    const { targetKeyword, ...settingsToSave } = settings
+    const { targetKeyword, fetchedTranscript, ...settingsToSave } = settings
 
     await fetch('/api/presets', {
       method: 'PUT',
