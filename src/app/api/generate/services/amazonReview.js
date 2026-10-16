@@ -531,7 +531,8 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     const extras = await pickRelevantImages(heading || articleTitle || targetKeyword, targetKeyword || product?.productName || heading, 4)
     const chosen = (extras || []).find(image => image?.url && image.url !== product?.imageUrl)
     if (chosen?.url) {
-      const figure = `<figure style="margin:28px 0;text-align:center;"><img src="${chosen.url}" alt="${String(chosen.alt || heading || 'Product').replace(/"/g, '')}" style="width:100%;max-width:560px;height:auto;border-radius:12px;display:inline-block;box-shadow:0 4px 12px rgba(0,0,0,0.06);" /></figure>`
+      const alt = String(chosen.alt || heading || 'Product').replace(/"/g, '')
+      const figure = `<div align="center" style="margin:20px 0;"><img src="${chosen.url}" alt="${alt}" style="max-width:420px;width:100%;height:auto;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.08);" /></div>`
       text = `${text}\n\n${figure}`
     }
   }

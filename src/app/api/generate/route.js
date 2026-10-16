@@ -145,7 +145,7 @@ export async function POST(request) {
 
       logStage('outline', started, type)
 
-      const skipBrandedHero = type === 'product-comparison' || type === 'youtube-blog'
+      const skipBrandedHero = type === 'product-comparison'
 
       return NextResponse.json(skipBrandedHero ? result : await attachBrandedHero(result, settings))
     }

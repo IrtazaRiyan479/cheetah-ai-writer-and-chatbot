@@ -1,8 +1,26 @@
 import { extractVideoId } from '@/utils/youtubeId'
 
-const ANDROID_USER_AGENT = 'com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip'
+const ANDROID_USER_AGENT = 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip'
+const BROWSER_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 
 const PLAYER_CLIENTS = [
+  {
+    client: {
+      clientName: 'ANDROID',
+      clientVersion: '20.10.38',
+      androidSdkVersion: 30,
+      osName: 'Android',
+      osVersion: '11',
+      hl: 'en',
+      gl: 'US'
+    },
+    headers: {
+      'User-Agent': ANDROID_USER_AGENT,
+      'X-YouTube-Client-Name': '3',
+      'X-YouTube-Client-Version': '20.10.38'
+    }
+  },
   {
     client: {
       clientName: 'ANDROID',
@@ -14,7 +32,7 @@ const PLAYER_CLIENTS = [
       gl: 'US'
     },
     headers: {
-      'User-Agent': ANDROID_USER_AGENT,
+      'User-Agent': 'com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip',
       'X-YouTube-Client-Name': '3',
       'X-YouTube-Client-Version': '21.26.364'
     }
@@ -35,25 +53,6 @@ const PLAYER_CLIENTS = [
       'X-YouTube-Client-Name': '28',
       'X-YouTube-Client-Version': '1.65.10'
     }
-  },
-  {
-    client: {
-      clientName: 'IOS',
-      clientVersion: '19.45.4',
-      deviceMake: 'Apple',
-      deviceModel: 'iPhone16,2',
-      hl: 'en',
-      gl: 'US'
-    },
-    headers: {
-      'User-Agent': 'com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)',
-      'X-YouTube-Client-Name': '5',
-      'X-YouTube-Client-Version': '19.45.4'
-    }
-  },
-  {
-    client: { clientName: 'TVHTML5_SIMPLY', clientVersion: '1.0', hl: 'en', gl: 'US' },
-    headers: { 'X-YouTube-Client-Name': '75', 'X-YouTube-Client-Version': '1.0' }
   }
 ]
 
@@ -108,63 +107,104 @@ export function youtubeSectionPlan(durationSeconds, transcript) {
   }
 }
 
-function cleanCaptionText(value) {
+function decodeCaptionEntities(value) {
   return String(value || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-    .replace(/"/g, '"')
-    .replace(/&#39;|'/g, "'")
     .replace(/&#(\d+);/g, (match, code) => {
-      const value = Number(code)
+      const point = Number(code)
 
-      return value > 0 && value <= 0x10ffff ? String.fromCodePoint(value) : match
+      return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : match
     })
+    .replace(/&#x([0-9a-f]+);/gi, (match, hex) => {
+      const point = parseInt(hex, 16)
+
+      return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : match
+    })
+    .replace(new RegExp('&' + 'quot;', 'g'), '"')
+    .replace(new RegExp('&' + '#39;|&' + 'apos;', 'g'), "'")
+    .replace(new RegExp('&' + 'lt;', 'g'), '<')
+    .replace(new RegExp('&' + 'gt;', 'g'), '>')
+    .replace(new RegExp('&' + 'amp;', 'g'), '&')
+}
+
+function cleanCaptionText(value) {
+  return decodeCaptionEntities(String(value || ''))
+    .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
 
+function textFromJsonCaptions(raw) {
+  try {
+    const data = JSON.parse(raw)
+    const events = Array.isArray(data?.events) ? data.events : []
+
+    return cleanCaptionText(
+      events
+        .flatMap(event => (Array.isArray(event?.segs) ? event.segs : []).map(seg => seg?.utf8 || ''))
+        .join(' ')
+    )
+  } catch {
+    return ''
+  }
+}
+
+function textFromVtt(raw) {
+  return cleanCaptionText(
+    String(raw || '')
+      .replace(/^WEBVTT[^\n]*$/gm, ' ')
+      .replace(/^\d+$/gm, ' ')
+      .replace(/\d{1,2}:\d{2}(?::\d{2})?[.,]\d{3}\s+-->\s+\d{1,2}:\d{2}(?::\d{2})?[.,]\d{3}[^\n]*/g, ' ')
+      .replace(/<[^>]+>/g, ' ')
+  )
+}
+
 function textFromCaptionPayload(payload, contentType = '') {
   const raw = String(payload || '')
+  const trimmed = raw.trim()
 
-  if (!raw.trim()) return ''
+  if (!trimmed) return ''
 
-  if (contentType.includes('json') || raw.trim().startsWith('{')) {
-    try {
-      const data = JSON.parse(raw)
-      const events = Array.isArray(data?.events) ? data.events : []
+  const type = String(contentType || '').toLowerCase()
 
-      return cleanCaptionText(
-        events
-          .flatMap(event => (Array.isArray(event?.segs) ? event.segs : []).map(seg => seg?.utf8 || ''))
-          .join(' ')
-      )
-    } catch {
-      return ''
-    }
+  if (trimmed.startsWith('WEBVTT') || type.includes('vtt')) return textFromVtt(trimmed)
+
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    const jsonText = textFromJsonCaptions(trimmed)
+
+    if (jsonText) return jsonText
   }
 
-  return cleanCaptionText(raw)
+  if (type.includes('json') && !trimmed.startsWith('<')) {
+    const jsonText = textFromJsonCaptions(trimmed)
+
+    if (jsonText) return jsonText
+  }
+
+  return cleanCaptionText(trimmed)
 }
 
 async function fetchText(url, headers, timeout = 12000) {
-  const response = await fetch(url, { headers, signal: AbortSignal.timeout(timeout), redirect: 'follow' })
+  const response = await fetch(url, {
+    headers,
+    signal: AbortSignal.timeout(timeout),
+    redirect: 'follow',
+    cache: 'no-store'
+  })
+  const text = await response.text().catch(() => '')
 
-  if (!response.ok) return { ok: false, status: response.status, text: '' }
+  if (!response.ok) return { ok: false, status: response.status, text: '', contentType: '' }
 
   return {
     ok: true,
     status: response.status,
     contentType: response.headers.get('content-type') || '',
-    text: await response.text()
+    text
   }
 }
 
 async function fetchVisitorData(videoId) {
   const headers = {
-    'User-Agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'User-Agent': BROWSER_USER_AGENT,
     'Accept-Language': 'en-US,en;q=0.9'
   }
   const pages = [
@@ -201,7 +241,8 @@ async function fetchPlayer(videoId, spec, visitorData = '') {
       contentCheckOk: true,
       racyCheckOk: true
     }),
-    signal: AbortSignal.timeout(5000)
+    signal: AbortSignal.timeout(5000),
+    cache: 'no-store'
   })
 
   if (!response.ok) return null
@@ -228,7 +269,7 @@ async function fetchOembed(videoId) {
   try {
     const response = await fetch(
       `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&format=json`,
-      { signal: AbortSignal.timeout(4000) }
+      { signal: AbortSignal.timeout(4000), cache: 'no-store' }
     )
 
     if (!response.ok) return { ok: false, status: response.status }
@@ -263,30 +304,61 @@ function rankTrack(track) {
   return score
 }
 
-async function readCaptionTrack(track) {
-  if (!track?.baseUrl) return ''
+function absoluteCaptionUrl(url) {
+  let value = String(url || '')
 
-  let url = String(track.baseUrl)
+  if (value.startsWith('//')) value = `https:${value}`
+  else if (value.startsWith('/')) value = `https://www.youtube.com${value}`
 
-  if (url.startsWith('//')) url = `https:${url}`
-  else if (url.startsWith('/')) url = `https://www.youtube.com${url}`
+  return value
+}
 
-  const candidates = [url]
+function captionCandidates(baseUrl) {
+  const absolute = absoluteCaptionUrl(baseUrl)
+  let parsed
 
-  if (!/fmt=/.test(url)) {
-    candidates.push(`${url}&fmt=json3`, `${url}&fmt=srv3`, `${url}&fmt=vtt`)
+  try {
+    parsed = new URL(absolute)
+  } catch {
+    return [absolute]
   }
 
-  for (const candidate of candidates) {
+  const out = []
+
+  const push = value => {
+    const next = String(value || '')
+
+    if (next && !out.includes(next)) out.push(next)
+  }
+
+  push(parsed.toString())
+
+  const json3 = new URL(parsed.toString())
+
+  json3.searchParams.set('fmt', 'json3')
+  push(json3.toString())
+
+  const vtt = new URL(parsed.toString())
+
+  vtt.searchParams.set('fmt', 'vtt')
+  push(vtt.toString())
+
+  return out
+}
+
+async function readCaptionTrack(track, videoId) {
+  if (!track?.baseUrl) return ''
+
+  const headers = {
+    'User-Agent': BROWSER_USER_AGENT,
+    'Accept-Language': 'en-US,en;q=0.9',
+    Referer: `https://www.youtube.com/watch?v=${videoId || ''}`,
+    Origin: 'https://www.youtube.com'
+  }
+
+  for (const candidate of captionCandidates(track.baseUrl)) {
     try {
-      const response = await fetchText(
-        candidate,
-        {
-          'User-Agent': ANDROID_USER_AGENT,
-          'Accept-Language': 'en-US,en;q=0.9'
-        },
-        5000
-      )
+      const response = await fetchText(candidate, headers, 6000)
 
       if (!response.ok) continue
 
@@ -294,7 +366,7 @@ async function readCaptionTrack(track) {
 
       if (text.length > 40) return text
     } catch {
-      /* next format */
+      /* next caption url */
     }
   }
 
@@ -353,14 +425,20 @@ async function loadYoutubeVideo(videoId) {
   attempts.push(visitorData ? 'visitor:ok' : 'visitor:empty')
 
   let player = null
-  const clients = [PLAYER_CLIENTS[0], PLAYER_CLIENTS[1]].filter(Boolean)
+  let transcript = ''
+  let winningTrack = null
+  const clients = PLAYER_CLIENTS.filter(
+    spec => spec.client.clientName === 'ANDROID' || spec.client.clientName === 'ANDROID_VR'
+  )
 
   for (const spec of clients) {
+    const label = `${spec.client.clientName}${spec.client.clientVersion || ''}`
+
     try {
       const nextPlayer = await fetchPlayer(videoId, spec, visitorData)
 
       if (!nextPlayer) {
-        attempts.push(`${spec.client.clientName}:empty`)
+        attempts.push(`${label}:empty`)
         continue
       }
 
@@ -375,15 +453,31 @@ async function loadYoutubeVideo(videoId) {
         }
       }
 
-      if (nextPlayer.tracks.length) {
-        player = { ...player, tracks: nextPlayer.tracks, playability: nextPlayer.playability, reason: nextPlayer.reason }
-        attempts.push(`${spec.client.clientName}:tracks:${nextPlayer.tracks.length}`)
-        break
+      if (!nextPlayer.tracks.length) {
+        attempts.push(`${label}:${nextPlayer.playability || 'no-tracks'}`)
+        continue
       }
 
-      attempts.push(`${spec.client.clientName}:${nextPlayer.playability || 'no-tracks'}`)
+      player = { ...player, tracks: nextPlayer.tracks, playability: nextPlayer.playability, reason: nextPlayer.reason }
+      attempts.push(`${label}:tracks:${nextPlayer.tracks.length}`)
+
+      const orderedTracks = [...nextPlayer.tracks].sort((a, b) => rankTrack(b) - rankTrack(a)).slice(0, 2)
+
+      for (const track of orderedTracks) {
+        const text = await readCaptionTrack(track, videoId)
+
+        if (text.length > 40) {
+          transcript = text
+          winningTrack = track
+          break
+        }
+      }
+
+      if (transcript) break
+
+      attempts.push(`${label}:caption-empty`)
     } catch (error) {
-      attempts.push(`${spec.client.clientName}:${error?.message || error}`)
+      attempts.push(`${label}:${error?.message || error}`)
     }
   }
 
@@ -402,13 +496,8 @@ async function loadYoutubeVideo(videoId) {
     durationSeconds,
     durationLabel: formatYoutubeDuration(durationSeconds)
   }
-  const orderedTracks = [...(player?.tracks || [])].sort((a, b) => rankTrack(b) - rankTrack(a)).slice(0, 3)
 
-  for (const track of orderedTracks) {
-    const text = await readCaptionTrack(track)
-
-    if (text.length > 40) return resultFromTrack(base, text, track)
-  }
+  if (transcript && winningTrack) return resultFromTrack(base, transcript, winningTrack)
 
   console.error('[youtube] caption fetch failed', { videoId, valid, attempts: attempts.slice(0, 8) })
 
@@ -423,13 +512,13 @@ async function loadYoutubeVideo(videoId) {
 }
 
 export async function fetchYoutubeVideoData(url) {
-  const videoId = extractVideoId(String(url || '').replace(/&/g, '&'))
+  const videoId = extractVideoId(String(url || '').replace(new RegExp('&' + 'amp;', 'g'), '&'))
 
   if (!videoId) {
     return { success: false, valid: false, error: 'That is not a YouTube video URL.' }
   }
 
-  return withTimeout(loadYoutubeVideo(videoId), 12000, {
+  return withTimeout(loadYoutubeVideo(videoId), 18000, {
     success: false,
     valid: true,
     videoId,

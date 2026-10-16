@@ -208,15 +208,15 @@ function sectionTextToHtml(finalSectionText, language) {
   )
   cleanMd = cleanMd.replace(/~~(.*?)~~/g, '<s>$1</s>')
 
-  cleanMd = cleanMd.replace(/(<(ul|ol|table|blockquote|pre|hr|h[1-6]|img|div))/g, '\n\n$1')
-  cleanMd = cleanMd.replace(/(<\/(ul|ol|table|blockquote|pre|h[1-6])>)/g, '$1\n\n')
+  cleanMd = cleanMd.replace(/(<(ul|ol|table|blockquote|pre|hr|h[1-6]|img|div|figure))/g, '\n\n$1')
+  cleanMd = cleanMd.replace(/(<\/(ul|ol|table|blockquote|pre|h[1-6]|figure)>)/g, '$1\n\n')
 
   const html = cleanMd
     .split(/\n\n+/)
     .map(block => {
       block = block.trim()
       if (!block) return ''
-      if (block.match(/^(<h|<ul|<ol|<blockquote|<pre|<table|<hr|<img|<div)/)) return block
+      if (block.match(/^(<h|<ul|<ol|<blockquote|<pre|<table|<hr|<img|<div|<figure)/)) return block
 
       return `<p>${block.replace(/\n/g, '<br/>')}</p>`
     })

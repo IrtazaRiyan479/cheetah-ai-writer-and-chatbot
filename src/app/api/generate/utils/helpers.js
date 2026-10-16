@@ -624,13 +624,17 @@ export async function attachBrandedHero(result, settings = {}) {
 
   const title = result.title || settings.targetKeyword || 'Article'
   const productHero = settings.type === 'amazon-roundup-rewrite' || settings.type === 'amazon-review-rewrite'
+  const youtubeThumb =
+    settings.type === 'youtube-blog' && /^https?:/i.test(String(result.heroImage || ''))
+      ? String(result.heroImage)
+      : ''
   const productUrls = productHero
     ? [result.heroImage, ...(Array.isArray(result.productImages) ? result.productImages : [])].filter(
         url => url && /^https?:/i.test(String(url)) && /amazon|media-amazon/i.test(String(url))
       )
     : []
-  const photo = productHero ? null : (await pickRelevantImages(title, settings.targetKeyword || title, 1))[0]
-  const backgroundUrls = productHero ? productUrls : photo?.url ? [photo.url] : []
+  const photo = productHero || youtubeThumb ? null : (await pickRelevantImages(title, settings.targetKeyword || title, 1))[0]
+  const backgroundUrls = productHero ? productUrls : youtubeThumb ? [youtubeThumb] : photo?.url ? [photo.url] : []
   let heroImage = ''
 
   try {
@@ -669,7 +673,7 @@ export async function attachBrandedHero(result, settings = {}) {
     ...result,
     heroImage,
     heroImageId: null,
-    heroImageSource: productHero && productUrls.length ? 'amazon-product' : photo ? 'branded-photo' : 'branded-gradient'
+    heroImageSource: productHero && productUrls.length ? 'amazon-product' : youtubeThumb ? 'branded-youtube' : photo ? 'branded-photo' : 'branded-gradient'
   }
 }
 
