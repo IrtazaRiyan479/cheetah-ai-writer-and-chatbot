@@ -617,7 +617,7 @@ const extensions = [
             if (parent && parent.tagName === 'A') {
               const parentHref = parent.getAttribute('href')
 
-              if (parentHref && parentHref !== '#') return parentHref
+              if (parentHref && parentHref !== '#' && !/youtube\.com|youtu\.be/i.test(parentHref)) return parentHref
             }
 
             return null
@@ -626,6 +626,29 @@ const extensions = [
             if (!attributes.mapHref) return {}
 
             return { 'data-map-href': attributes.mapHref }
+          }
+        },
+        youtubeHref: {
+          default: null,
+          parseHTML: element => {
+            const own = element.getAttribute('data-youtube-href')
+
+            if (own) return own
+
+            const parent = element.parentElement
+
+            if (parent && parent.tagName === 'A') {
+              const parentHref = parent.getAttribute('href') || ''
+
+              if (parentHref && /youtube\.com|youtu\.be/i.test(parentHref)) return parentHref
+            }
+
+            return null
+          },
+          renderHTML: attributes => {
+            if (!attributes.youtubeHref) return {}
+
+            return { 'data-youtube-href': attributes.youtubeHref }
           }
         },
         style: {
@@ -1068,7 +1091,28 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       let initialContent = `<h1>${topTitle}</h1>`
 
       if (settings.heroImage) {
-        initialContent += `<p><img src="${settings.heroImage}" alt="${topTitle}" title="${topTitle}" /></p>`
+        const youtubeHref =
+          String(settings.youtubeUrl || '').trim() ||
+          (settings.youtubeVideoId
+            ? `https://www.youtube.com/watch?v=${settings.youtubeVideoId}`
+            : settings.heroImageId && String(settings.heroImageSource || '').includes('youtube')
+              ? `https://www.youtube.com/watch?v=${settings.heroImageId}`
+              : '')
+
+        const isYoutubeHero =
+          Boolean(youtubeHref) &&
+          (settings.type === 'youtube-blog' || settings.youtubeVideoId || settings.youtubeUrl)
+
+        if (isYoutubeHero) {
+          const safeHref = youtubeHref.replace(/"/g, '&quot;')
+          const safeTitle = String(topTitle || '').replace(/"/g, '&quot;')
+
+          // data-youtube-href: editor has Link openOnClick:false — click handler opens it
+          // wrapping <a>: preserved in export HTML / WordPress content
+          initialContent += `<p><a href="${safeHref}" target="_blank" rel="noopener noreferrer nofollow" title="Watch on YouTube"><img src="${settings.heroImage}" alt="${safeTitle}" title="${safeTitle}" data-youtube-href="${safeHref}" style="cursor:pointer;" /></a></p>`
+        } else {
+          initialContent += `<p><img src="${settings.heroImage}" alt="${topTitle}" title="${topTitle}" /></p>`
+        }
       } else {
         initialContent += `<p></p>`
       }
@@ -1970,13 +2014,33 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         return
       }
 
+      const ytImg = e.target?.closest?.('img[data-youtube-href]')
+
+      if (ytImg) {
+        const href = ytImg.getAttribute('data-youtube-href')
+
+        if (href && href !== '#') {
+          e.preventDefault()
+          e.stopPropagation()
+          window.open(href, '_blank', 'noopener,noreferrer')
+        }
+
+        return
+      }
+
       const anchor = e.target?.closest?.('a[href]')
 
       if (!anchor || !root.contains(anchor)) return
 
       const href = anchor.getAttribute('href') || ''
 
-      if (!/google\.com\/maps|maps\.google\.com|maps\.app\.goo\.gl/i.test(href) || href === '#') return
+      if (href === '#') return
+
+      // Maps (existing) + YouTube hero / video links
+      const isMaps = /google\.com\/maps|maps\.google\.com|maps\.app\.goo\.gl/i.test(href)
+      const isYoutube = /(?:youtube\.com\/watch|youtu\.be\/|youtube\.com\/embed\/)/i.test(href)
+
+      if (!isMaps && !isYoutube) return
 
       e.preventDefault()
       e.stopPropagation()
