@@ -124,8 +124,21 @@ export async function POST(request) {
     if (!gate.ok) return NextResponse.json({ success: false, error: gate.error }, { status: gate.status })
 
     const body = await request.json()
-    const { title, content, status, siteType, siteId, customSite, featuredImageUrl, metaTitle, metaDescription, language, articleType, settings } =
-      body
+    const {
+      title,
+      content,
+      status,
+      siteType,
+      siteId,
+      customSite,
+      featuredImageUrl,
+      metaTitle,
+      metaDescription,
+      language,
+      articleType,
+      settings,
+      trimTitleAndHero
+    } = body
 
     let siteUrl, wpUsername, wpPassword
 
@@ -177,8 +190,15 @@ export async function POST(request) {
       settings: settings || {}
     })
 
+    // Toggle ON → never inject body hero (featured_media only).
+    // Toggle OFF → inject only if body has no leading image (avoids duplicate heroes).
+    const contentHead = String(articleHtml)
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .slice(0, 3000)
+    const bodyAlreadyHasLeadingImg = /<img\b/i.test(contentHead)
+
     const heroHtml =
-      heroSrc && !String(articleHtml).includes(heroSrc)
+      !trimTitleAndHero && heroSrc && !bodyAlreadyHasLeadingImg && !String(articleHtml).includes(heroSrc)
         ? `<p class="affigenie-hero"><img class="affigenie-hero-img" src="${escapeHtml(heroSrc)}" alt="${escapeHtml(title || 'Featured image')}" style="width:100%;max-width:100%;height:auto;display:block;" /></p>`
         : ''
 

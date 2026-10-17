@@ -937,11 +937,10 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         }
       }
 
-      if (trimTitleAndHero && typeof window !== 'undefined') {
+      if (typeof window !== 'undefined') {
         const publishDiv = document.createElement('div')
 
         publishDiv.innerHTML = finalContent
-        publishDiv.querySelectorAll('h1').forEach(node => node.remove())
 
         const normalizeSrc = src => {
           const s = String(src || '').trim()
@@ -961,8 +960,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           }
         }
 
-        const heroNorm = normalizeSrc(finalHeroImage)
-
         const removeImgNode = img => {
           const paragraph = img.closest('p') || img.closest('figure')
           const anchor = img.closest('a')
@@ -979,18 +976,62 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           }
         }
 
-        // 1) Match by normalized src (handles query params / trailing slash)
-        if (heroNorm) {
-          publishDiv.querySelectorAll('img').forEach(img => {
-            if (normalizeSrc(img.getAttribute('src')) === heroNorm) removeImgNode(img)
-          })
+        const isLeadingImageOnly = node => {
+          const tag = node.tagName?.toLowerCase()
+
+          if (tag !== 'p' && tag !== 'figure' && tag !== 'div') return false
+
+          const hasImg = node.querySelector?.('img')
+          const text = (node.textContent || '').replace(/\u00a0/g, ' ').trim()
+
+          return Boolean(hasImg && text.length < 40)
         }
 
-        // 2) Fallback: first image in the body is almost always the hero
-        //    (covers base64 vs CDN mismatch, re-hosted media, etc.)
-        const firstImg = publishDiv.querySelector('img')
+        if (trimTitleAndHero) {
+          // Full trim: remove H1 + every hero match + all leading image-only blocks
+          publishDiv.querySelectorAll('h1').forEach(node => node.remove())
 
-        if (firstImg) removeImgNode(firstImg)
+          const heroNorm = normalizeSrc(finalHeroImage)
+          const heroKey = mediaKey(finalHeroImage)
+
+          if (heroNorm) {
+            publishDiv.querySelectorAll('img').forEach(img => {
+              if (normalizeSrc(img.getAttribute('src')) === heroNorm) removeImgNode(img)
+            })
+          }
+
+          if (heroKey) {
+            publishDiv.querySelectorAll('img').forEach(img => {
+              if (mediaKey(img.getAttribute('src') || '') === heroKey) removeImgNode(img)
+            })
+          }
+
+          Array.from(publishDiv.children).forEach(node => {
+            const tag = node.tagName?.toLowerCase()
+
+            if (tag === 'h2' || tag === 'h3' || tag === 'h4') return
+            if (isLeadingImageOnly(node)) node.remove()
+          })
+        } else {
+          // Toggle off: keep exactly one leading hero — drop duplicates only
+          let keptHero = false
+
+          for (const node of Array.from(publishDiv.children)) {
+            const tag = node.tagName?.toLowerCase()
+
+            if (tag === 'h2' || tag === 'h3' || tag === 'h4') break
+            if (tag === 'h1') continue
+
+            if (isLeadingImageOnly(node)) {
+              if (keptHero) node.remove()
+              else keptHero = true
+            } else {
+              const text = (node.textContent || '').replace(/\u00a0/g, ' ').trim()
+
+              if (text.length > 40) break
+            }
+          }
+        }
 
         finalContent = publishDiv.innerHTML
       }
@@ -1003,6 +1044,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         siteId: !isCustom && !isDbSaved ? activeSiteId : null,
         customSite: isCustom || isDbSaved ? activeCustomData : null,
         featuredImageUrl: finalHeroImage,
+        trimTitleAndHero,
         language: settings.language,
         metaTitle: metaTitle,
         metaDescription: metaDescription,
