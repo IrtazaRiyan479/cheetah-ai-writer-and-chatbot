@@ -27,6 +27,565 @@ const STRUCTURAL_HEADING =
 const LOCATION_LABEL =
   'Location|Address|Ubicación|Ubicacion|Dirección|Direccion|Adresse|Localisation|Standort|Localização|Localizacao|Locatie|Posizione|所在地'
 
+const WEBSITE_LINE =
+  'visit\\s+website|view\\s+website|official\\s+website|website\\s+url|sitio\\s+web|site\\s+officiel|webseite'
+
+function normalizeWebsiteUrl(value) {
+  let raw = String(value || '').trim()
+
+  if (!raw || /^(?:not available|n\/a|none|null|undefined|#|\[insert website url\])$/i.test(raw)) return ''
+  raw = raw.replace(/^[<\[]+|[>\]]+$/g, '')
+  if (!/^https?:\/\//i.test(raw)) {
+    if (/^[a-z0-9.-]+\.[a-z]{2,}(?:[/?#]|$)/i.test(raw)) raw = `https://${raw}`
+    else return ''
+  }
+
+  try {
+    const url = new URL(raw)
+
+    if (!/^https?:$/i.test(url.protocol)) return ''
+    url.hash = ''
+
+    return url.toString()
+  } catch {
+    return ''
+  }
+}
+
+function isBlockedPlaceHost(hostname) {
+  const host = String(hostname || '')
+    .replace(/^www\./, '')
+    .toLowerCase()
+
+  if (!host || host === 'localhost' || host.endsWith('.localhost')) return true
+  if (host === 'google.com' || host.endsWith('.google.com') || /^google\.[a-z.]+$/.test(host)) return true
+  if (host.includes('tripadvisor.') || host === 'tripadvisor.com' || host.endsWith('.yelp.com') || host === 'yelp.com') {
+    return true
+  }
+
+  const blocked = [
+    'goo.gl',
+    'g.page',
+    'g.co',
+    'facebook.com',
+    'fb.com',
+    'instagram.com',
+    'tiktok.com',
+    'twitter.com',
+    'x.com',
+    'youtube.com',
+    'youtu.be',
+    'linkedin.com',
+    'pinterest.com',
+    'reddit.com',
+    'yellowpages.com',
+    'yp.com',
+    'foursquare.com',
+    'mapquest.com',
+    'wikipedia.org',
+    'wikidata.org',
+    'wikihow.com',
+    'apple.com',
+    'bing.com',
+    'yahoo.com',
+    'duckduckgo.com',
+    'opentable.com',
+    'doordash.com',
+    'ubereats.com',
+    'grubhub.com',
+    'postmates.com',
+    'zomato.com',
+    'booking.com',
+    'expedia.com',
+    'hotels.com',
+    'agoda.com',
+    'airbnb.com',
+    'bbb.org',
+    'angi.com',
+    'angieslist.com',
+    'thumbtack.com',
+    'nextdoor.com',
+    'waze.com',
+    'allmenus.com',
+    'menupages.com',
+    'sirved.com',
+    'restaurantji.com',
+    'wanderlog.com',
+    'timeout.com',
+    'eater.com',
+    'theinfatuation.com',
+    'happycow.net',
+    'groupon.com',
+    'craigslist.org',
+    'quora.com'
+  ]
+
+  return blocked.some(domain => host === domain || host.endsWith(`.${domain}`))
+}
+
+function isOfficialWebsite(value) {
+  const raw = normalizeWebsiteUrl(value)
+
+  if (!raw) return false
+
+  try {
+    return !isBlockedPlaceHost(new URL(raw).hostname)
+  } catch {
+    return false
+  }
+}
+
+function isRelatedWebsite(value) {
+  const raw = normalizeWebsiteUrl(value)
+
+  if (!raw) return false
+
+  try {
+    const host = new URL(raw).hostname.replace(/^www\./, '').toLowerCase()
+
+    if (!host || host === 'localhost' || host.endsWith('.localhost')) return false
+    if (host === 'google.com' || host.endsWith('.google.com') || /^google\.[a-z.]+$/.test(host)) return false
+    if (['goo.gl', 'g.co', 'g.page', 'maps.apple.com', 'bing.com', 'yahoo.com', 'duckduckgo.com'].some(
+      domain => host === domain || host.endsWith(`.${domain}`)
+    )) {
+      return false
+    }
+
+    return true
+  } catch {
+    return false
+  }
+}
+
+function rawWebsite(place) {
+  if (!place || typeof place !== 'object') return ''
+
+  const attrs = place.attributes && typeof place.attributes === 'object' ? place.attributes : {}
+  const candidates = [
+    place.website,
+    place.websiteUrl,
+    place.websiteURI,
+    place.websiteUri,
+    place.webSite,
+    place.homepage,
+    place.site,
+    place.url,
+    place.link,
+    attrs.Website,
+    attrs.website,
+    attrs.websiteUrl
+  ]
+
+  for (const candidate of candidates) {
+    const url = normalizeWebsiteUrl(candidate)
+
+    if (url && isOfficialWebsite(url)) return url
+  }
+
+  return ''
+}
+
+function rawRelatedWebsite(place) {
+  if (!place || typeof place !== 'object') return ''
+
+  const attrs = place.attributes && typeof place.attributes === 'object' ? place.attributes : {}
+  const candidates = [
+    place.relatedWebsite,
+    place.website,
+    place.websiteUrl,
+    place.websiteURI,
+    place.websiteUri,
+    place.webSite,
+    place.homepage,
+    place.site,
+    attrs.Website,
+    attrs.website,
+    attrs.websiteUrl,
+    place.url,
+    place.link
+  ]
+
+  for (const candidate of candidates) {
+    const url = unwrapResultUrl(candidate)
+
+    if (url && isRelatedWebsite(url) && !isOfficialWebsite(url)) return url
+  }
+
+  return ''
+}
+
+function websiteNameTokens(value) {
+  const stops = new Set(['the', 'and', 'for', 'with', 'near', 'best', 'from', 'this', 'that', 'place', 'shop', 'store'])
+
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(word => word.length > 2 && !stops.has(word))
+}
+
+function websiteNameMatches(candidate, title) {
+  const tokens = websiteNameTokens(title)
+
+  if (!tokens.length) return false
+
+  const hay = String(candidate || '').toLowerCase()
+  const hits = tokens.filter(token => hay.includes(token))
+
+  return hits.length >= Math.min(2, tokens.length) || hits.some(token => token.length > 5)
+}
+
+function scoreOfficialWebsite(url, resultTitle, place) {
+  let host = ''
+  let path = '/'
+
+  try {
+    const parsed = new URL(url)
+
+    host = parsed.hostname.replace(/^www\./, '').toLowerCase()
+    path = parsed.pathname || '/'
+  } catch {
+    return 0
+  }
+
+  let score = 0
+  const hostFlat = host.replace(/[^a-z0-9]/g, '')
+
+  if (websiteNameTokens(place?.title).some(token => token.length > 3 && hostFlat.includes(token))) score += 5
+  if (websiteNameMatches(resultTitle, place?.title)) score += 3
+  if (path === '/' ) score += 2
+  else if ((path.match(/\//g) || []).length <= 1) score += 1
+  if (/\/(biz|place|places|listing|profile|menu)\//i.test(path)) score -= 4
+
+  return score
+}
+
+function escUrlAttr(value) {
+  return String(value || '')
+    .replace(/&/g, '&')
+    .replace(/"/g, '"')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+    .replace(/_/g, '%5F')
+}
+
+async function serperJson(path, body) {
+  if (!process.env.SERPER_API_KEY) return null
+
+  try {
+    const res = await fetch(`https://google.serper.dev/${path}`, {
+      method: 'POST',
+      headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(8000)
+    })
+
+    if (!res.ok) return null
+
+    return await res.json()
+  } catch (error) {
+    console.warn('[local-roundup] website lookup failed:', error?.message || error)
+
+    return null
+  }
+}
+
+function contactFromOsm(hit) {
+  const tags = hit?.extratags && typeof hit.extratags === 'object' ? hit.extratags : {}
+  const phone = String(tags.phone || tags['contact:phone'] || tags['contact:mobile'] || '').trim()
+  const candidates = [tags.website, tags['contact:website'], tags.url, tags['contact:url']]
+  let website = ''
+
+  for (const candidate of candidates) {
+    const url = normalizeWebsiteUrl(candidate)
+
+    if (url && isRelatedWebsite(url)) {
+      website = url
+      break
+    }
+  }
+
+  return { phone, website }
+}
+
+function venueWord(title) {
+  return websiteNameTokens(primaryPlaceName(title)).find(token => token.length >= 4) || ''
+}
+
+function primaryPlaceName(title) {
+  const cleaned = placeNameFromHeading(title)
+  const head = cleaned.split(',')[0].trim()
+
+  return head || cleaned
+}
+
+function placeLocality(title, address) {
+  const fromTitle = String(placeNameFromHeading(title) || '')
+    .split(',')
+    .slice(1)
+    .join(' ')
+    .trim()
+
+  if (fromTitle) return fromTitle
+
+  const parts = String(address || '')
+    .split(',')
+    .map(part => part.trim())
+    .filter(Boolean)
+
+  if (parts.length >= 3) return parts[parts.length - 3]
+
+  return parts[1] || ''
+}
+
+function hostIncludesToken(url, token) {
+  const needle = String(token || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+
+  if (needle.length < 4) return false
+
+  try {
+    return new URL(url).hostname.replace(/^www\./, '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(needle)
+  } catch {
+    return false
+  }
+}
+
+function unwrapResultUrl(value) {
+  const raw = normalizeWebsiteUrl(value)
+
+  if (!raw) return ''
+
+  try {
+    const url = new URL(raw)
+
+    if (!/google\./i.test(url.hostname)) return raw
+
+    return normalizeWebsiteUrl(url.searchParams.get('q') || url.searchParams.get('url') || '')
+  } catch {
+    return ''
+  }
+}
+
+function pickOfficialFromRows(rows, title) {
+  const primary = primaryPlaceName(title)
+  let best = ''
+  let bestScore = 0
+
+  for (const row of rows) {
+    const url = rawWebsite(row) || unwrapResultUrl(row?.link || row?.website || row?.url)
+
+    if (!url || !isOfficialWebsite(url)) continue
+
+    let score = scoreOfficialWebsite(url, row?.title || row?.name || '', { title: primary })
+
+    if (hostIncludesToken(url, primary)) score += 6
+    if (websiteNameMatches(row?.title || row?.name || '', primary)) score += 2
+    if (score > bestScore) {
+      best = url
+      bestScore = score
+    }
+  }
+
+  return bestScore >= 4 ? best : ''
+}
+
+function pickRelatedFromRows(rows, title) {
+  const primary = primaryPlaceName(title)
+  const venueToken = websiteNameTokens(primary).find(token => token.length >= 4) || ''
+  let best = ''
+  let bestScore = 0
+
+  for (const row of rows || []) {
+    const urls = []
+    const push = value => {
+      const url = unwrapResultUrl(value)
+
+      if (url && isRelatedWebsite(url) && !urls.includes(url)) urls.push(url)
+    }
+
+    push(row?.website)
+    push(row?.websiteUrl)
+    push(row?.websiteURI)
+    push(row?.websiteUri)
+
+    if (row?.attributes && typeof row.attributes === 'object') {
+      push(row.attributes.Website)
+      push(row.attributes.website)
+      push(row.attributes.websiteUrl)
+    }
+
+    push(row?.link)
+    push(row?.url)
+
+    urls.forEach((url, index) => {
+      let host = ''
+
+      try {
+        host = new URL(url).hostname.replace(/^www\./, '').toLowerCase()
+      } catch {
+        return
+      }
+
+      const hay = `${row?.title || ''} ${row?.name || ''} ${row?.snippet || ''} ${host}`.toLowerCase()
+      const mentioned = venueToken ? hay.includes(venueToken) : websiteNameMatches(hay, primary)
+
+      if (!mentioned) return
+
+      let score = 3
+
+      if (index === 0 && (row?.website || row?.websiteUrl || row?.websiteURI || row?.websiteUri)) score += 2
+      if (hostIncludesToken(url, venueToken || primary)) score += 4
+      if (!isBlockedPlaceHost(host)) score += 6
+      if (score > bestScore) {
+        best = url
+        bestScore = score
+      }
+    })
+  }
+
+  return best
+}
+
+async function findOfficialWebsite(place, country, language) {
+  const title = primaryPlaceName(place?.title || '')
+
+  if (!title) return ''
+
+  const token = venueWord(title)
+
+  const locality = placeLocality(place?.title, place?.address)
+  const gl = String(country || 'us').toLowerCase()
+  const hl = String(language || 'en').toLowerCase()
+  const websiteQuery = [title, locality, 'website'].filter(Boolean).join(' ')
+  const [placeRows, mapsData, searchData] = await Promise.all([
+    fetchSerperPlacesData([title, locality].filter(Boolean).join(' '), 5, gl, hl),
+    serperJson('maps', { q: [title, locality].filter(Boolean).join(' '), gl, hl }),
+    serperJson('search', { q: websiteQuery, gl, hl })
+  ])
+  const fromPlaces = pickOfficialFromRows(placeRows, title)
+
+  if (fromPlaces) return fromPlaces
+
+  const fromMaps = pickOfficialFromRows(mapsData?.places || [], title)
+
+  if (fromMaps) return fromMaps
+
+  const graph = searchData?.knowledgeGraph || {}
+  const graphSite = unwrapResultUrl(graph.website || graph.attributes?.Website || graph.attributes?.website)
+
+  if (
+    graphSite &&
+    isOfficialWebsite(graphSite) &&
+    (!graph.title ||
+      websiteNameMatches(graph.title, title) ||
+      (token && String(graph.title).toLowerCase().includes(token)) ||
+      hostIncludesToken(graphSite, token || title))
+  ) {
+    return graphSite
+  }
+
+  const organic = [
+    ...(searchData?.organic || []),
+    ...(graph.sitelinks || []),
+    ...(searchData?.answerBox?.link ? [{ title: searchData.answerBox.title, link: searchData.answerBox.link }] : [])
+  ]
+  const fromSearch = pickOfficialFromRows(organic, title)
+
+  if (fromSearch) return fromSearch
+
+  const fallback = await serperJson('search', { q: `${title} official website`, gl, hl })
+  const fallbackGraph = fallback?.knowledgeGraph || {}
+  const fallbackSite = unwrapResultUrl(fallbackGraph.website || fallbackGraph.attributes?.Website)
+
+  if (fallbackSite && isOfficialWebsite(fallbackSite) && hostIncludesToken(fallbackSite, token || title)) return fallbackSite
+
+  const strictFallback = pickOfficialFromRows(fallback?.organic || [], title)
+
+  if (strictFallback) return strictFallback
+
+  const relatedRows = [
+    ...(Array.isArray(placeRows) ? placeRows : []),
+    ...(mapsData?.places || []),
+    ...organic,
+    ...(graphSite ? [{ title: graph.title || '', snippet: graph.description || '', website: graphSite }] : []),
+    ...(fallback?.organic || []),
+    ...(fallbackSite ? [{ title: fallbackGraph.title || '', website: fallbackSite }] : [])
+  ]
+
+  return pickRelatedFromRows(relatedRows, title)
+}
+
+async function ensurePlaceWebsite(place, country, language) {
+  const normalized = normalizePlace(place)
+
+  if (!normalized) return null
+  if (normalized.website) return normalized
+
+  const geo = await geocodePlace(
+    [primaryPlaceName(normalized.title), placeLocality(normalized.title, '')].filter(Boolean).join(', '),
+    country
+  )
+  let phone = normalized.phone || geo?.phone || ''
+
+  if (geo?.website && isOfficialWebsite(geo.website)) {
+    return { ...normalized, website: geo.website, phone }
+  }
+
+  const website =
+    (await findOfficialWebsite(normalized, country, language)) || normalized.relatedWebsite || geo?.website || ''
+
+  return { ...normalized, website: website || '', phone }
+}
+
+export function applyExactWebsiteLink(text, website) {
+  const source = String(text || '')
+  const href = isRelatedWebsite(website) ? normalizeWebsiteUrl(website) : ''
+  const lineRe = new RegExp(
+    `^[ \\t]*(?:[-*][ \\t]+|\\d+\\.[ \\t]+)?(?:\\*\\*)?\\s*(?:${WEBSITE_LINE})\\b[^\\n]*$\\n?`,
+    'gim'
+  )
+  const itemRe = new RegExp(`<li\\b[^>]*>[\\s\\S]*?(?:${WEBSITE_LINE})\\b[\\s\\S]*?<\\/li>\\s*`, 'gi')
+  const paragraphRe = new RegExp(
+    `<p\\b[^>]*>\\s*(?:<(?:strong|b)>\\s*)?(?:${WEBSITE_LINE})\\b[\\s\\S]*?<\\/p>\\s*`,
+    'gi'
+  )
+
+  if (!href) {
+    return source.replace(lineRe, '').replace(itemRe, '').replace(paragraphRe, '')
+  }
+
+  const bullet = `* **Visit Website:** <a href="${escUrlAttr(href)}" target="_blank" rel="noopener noreferrer">View Website</a>\n`
+  let replaced = false
+  let next = source.replace(lineRe, () => {
+    replaced = true
+
+    return bullet
+  })
+
+  next = next.replace(itemRe, () => {
+    replaced = true
+
+    return `<li><strong>Visit Website:</strong> <a href="${escUrlAttr(href)}" target="_blank" rel="noopener noreferrer">View Website</a></li>\n`
+  })
+  next = next.replace(paragraphRe, () => {
+    replaced = true
+
+    return `<p><strong>Visit Website:</strong> <a href="${escUrlAttr(href)}" target="_blank" rel="noopener noreferrer">View Website</a></p>\n`
+  })
+
+  if (!replaced) {
+    const contactRe = /^[ \t]*(?:[-*][ \t]+|\d+\.[ \t]+).*\b(?:contact info|phone)\b.*$/im
+
+    if (contactRe.test(next)) next = next.replace(contactRe, match => `${match}\n${bullet.trimEnd()}`)
+    else next = `${next.trim()}\n\n${bullet}`
+  }
+
+  return next
+}
+
 let geocodeChain = Promise.resolve()
 let lastGeocodeAt = 0
 
@@ -76,7 +635,8 @@ export function normalizePlace(place) {
     latitude: hasCoords ? lat : null,
     longitude: hasCoords ? lng : null,
     phone: place.phoneNumber || place.phone || '',
-    website: place.website || '',
+    website: rawWebsite(place),
+    relatedWebsite: rawRelatedWebsite(place),
     rating: place.rating || '',
     ratingCount: place.ratingCount ?? '',
     cid: place.cid || ''
@@ -148,7 +708,7 @@ function geocodePlace(query, country) {
       .toLowerCase()
     const countryParam = /^[a-z]{2}$/.test(cc) ? `&countrycodes=${cc}` : ''
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}${countryParam}`,
+      `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&extratags=1&q=${encodeURIComponent(q)}${countryParam}`,
       {
         headers: {
           Accept: 'application/json',
@@ -170,7 +730,15 @@ function geocodePlace(query, country) {
 
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
 
-    return { latitude: lat, longitude: lng, address: hit.display_name || '' }
+    const contact = contactFromOsm(hit)
+
+    return {
+      latitude: lat,
+      longitude: lng,
+      address: hit.display_name || '',
+      phone: contact.phone,
+      website: contact.website
+    }
   }
 
   const task = geocodeChain.then(run, run)
@@ -203,7 +771,11 @@ async function ensurePlaceCoordinates(place, country, keyword) {
       ...normalized,
       latitude: geo.latitude,
       longitude: geo.longitude,
-      address: normalized.address || geo.address || ''
+      address: normalized.address || geo.address || '',
+      phone: normalized.phone || geo.phone || '',
+      website: normalized.website || (isOfficialWebsite(geo.website) ? geo.website : ''),
+      relatedWebsite:
+        normalized.relatedWebsite || (geo.website && !isOfficialWebsite(geo.website) ? geo.website : '')
     }
   }
 
@@ -214,7 +786,13 @@ async function resolvePlace({ heading, keyword, country, language, outlineContex
   const named = placeFromOutline(outlineContext, heading)
   const cleaned = placeNameFromHeading(heading) || named?.title || ''
 
-  if (named?.latitude != null && named?.longitude != null) return { ...named, title: named.title || cleaned }
+  if (named?.latitude != null && named?.longitude != null) {
+    const titled = { ...named, title: named.title || cleaned }
+
+    if (titled.website) return titled
+
+    return ensurePlaceWebsite(titled, country, language)
+  }
 
   let place = named
   const queries = [cleaned, [cleaned, keyword].filter(Boolean).join(' ')].filter(
@@ -234,6 +812,7 @@ async function resolvePlace({ heading, keyword, country, language, outlineContex
       longitude: next.longitude ?? place?.longitude ?? null,
       phone: next.phone || place?.phone || '',
       website: next.website || place?.website || '',
+      relatedWebsite: next.relatedWebsite || place?.relatedWebsite || '',
       rating: next.rating || place?.rating || '',
       ratingCount: next.ratingCount || place?.ratingCount || '',
       cid: next.cid || place?.cid || ''
@@ -259,8 +838,10 @@ async function resolvePlace({ heading, keyword, country, language, outlineContex
         address: place?.address || geo.address || '',
         latitude: geo.latitude,
         longitude: geo.longitude,
-        phone: place?.phone || '',
-        website: place?.website || '',
+        phone: place?.phone || geo.phone || '',
+        website: place?.website || (isOfficialWebsite(geo.website) ? geo.website : ''),
+        relatedWebsite:
+          place?.relatedWebsite || (geo.website && !isOfficialWebsite(geo.website) ? geo.website : ''),
         rating: place?.rating || '',
         ratingCount: place?.ratingCount || '',
         cid: place?.cid || ''
@@ -269,7 +850,7 @@ async function resolvePlace({ heading, keyword, country, language, outlineContex
     }
   }
 
-  return place
+  return ensurePlaceWebsite(place || { title: cleaned }, country, language)
 }
 
 export function applyExactLocationLink(text, mapLink, address) {
@@ -507,10 +1088,10 @@ export async function generateLocalRoundupOutline(body, genAI) {
       if (item.type !== 'h2' || !isPlaceHeading(item.text)) continue
       if (currentPlaceIndex >= placesData.length) break
 
-      const place = await ensurePlaceCoordinates(
-        placesData[currentPlaceIndex],
+      const place = await ensurePlaceWebsite(
+        await ensurePlaceCoordinates(placesData[currentPlaceIndex], country, targetKeyword || prompt),
         country,
-        targetKeyword || prompt
+        language
       )
       const prefix = numberingArray[currentPlaceIndex] ? `${numberingArray[currentPlaceIndex]} ` : ''
 
@@ -683,6 +1264,7 @@ export async function generateLocalRoundupSection(body, genAI) {
   let mapAddress = ''
   let mapTitle = placeNameFromHeading(heading)
   let mapHtml = ''
+  let placeWebsite = ''
 
   if (isPlaceSection) {
     const place = await resolvePlace({
@@ -695,6 +1277,7 @@ export async function generateLocalRoundupSection(body, genAI) {
 
     mapTitle = place?.title || mapTitle
     mapAddress = place?.address || ''
+    placeWebsite = place?.website || ''
     mapLink = googleMapsUrl({
       lat: place?.latitude,
       lng: place?.longitude,
@@ -719,7 +1302,7 @@ export async function generateLocalRoundupSection(body, genAI) {
           - Address: ${place.address || 'Address Not Available'}
           - Map URL (use this exact URL for the Location link): ${mapLink}
           - Phone: ${place.phone || 'Not Available'}
-          - Website URL: ${place.website || 'Not Available'}
+          - Website (own site, or the closest related page; only if present): ${place.website || 'NONE — do not mention a website'}
         `
     }
 
@@ -727,6 +1310,13 @@ export async function generateLocalRoundupSection(body, genAI) {
       ? 'Write a compelling, authentic 2-paragraph review from a first-person perspective ("I", "my"). CRITICAL: You MUST drastically vary your opening sentences and narrative structure. DO NOT repetitively start paragraphs with generic phrases like "When I visited," "I recently went to," or "My experience." Instead, dive naturally into the review by immediately describing a specific sensory detail, an interaction with the staff, the immediate atmosphere, or a unique observation. Make it read like a dynamic, genuine blog post.'
       : 'Write a highly detailed, objective description (2 paragraphs) of this location, its atmosphere, and its best offerings. Maintain a professional, third-person perspective.'
   }
+
+  const websiteBullet = placeWebsite
+    ? `* **Visit Website:** <a href="${escUrlAttr(placeWebsite)}" target="_blank" rel="noopener noreferrer">View Website</a>`
+    : ''
+  const websiteRule = placeWebsite
+    ? "The Visit Website href above is the best page found for this place: its own site when one exists, otherwise the closest related page. Output that anchor exactly. Do not invent or swap the URL."
+    : 'Do NOT output a Visit Website, View Website, Official Website, or Website URL line. No website was found for this place. Never invent a website URL.'
 
   let sectionStructureRequirements =
     `
@@ -742,8 +1332,9 @@ export async function generateLocalRoundupSection(body, genAI) {
               * **Ratings:** [Insert Rating Data]
               * **Location:** <a href="${mapLink || '[Insert Map URL]'}" target="_blank" rel="noopener noreferrer">${mapAddress || '[Insert Address]'}</a>
               * **Contact Info:** [Insert Phone]
-              * **Visit Website:** <a href="[Insert Website URL]" target="_blank" rel="noopener nofollow">View Website</a>
+              ${websiteBullet}
 
+              ${websiteRule}
               Do NOT add any H3s or other text after the bullet points. Follow this structure strictly.
             `
 
@@ -821,6 +1412,8 @@ export async function generateLocalRoundupSection(body, genAI) {
   let text = result.response.text()
 
   if (isPlaceSection && mapLink) text = applyExactLocationLink(text, mapLink, mapAddress || mapTitle)
+  if (isPlaceSection) text = applyExactWebsiteLink(text, placeWebsite)
+  else text = applyExactWebsiteLink(text, '')
 
   return {
     success: true,

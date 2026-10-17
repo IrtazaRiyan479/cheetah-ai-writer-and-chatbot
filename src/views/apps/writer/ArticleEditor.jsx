@@ -51,7 +51,14 @@ import { serializeError } from '@/utils/serializeError'
 
 import { useFeatureAccess } from './FeatureAccessContext'
 
-import { getAffigenieArticleCss, prepareArticleHtml, finalizeArticleHtml, linkMapSnapshots, buildArticleIdentityMarker, titleCaseWords } from '@/app/api/generate/utils/articleHtml'
+import {
+  getAffigenieArticleCss,
+  prepareArticleHtml,
+  finalizeArticleHtml,
+  linkMapSnapshots,
+  buildArticleIdentityMarker,
+  titleCaseWords
+} from '@/app/api/generate/utils/articleHtml'
 
 function mediaKey(item) {
   if (!item) return ''
@@ -662,12 +669,16 @@ const extensions = [
       const src = String(HTMLAttributes.src || '')
       const parsedStyle = String(HTMLAttributes.style || '')
       const isAmazon = /(?:m\.media-amazon\.com|images-amazon\.com|ssl-images-amazon\.com)/i.test(src)
+
       const heroStyle =
         'border-radius: 12px; max-width: 100%; width: 672px; margin: 32px auto; display: block; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); aspect-ratio: 16/9; object-fit: cover; cursor: pointer;'
+
       const productStyle =
         'display:block;max-width:min(100%, 480px);width:auto;height:auto;max-height:640px;margin:24px auto;object-fit:contain;aspect-ratio:auto;background:#ffffff;border-radius:12px;box-shadow:0 4px 10px rgba(0,0,0,0.06);'
+
       const thumbStyle =
         'width:80px;height:80px;max-width:100%;object-fit:contain;aspect-ratio:auto;border-radius:8px;background:#ffffff;'
+
       const style = !isAmazon ? heroStyle : /width\s*:\s*80px/i.test(parsedStyle) ? thumbStyle : productStyle
       const defaults = { ...(this.options.HTMLAttributes || {}) }
 
@@ -792,8 +803,10 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
   const [waitBanner, setWaitBanner] = useState('')
 
   const progressColors = ['secondary', 'success', 'error', 'warning', 'info', 'primary']
+
   const progressPercentage =
     sectionProgress.total > 0 ? Math.min(100, (sectionProgress.done / sectionProgress.total) * 100) : 0
+
   const currentProgressColor = progressColors[currentIndex % progressColors.length] || 'primary'
 
   const deepSearchColorPalette = ['info', 'secondary', 'primary', 'warning', 'success']
@@ -1100,15 +1113,12 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
               : '')
 
         const isYoutubeHero =
-          Boolean(youtubeHref) &&
-          (settings.type === 'youtube-blog' || settings.youtubeVideoId || settings.youtubeUrl)
+          Boolean(youtubeHref) && (settings.type === 'youtube-blog' || settings.youtubeVideoId || settings.youtubeUrl)
 
         if (isYoutubeHero) {
           const safeHref = youtubeHref.replace(/"/g, '&quot;')
           const safeTitle = String(topTitle || '').replace(/"/g, '&quot;')
 
-          // data-youtube-href: editor has Link openOnClick:false — click handler opens it
-          // wrapping <a>: preserved in export HTML / WordPress content
           initialContent += `<p><a href="${safeHref}" target="_blank" rel="noopener noreferrer nofollow" title="Watch on YouTube"><img src="${settings.heroImage}" alt="${safeTitle}" title="${safeTitle}" data-youtube-href="${safeHref}" style="cursor:pointer;" /></a></p>`
         } else {
           initialContent += `<p><img src="${settings.heroImage}" alt="${topTitle}" title="${topTitle}" /></p>`
@@ -1381,7 +1391,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           setSectionProgress({ done: i + 1, total: groupedSections.length })
         }
 
-      if (!isCancelled) {
+        if (!isCancelled) {
           setIsGenerating(false)
           setWaitBanner('')
           setCurrentIndex(outline.length)
@@ -1990,6 +2000,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
     if (!editor) return
     const root = editor.view.dom
 
+    let lastMapOpen = 0
+
     const onClick = e => {
       const btn = e.target?.closest?.('[data-retry-section]')
 
@@ -2008,7 +2020,12 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         if (href && href !== '#') {
           e.preventDefault()
           e.stopPropagation()
-          window.open(href, '_blank', 'noopener,noreferrer')
+          const now = Date.now()
+
+          if (now - lastMapOpen > 800) {
+            lastMapOpen = now
+            window.open(href, '_blank', 'noopener,noreferrer')
+          }
         }
 
         return
@@ -2022,7 +2039,12 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         if (href && href !== '#') {
           e.preventDefault()
           e.stopPropagation()
-          window.open(href, '_blank', 'noopener,noreferrer')
+          const now = Date.now()
+
+          if (now - lastMapOpen > 800) {
+            lastMapOpen = now
+            window.open(href, '_blank', 'noopener,noreferrer')
+          }
         }
 
         return
@@ -2036,7 +2058,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
       if (href === '#') return
 
-      // Maps (existing) + YouTube hero / video links
       const isMaps = /google\.com\/maps|maps\.google\.com|maps\.app\.goo\.gl/i.test(href)
       const isYoutube = /(?:youtube\.com\/watch|youtu\.be\/|youtube\.com\/embed\/)/i.test(href)
 
@@ -2044,12 +2065,18 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
       e.preventDefault()
       e.stopPropagation()
+
+      const now = Date.now()
+
+      if (now - lastMapOpen < 800) return
+
+      lastMapOpen = now
       window.open(href, '_blank', 'noopener,noreferrer')
     }
 
-    root.addEventListener('click', onClick)
+    root.addEventListener('click', onClick, true)
 
-    return () => root.removeEventListener('click', onClick)
+    return () => root.removeEventListener('click', onClick, true)
   }, [editor])
 
   const handleDownloadFile = (content, filename, type) => {
@@ -2074,11 +2101,13 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
     if (!editor) return
     const currentHtml = linkMapSnapshots(editor.getHTML())
     const fileNameBase = (settings.generatedTitle || 'article').replace(/[^a-z0-9]/gi, ' ').toLowerCase()
+
     const identity = {
       language: settings.language,
       articleType: settings.type || '',
       settings
     }
+
     const exportHtml = finalizeArticleHtml(currentHtml, identity)
     const identityComment = buildArticleIdentityMarker(settings.type, settings).match(/<!--([\s\S]*?)-->/)
     const markdown = `${convertHtmlToMarkdown(currentHtml)}${identityComment ? `\n\n<!--${identityComment[1]}-->` : ''}`
