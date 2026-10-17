@@ -943,25 +943,54 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         publishDiv.innerHTML = finalContent
         publishDiv.querySelectorAll('h1').forEach(node => node.remove())
 
-        if (finalHeroImage) {
+        const normalizeSrc = src => {
+          const s = String(src || '').trim()
+
+          if (!s) return ''
+          if (s.startsWith('data:')) return s
+
+          try {
+            const u = new URL(s, window.location.origin)
+
+            u.hash = ''
+            u.search = ''
+
+            return u.href.replace(/\/$/, '')
+          } catch {
+            return s.split('?')[0].split('#')[0].replace(/\/$/, '')
+          }
+        }
+
+        const heroNorm = normalizeSrc(finalHeroImage)
+
+        const removeImgNode = img => {
+          const paragraph = img.closest('p') || img.closest('figure')
+          const anchor = img.closest('a')
+
+          if (anchor) anchor.remove()
+          else img.remove()
+
+          if (
+            paragraph &&
+            !paragraph.textContent.replace(/\u00a0/g, ' ').trim() &&
+            !paragraph.querySelector('img, iframe, video')
+          ) {
+            paragraph.remove()
+          }
+        }
+
+        // 1) Match by normalized src (handles query params / trailing slash)
+        if (heroNorm) {
           publishDiv.querySelectorAll('img').forEach(img => {
-            if ((img.getAttribute('src') || '') !== finalHeroImage) return
-
-            const paragraph = img.closest('p') || img.closest('figure')
-            const anchor = img.closest('a')
-
-            if (anchor) anchor.remove()
-            else img.remove()
-
-            if (
-              paragraph &&
-              !paragraph.textContent.replace(/\u00a0/g, ' ').trim() &&
-              !paragraph.querySelector('img, iframe, video')
-            ) {
-              paragraph.remove()
-            }
+            if (normalizeSrc(img.getAttribute('src')) === heroNorm) removeImgNode(img)
           })
         }
+
+        // 2) Fallback: first image in the body is almost always the hero
+        //    (covers base64 vs CDN mismatch, re-hosted media, etc.)
+        const firstImg = publishDiv.querySelector('img')
+
+        if (firstImg) removeImgNode(firstImg)
 
         finalContent = publishDiv.innerHTML
       }
@@ -2411,6 +2440,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                 value={publishTitle}
                 onChange={e => setPublishTitle(e.target.value)}
                 helperText='This is exactly how the title will appear on your WordPress site.'
+                sx={{ mt: 1.5 }}
               />
 
               <TextField
@@ -2423,14 +2453,9 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
               />
 
               <FormControlLabel
-                control={
-                  <Switch checked={trimTitleAndHero} onChange={e => setTrimTitleAndHero(e.target.checked)} />
-                }
+                control={<Switch checked={trimTitleAndHero} onChange={e => setTrimTitleAndHero(e.target.checked)} />}
                 label='Remove title and hero from the article body'
               />
-              <Typography variant='caption' color='text.secondary' className='-mt-2'>
-                Title and featured image are still sent separately. Turn this off to keep the H1 and hero inside the post content.
-              </Typography>
 
               <Divider className='my-2' />
 
@@ -2509,16 +2534,11 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           )}
         </DialogContent>
         {!publishSuccessData && (
-          <DialogActions className='p-4' sx={{ flexWrap: 'wrap', gap: 1 }}>
-            <Button onClick={() => setPublishDialogOpen(false)} disabled={isPublishing}>
+          <DialogActions className='p-4' sx={{ flexWrap: 'wrap', gap: 0 }}>
+            <Button color='error' onClick={() => setPublishDialogOpen(false)} disabled={isPublishing}>
               Cancel
             </Button>
-            <Button
-              variant='outlined'
-              color='error'
-              onClick={handleSaveDraftToDB}
-              disabled={isPublishing || !publishTitle.trim()}
-            >
+            <Button variant='contained' onClick={handleSaveDraftToDB} disabled={isPublishing || !publishTitle.trim()}>
               Save in App
             </Button>
             <Button
