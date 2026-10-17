@@ -96,6 +96,23 @@ export async function fetchInternalAmazonData(keyword, settings) {
   throw lastError || new Error('Amazon API failed after retries.')
 }
 
+export function toHdAmazonImage(url) {
+  let raw = String(url || '').trim()
+
+  if (!raw) return ''
+  if (!/(?:m\.media-amazon\.com|images-amazon\.com|ssl-images-amazon\.com)/i.test(raw)) return raw
+
+  raw = raw.split('?')[0]
+
+  if (/%5FAC%5FSL1500%5F|\._AC_SL1500_\./i.test(raw)) {
+    return raw.replace(/_/g, '%5F')
+  }
+
+  const base = raw.replace(/\._[^/?#]+(?=\.(?:jpe?g|png|webp)$)/i, '')
+
+  return base.replace(/\.(jpe?g|png|webp)$/i, '.%5FAC%5FSL1500%5F.$1')
+}
+
 export function formatAmazonProducts(apiData, settings) {
   const rawData = apiData?.data?.searchResult?.items || []
   const numberOfProducts = settings.numberOfProducts || 5
@@ -107,9 +124,7 @@ export function formatAmazonProducts(apiData, settings) {
   return limitedProducts.map(item => {
     const title = item?.itemInfo?.title?.displayValue || 'Amazon Product'
     const asin = item?.asin || ''
-    let imageUrl = item?.images?.primary?.large?.url || ''
-
-    imageUrl = imageUrl.replace(/\._[A-Za-z0-9_]+_\./, '.')
+    const imageUrl = toHdAmazonImage(item?.images?.primary?.large?.url || item?.images?.primary?.medium?.url || '')
     const price = item?.offersV2?.listings?.[0]?.price?.money?.displayAmount || 'See listing'
     const features = item?.itemInfo?.features?.displayValues || []
 
@@ -445,7 +460,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
             headers: ['Image', 'Product', 'Link'],
             rows: top3.map(p => {
               const safeTitle = escapeHtml(String(p.productName || '').replace(/[\r\n]+/g, ' '))
-              const safeImageUrl = escapeHtml(String(p.imageUrl || '').replace(/_/g, '%5F'))
+              const safeImageUrl = escapeHtml(toHdAmazonImage(p.imageUrl))
               const altText = escapeHtml(`${targetKeyword || ''} ${p.productName || ''}`.trim())
               const button = buildCheckPriceButton(p.amazonUrl, { ...linkOptions, asin: p.asin })
 
@@ -491,7 +506,7 @@ export async function generateAmazonRoundupSection(body, genAI) {
       1. **Review:** 2-3 engaging paragraphs reviewing the product.
       2. **HTML Image:** Insert this EXACT HTML centered:
          <div align="center" style="margin: 25px 0;">
-            <img src="${product.imageUrl}" alt="${targetKeyword} ${product.productName}" title="${product.productName}" style="max-width:100%; height:auto; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.05);" />
+            <img src="${toHdAmazonImage(product.imageUrl)}" alt="${targetKeyword} ${product.productName}" title="${product.productName}" data-product-shot="1" style="display:block;max-width:min(100%,480px);width:auto;height:auto;max-height:640px;margin:0 auto;object-fit:contain;aspect-ratio:auto;background:#ffffff;border-radius:12px;box-shadow:0 4px 10px rgba(0,0,0,0.06);" />
           </div>
       3. **Features:** A bulleted list of 3-4 key features.
       4. **Pros & Cons Table:** A strictly formatted Markdown table with exactly two columns titled "Pros" and "Cons".

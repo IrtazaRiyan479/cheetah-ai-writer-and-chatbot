@@ -627,8 +627,32 @@ const extensions = [
 
             return { 'data-map-href': attributes.mapHref }
           }
+        },
+        style: {
+          default: null,
+          parseHTML: element => element.getAttribute('style'),
+          renderHTML: () => ({})
         }
       }
+    },
+    renderHTML({ HTMLAttributes }) {
+      const src = String(HTMLAttributes.src || '')
+      const parsedStyle = String(HTMLAttributes.style || '')
+      const isAmazon = /(?:m\.media-amazon\.com|images-amazon\.com|ssl-images-amazon\.com)/i.test(src)
+      const heroStyle =
+        'border-radius: 12px; max-width: 100%; width: 672px; margin: 32px auto; display: block; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); aspect-ratio: 16/9; object-fit: cover; cursor: pointer;'
+      const productStyle =
+        'display:block;max-width:min(100%, 480px);width:auto;height:auto;max-height:640px;margin:24px auto;object-fit:contain;aspect-ratio:auto;background:#ffffff;border-radius:12px;box-shadow:0 4px 10px rgba(0,0,0,0.06);'
+      const thumbStyle =
+        'width:80px;height:80px;max-width:100%;object-fit:contain;aspect-ratio:auto;border-radius:8px;background:#ffffff;'
+      const style = !isAmazon ? heroStyle : /width\s*:\s*80px/i.test(parsedStyle) ? thumbStyle : productStyle
+      const defaults = { ...(this.options.HTMLAttributes || {}) }
+
+      delete defaults.style
+
+      const { style: _parsedStyle, ...rest } = HTMLAttributes
+
+      return ['img', mergeAttributes(defaults, rest, { style })]
     }
   }).configure({
     inline: true,
@@ -1044,21 +1068,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       let initialContent = `<h1>${topTitle}</h1>`
 
       if (settings.heroImage) {
-        const youtubeHref =
-          String(settings.youtubeUrl || '').trim() ||
-          (settings.youtubeVideoId
-            ? `https://www.youtube.com/watch?v=${settings.youtubeVideoId}`
-            : settings.heroImageId && String(settings.heroImageSource || '').includes('youtube')
-              ? `https://www.youtube.com/watch?v=${settings.heroImageId}`
-              : '')
-
-        if (youtubeHref && (settings.type === 'youtube-blog' || settings.youtubeVideoId || settings.youtubeUrl)) {
-          const safeHref = youtubeHref.replace(/"/g, '&quot;')
-          const safeTitle = String(topTitle || '').replace(/"/g, '&quot;')
-          initialContent += `<p><a href="${safeHref}" target="_blank" rel="noopener noreferrer nofollow" title="Watch on YouTube"><img src="${settings.heroImage}" alt="${safeTitle}" title="${safeTitle}" /></a></p>`
-        } else {
-          initialContent += `<p><img src="${settings.heroImage}" alt="${topTitle}" title="${topTitle}" /></p>`
-        }
+        initialContent += `<p><img src="${settings.heroImage}" alt="${topTitle}" title="${topTitle}" /></p>`
       } else {
         initialContent += `<p></p>`
       }
