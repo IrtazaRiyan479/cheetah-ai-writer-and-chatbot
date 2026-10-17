@@ -61,6 +61,19 @@ import {
   titleCaseWords
 } from '@/app/api/generate/utils/articleHtml'
 
+function slimPublishSettings(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
+
+  const out = {}
+
+  for (const [key, value] of Object.entries(input)) {
+    if (typeof value === 'number' || typeof value === 'boolean') out[key] = value
+    else if (typeof value === 'string' && !value.startsWith('data:') && value.length <= 2000) out[key] = value
+  }
+
+  return out
+}
+
 function mediaKey(item) {
   if (!item) return ''
 
@@ -1006,12 +1019,12 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
             })
           }
 
-          Array.from(publishDiv.children).forEach(node => {
+          for (const node of Array.from(publishDiv.children)) {
             const tag = node.tagName?.toLowerCase()
 
-            if (tag === 'h2' || tag === 'h3' || tag === 'h4') return
+            if (tag === 'h2' || tag === 'h3' || tag === 'h4') break
             if (isLeadingImageOnly(node)) node.remove()
-          })
+          }
         } else {
           // Toggle off: keep exactly one leading hero — drop duplicates only
           let keptHero = false
@@ -1049,7 +1062,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         metaTitle: metaTitle,
         metaDescription: metaDescription,
         articleType: settings.type || '',
-        settings
+        settings: slimPublishSettings(settings)
       }
 
       const res = await fetch('/api/publish', {

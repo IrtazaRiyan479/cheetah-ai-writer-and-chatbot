@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { readFile } from 'fs/promises'
+import path from 'path'
 import { getServerSession } from 'next-auth'
 
 import { authOptions } from '@/libs/auth'
@@ -29,15 +31,68 @@ function wpMessage(data, status, fallback) {
   return `WordPress HTTP ${status}${code ? ` ${code}` : ''}: ${message}`.slice(0, 500)
 }
 
+function extractWpJson(raw) {
+  if (raw == null) return null
+
+  const parse = value => {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return null
+    }
+  }
+
+  const text = String(raw).replace(/^\uFEFF/, '').trim()
+
+  if (!text) return null
+
+  let data = parse(text)
+
+  if (typeof data === 'string') data = parse(data)
+  if (data) return data
+
+  const objStart = text.indexOf('{')
+  const objEnd = text.lastIndexOf('}')
+
+  if (objStart !== -1 && objEnd > objStart) {
+    data = parse(text.slice(objStart, objEnd + 1))
+    if (typeof data === 'string') data = parse(data)
+    if (data) return data
+  }
+
+  const arrStart = text.indexOf('[')
+  const arrEnd = text.lastIndexOf(']')
+
+  if (arrStart !== -1 && arrEnd > arrStart) {
+    data = parse(text.slice(arrStart, arrEnd + 1))
+    if (data) return data
+  }
+
+  return null
+}
+
+function idFromHeaders(res) {
+  if (!res) return null
+
+  const blob = `${res.headers?.get('location') || ''} ${res.headers?.get('link') || ''} ${res.url || ''}`
+  const match = blob.match(/\/wp\/v2\/(?:posts|pages|media)\/(\d+)/i)
+
+  return match ? Number(match[1]) : null
+}
+
+function pickId(data, res) {
+  const source = Array.isArray(data) ? data[0] : data
+  const raw = source?.id ?? source?.ID ?? source?.data?.id ?? source?.post?.id ?? source?.post_id
+  const id = Number(raw)
+
+  if (Number.isFinite(id) && id > 0) return id
+
+  return idFromHeaders(res)
+}
+
 async function readWp(res, fallback) {
   const raw = await res.text().catch(() => '')
-  let data = null
-
-  try {
-    data = raw ? JSON.parse(raw) : null
-  } catch {
-    data = null
-  }
+  const data = extractWpJson(raw)
 
   if (!res.ok) {
     throw new Error(data ? wpMessage(data, res.status, fallback) : `WordPress HTTP ${res.status}: ${(raw || fallback).slice(0, 300)}`)
@@ -69,46 +124,290 @@ async function wpFetch(url, options, attempts = 2) {
   throw new Error(`WordPress network error: ${serializeError(lastError)}`)
 }
 
-async function uploadImageToWP(imageUrl, siteUrl, credentials, articleTitle) {
-  const imageResponse = await wpFetch(imageUrl, {})
+const IMAGE_EXT = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  avif: 'image/avif'
+}
 
-  if (!imageResponse.ok) {
-    throw new Error(`Could not download hero image. HTTP ${imageResponse.status}`)
+function extFromMime(mime) {
+  const sub = String(mime || '').split('/')[1]?.split('+')[0]?.toLowerCase() || 'jpg'
+
+  return sub === 'jpeg' ? 'jpg' : sub.replace(/[^a-z0-9]/g, '') || 'jpg'
+}
+
+function decodeHtmlAttr(value) {
+  return String(value || '')
+    .replace(/&/g, '&')
+    .replace(/"/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+}
+
+function parseDataUrl(src) {
+  const match = /^data:([^;,]+)?(;base64)?,/i.exec(String(src || '').trim())
+
+  if (!match) return null
+
+  const mimeType = (match[1] || 'image/png').toLowerCase()
+
+  if (!mimeType.startsWith('image/') || mimeType.includes('svg')) return null
+
+  const payload = String(src).slice(match[0].length).replace(/\s/g, '')
+  const buffer = match[2] ? Buffer.from(payload, 'base64') : Buffer.from(decodeURIComponent(payload), 'utf8')
+
+  if (!buffer.length) return null
+
+  return { buffer, mimeType }
+}
+
+async function loadLocalUpload(src) {
+  let pathname = String(src || '').split('?')[0].split('#')[0]
+
+  try {
+    if (/^https?:\/\//i.test(pathname)) pathname = new URL(pathname).pathname
+  } catch {
+    return null
   }
 
-  const imageBuffer = Buffer.from(await imageResponse.arrayBuffer())
+  if (!pathname.startsWith('/uploads/')) return null
 
-  if (!imageBuffer.length) throw new Error('Hero image download was empty.')
+  const filename = path.basename(pathname)
 
-  const mimeType = (imageResponse.headers.get('content-type') || 'image/jpeg').split(';')[0].trim()
-  const extension = mimeType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
-  const filename = `hero-${Date.now()}.${extension}`
-  const mediaRes = await wpFetch(`${siteUrl}/wp-json/wp/v2/media`, {
+  if (!filename || filename === '.' || filename === '..') return null
+
+  const mimeType = IMAGE_EXT[path.extname(filename).slice(1).toLowerCase()]
+
+  if (!mimeType) return null
+
+  try {
+    const buffer = await readFile(path.join(process.cwd(), 'public', 'uploads', filename))
+
+    if (!buffer.length) return null
+
+    return { buffer, mimeType, filename }
+  } catch {
+    return null
+  }
+}
+
+function shouldSideload(src, siteUrl) {
+  const value = String(src || '').trim()
+
+  if (!value || value.startsWith('blob:') || value.startsWith('cid:')) return false
+  if (value.startsWith('data:')) return value.startsWith('data:image/') && !/^data:image\/svg/i.test(value)
+  if (value.startsWith('/uploads/')) return true
+  if (!/^https?:\/\//i.test(value)) return false
+
+  try {
+    return new URL(value).host !== new URL(siteUrl).host
+  } catch {
+    return false
+  }
+}
+
+async function loadImageBytes(src) {
+  const value = String(src || '').trim()
+
+  if (value.startsWith('data:')) {
+    const parsed = parseDataUrl(value)
+
+    if (!parsed) throw new Error('Image data URL is invalid.')
+
+    return parsed
+  }
+
+  const local = await loadLocalUpload(value)
+
+  if (local) return local
+
+  const response = await fetch(value, {
+    redirect: 'follow',
+    headers: {
+      Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+    },
+    signal: AbortSignal.timeout(45000)
+  })
+
+  if (!response.ok) throw new Error(`Could not download image. HTTP ${response.status}`)
+
+  const mimeType = (response.headers.get('content-type') || 'image/jpeg').split(';')[0].trim().toLowerCase()
+
+  if (!mimeType.startsWith('image/') || mimeType.includes('svg')) throw new Error(`Unsupported image type ${mimeType}`)
+
+  const buffer = Buffer.from(await response.arrayBuffer())
+
+  if (!buffer.length) throw new Error('Image download was empty.')
+
+  return { buffer, mimeType }
+}
+
+async function uploadBufferToWP(bytes, siteUrl, credentials) {
+  const mimeType = bytes.mimeType || 'image/jpeg'
+  const filename = bytes.filename || `image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extFromMime(mimeType)}`
+  const mediaRes = await wpFetch(`${siteUrl}/wp-json/wp/v2/media?_fields=id,source_url`, {
     method: 'POST',
     headers: {
       Authorization: `Basic ${credentials}`,
       'Content-Disposition': `attachment; filename="${filename}"`,
       'Content-Type': mimeType
     },
-    body: imageBuffer
+    body: bytes.buffer
   })
   const mediaData = await readWp(mediaRes, 'Media upload failed. Check the application password can upload files.')
+  const id = pickId(mediaData, mediaRes)
 
-  if (!mediaData.id) throw new Error(wpMessage(mediaData, mediaRes.status, 'Media upload did not return an id.'))
+  if (!id) throw new Error(wpMessage(mediaData, mediaRes.status, 'Media upload did not return an id.'))
 
-  const alt = articleTitle || 'Featured Image'
-  const altRes = await wpFetch(`${siteUrl}/wp-json/wp/v2/media/${mediaData.id}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${credentials}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ title: alt, alt_text: alt, caption: '' })
+  let sourceUrl = mediaData.source_url || mediaData.guid?.rendered || ''
+
+  if (!sourceUrl) {
+    const readBack = await wpFetch(`${siteUrl}/wp-json/wp/v2/media/${id}?_fields=id,source_url`, {
+      headers: { Authorization: `Basic ${credentials}` }
+    })
+    const confirmed = await readWp(readBack, 'Uploaded the image but could not read its URL.')
+
+    sourceUrl = confirmed.source_url || ''
+  }
+
+  if (!sourceUrl) throw new Error('Media upload did not return a source URL.')
+
+  return { id, sourceUrl }
+}
+
+async function mapPool(items, limit, worker) {
+  if (!items.length) return
+
+  let cursor = 0
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor
+
+      cursor += 1
+      await worker(items[index], index)
+    }
   })
 
-  await readWp(altRes, 'Uploaded the image but could not set alt text.')
+  await Promise.all(runners)
+}
 
-  return { id: mediaData.id, sourceUrl: mediaData.source_url || imageUrl }
+async function sideloadImages(html, heroSrc, siteUrl, credentials) {
+  const rawSrcs = []
+  const re = /<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi
+  let match
+
+  while ((match = re.exec(html))) {
+    const src = match[1] || match[2] || match[3] || ''
+
+    if (src) rawSrcs.push(src)
+  }
+
+  if (heroSrc) rawSrcs.push(heroSrc)
+
+  const unique = [...new Set(rawSrcs.map(src => src.trim()).filter(Boolean))]
+  const targets = unique.filter(src => shouldSideload(decodeHtmlAttr(src), siteUrl) || shouldSideload(src, siteUrl))
+  const uploaded = new Map()
+
+  await mapPool(targets, 6, async src => {
+    try {
+      const bytes = await loadImageBytes(decodeHtmlAttr(src))
+      const media = await uploadBufferToWP(bytes, siteUrl, credentials)
+
+      uploaded.set(src, media)
+    } catch (error) {
+      console.error('Image sideload skipped:', serializeError(error))
+    }
+  })
+
+  let nextHtml = html
+  let featuredMediaId = null
+  let resolvedHero = heroSrc || ''
+
+  for (const [src, media] of uploaded) {
+    nextHtml = nextHtml.split(`"${src}"`).join(`"${media.sourceUrl}"`).split(`'${src}'`).join(`'${media.sourceUrl}'`)
+
+    if (heroSrc && src === String(heroSrc).trim()) {
+      featuredMediaId = media.id
+      resolvedHero = media.sourceUrl
+    }
+  }
+
+  return { html: nextHtml, featuredMediaId, heroSrc: resolvedHero }
+}
+
+function slimSettings(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
+
+  const out = {}
+
+  for (const [key, value] of Object.entries(input)) {
+    if (typeof value === 'number' || typeof value === 'boolean') out[key] = value
+    else if (typeof value === 'string' && !value.startsWith('data:') && value.length <= 2000) out[key] = value
+  }
+
+  return out
+}
+
+async function resolvePost(response, data, { siteUrl, authHeaders, title }) {
+  let id = pickId(data, response)
+  let link = data?.link || ''
+  let featured = data?.featured_media
+  let status = data?.status
+
+  if (!id && (response.status === 201 || response.status === 200)) {
+    const params = new URLSearchParams({
+      search: String(title || '').slice(0, 100),
+      per_page: '5',
+      orderby: 'date',
+      order: 'desc',
+      _fields: 'id,link,status,featured_media,title'
+    })
+    const foundRes = await wpFetch(`${siteUrl}/wp-json/wp/v2/posts?${params}`, { headers: authHeaders })
+    const found = await readWp(foundRes, 'WordPress created the post but did not return an id.')
+    const rows = Array.isArray(found) ? found : []
+    const wanted = String(title || '')
+      .replace(/<[^>]+>/g, '')
+      .trim()
+      .toLowerCase()
+    const match = rows.find(row => {
+      const rawTitle = row?.title?.rendered || row?.title?.raw || row?.title || ''
+
+      return (
+        String(rawTitle)
+          .replace(/<[^>]+>/g, '')
+          .trim()
+          .toLowerCase() === wanted
+      )
+    })
+
+    if (match) {
+      id = pickId(match, null)
+      link = match.link || link
+      featured = match.featured_media
+      status = match.status || status
+    }
+  }
+
+  if (!id) throw new Error(wpMessage(data, response.status, 'WordPress did not return a post id.'))
+
+  if (!link) {
+    const readBack = await wpFetch(`${siteUrl}/wp-json/wp/v2/posts/${id}?_fields=id,link,status,featured_media`, {
+      headers: authHeaders
+    })
+    const confirmed = await readWp(readBack, 'Could not read the published post back')
+
+    link = confirmed.link || link
+    if (confirmed.featured_media != null) featured = confirmed.featured_media
+    status = confirmed.status || status
+  }
+
+  return { id, link, featured_media: featured, status }
 }
 
 export async function POST(request) {
@@ -170,24 +469,18 @@ export async function POST(request) {
     const credentials = Buffer.from(`${wpUsername}:${appPassword}`).toString('base64')
     const authHeaders = { Authorization: `Basic ${credentials}` }
 
-    let featuredMediaId = null
-    let heroSrc = featuredImageUrl || ''
-
-    if (featuredImageUrl) {
-      const uploaded = await uploadImageToWP(featuredImageUrl, cleanSiteUrl, credentials, title)
-
-      featuredMediaId = uploaded.id
-      heroSrc = uploaded.sourceUrl || featuredImageUrl
-    }
+    const sideloaded = await sideloadImages(content || '', featuredImageUrl || '', cleanSiteUrl, credentials)
+    let featuredMediaId = sideloaded.featuredMediaId
+    let heroSrc = sideloaded.heroSrc || ''
 
     const masterStyles = `<style id="cheetah-master-styles">#cheetah-article-wrapper{line-height:1.7;font-family:system-ui,-apple-system,sans-serif}#cheetah-article-wrapper table{width:100%!important;table-layout:auto!important;border-collapse:separate!important;border-spacing:0!important;margin:32px 0!important;border-radius:10px!important;border:1px solid #1e40af!important;background-color:#ffffff!important;box-shadow:0 4px 12px -2px rgba(0,0,0,0.03)!important}#cheetah-article-wrapper th,#cheetah-article-wrapper td{padding:18px 24px!important;vertical-align:top!important;border-bottom:1px solid #e5e7eb!important;border-right:1px solid #e5e7eb!important;text-align:left!important;word-wrap:break-word!important}#cheetah-article-wrapper th:last-child,#cheetah-article-wrapper td:last-child{border-right:none!important}#cheetah-article-wrapper tr:last-child td{border-bottom:none!important}#cheetah-article-wrapper th:first-child{border-top-left-radius:9px!important}#cheetah-article-wrapper th:last-child{border-top-right-radius:9px!important}#cheetah-article-wrapper tr:last-child td:first-child{border-bottom-left-radius:9px!important}#cheetah-article-wrapper tr:last-child td:last-child{border-bottom-right-radius:9px!important}#cheetah-article-wrapper th{background:#ffffff!important;color:#1e40af!important;font-weight:700!important;font-size:15px!important;text-transform:uppercase!important;letter-spacing:0.05em!important}#cheetah-article-wrapper td{font-size:16px!important;color:#374151!important;line-height:1.6!important}#cheetah-article-wrapper a.cta-button{text-decoration:none!important;background-color:#6366f1!important;color:#ffffff!important;font-weight:700!important;padding:12px 26px!important;border-radius:9999px!important;display:inline-block!important;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1)!important;border:1px solid #4f46e5!important}#cheetah-article-wrapper img{border-radius:12px!important;box-shadow:0 10px 15px -3px rgba(0,0,0,0.1)!important;max-width:100%!important;height:auto!important}@media (max-width:640px){#cheetah-article-wrapper .product-name-desktop{display:none!important}#cheetah-article-wrapper .product-name-mobile{display:inline!important;font-size:13px!important;line-height:1.3!important}#cheetah-article-wrapper table.affigenie-table td:first-child{width:auto!important;min-width:0!important;max-width:none!important}#cheetah-article-wrapper table td:first-child img{width:80px!important;height:80px!important;max-width:80px!important;object-fit:contain!important}#cheetah-article-wrapper a.cta-button{padding:8px 12px!important;font-size:12px!important}}#cheetah-article-wrapper table img{width:80px!important;height:auto!important;max-width:90px!important;margin:0!important;box-shadow:none!important;aspect-ratio:auto!important}.check-price-btn{display:inline-block!important;background-color:#6366f1!important;color:#fff!important;font-weight:700!important;padding:10px 24px!important;border-radius:9999px!important;text-decoration:none!important;transition:background-color .2s,transform .2s!important}.check-price-btn:hover{background-color:#4f46e5!important;transform:translateY(-1px)!important}table{width:100%!important;max-width:100%!important;border-collapse:collapse!important;margin:24px 0!important;display:table!important;overflow:visible!important}td,th{word-break:normal;white-space:normal}</style>`
 
-    const articleHtml = finalizeArticleHtml(content || '', {
+    const articleHtml = finalizeArticleHtml(sideloaded.html || '', {
       language,
       partnerTag: process.env.AMAZON_PARTNER_TAG || '',
       domain: 'www.amazon.com',
       articleType,
-      settings: settings || {}
+      settings: slimSettings(settings)
     })
 
     // Toggle ON → never inject body hero (featured_media only).
@@ -230,17 +523,20 @@ export async function POST(request) {
       postPayload.featured_media = featuredMediaId
     }
 
-    const response = await wpFetch(`${cleanSiteUrl}/wp-json/wp/v2/posts`, {
+    const response = await wpFetch(`${cleanSiteUrl}/wp-json/wp/v2/posts?_fields=id,link,status,featured_media`, {
       method: 'POST',
       headers: { ...authHeaders, 'Content-Type': 'application/json' },
       body: JSON.stringify(postPayload)
     })
     const data = await readWp(response, 'Failed to publish to WordPress')
+    const created = await resolvePost(response, data, {
+      siteUrl: cleanSiteUrl,
+      authHeaders,
+      title: postPayload.title
+    })
 
-    if (!data.id) throw new Error(wpMessage(data, response.status, 'WordPress did not return a post id.'))
-
-    if (featuredMediaId && Number(data.featured_media) !== Number(featuredMediaId)) {
-      const retry = await wpFetch(`${cleanSiteUrl}/wp-json/wp/v2/posts/${data.id}`, {
+    if (featuredMediaId && Number(created.featured_media) !== Number(featuredMediaId)) {
+      const retry = await wpFetch(`${cleanSiteUrl}/wp-json/wp/v2/posts/${created.id}?_fields=id,link,status,featured_media`, {
         method: 'POST',
         headers: { ...authHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({ featured_media: featuredMediaId })
@@ -250,7 +546,7 @@ export async function POST(request) {
 
       if (featured !== Number(featuredMediaId)) {
         const readBack = await wpFetch(
-          `${cleanSiteUrl}/wp-json/wp/v2/posts/${data.id}?_fields=id,featured_media,link`,
+          `${cleanSiteUrl}/wp-json/wp/v2/posts/${created.id}?_fields=id,featured_media,link`,
           { headers: authHeaders }
         )
         const confirmed = await readWp(readBack, 'Could not read the published post back')
@@ -260,19 +556,19 @@ export async function POST(request) {
 
       if (featured !== Number(featuredMediaId)) {
         throw new Error(
-          `WordPress post ${data.id} was created, but featured_media is still missing after one retry.`
+          `WordPress post ${created.id} was created, but featured_media is still missing after one retry.`
         )
       }
     }
 
-    const editLink = `${cleanSiteUrl}/wp-admin/post.php?post=${data.id}&action=edit`
+    const editLink = `${cleanSiteUrl}/wp-admin/post.php?post=${created.id}&action=edit`
 
     return NextResponse.json({
       success: true,
-      wpPostId: data.id,
-      link: data.link,
+      wpPostId: created.id,
+      link: created.link,
       editLink,
-      status: postPayload.status,
+      status: created.status || postPayload.status,
       featuredMediaId
     })
   } catch (error) {
