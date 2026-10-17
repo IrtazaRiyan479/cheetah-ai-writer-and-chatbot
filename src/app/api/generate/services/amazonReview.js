@@ -83,11 +83,14 @@ export async function generateAmazonReviewOutline(body, genAI) {
     amazonProductUrl,
     language,
     country,
-    condensedMode,
     enableFirstHandExperience,
     includeFaq,
     automaticExternalLinks
   } = settings
+
+  const condensedMode = Boolean(settings.condensedMode || settings.enableCondensedMode)
+  const sourceArticleText = String(body.sourceArticleText || '').trim()
+  const isRewriteMode = Boolean(sourceArticleText) || settings.type === 'amazon-review-rewrite'
 
   const langObj = languages ? languages[language] : null
   const langName = langObj ? langObj.name : language || 'English'
@@ -96,18 +99,55 @@ export async function generateAmazonReviewOutline(body, genAI) {
 
   const baseSystemInstruction = getBaseSystemInstruction(langName, countryName)
 
-  const asin = extractASIN(amazonProductUrl)
-  const searchStr = asin || targetKeyword || 'amazon product'
+  const prefetched = body.prefetchedProduct && typeof body.prefetchedProduct === 'object' ? body.prefetchedProduct : null
+  const preferredAsin = prefetched?.asin || extractASIN(amazonProductUrl) || ''
+  let product = null
 
-  const apiData = await fetchInternalAmazonData(searchStr, settings)
-  const formattedProducts = formatAmazonProducts(apiData, settings)
-  const product = formattedProducts[0]
+  try {
+    const searchStr = preferredAsin || targetKeyword || prefetched?.productName || 'amazon product'
+    const apiData = await fetchInternalAmazonData(searchStr, settings)
+    const formattedProducts = formatAmazonProducts(apiData, settings)
+    const matched = preferredAsin
+      ? formattedProducts.find(item => String(item.asin || '').toUpperCase() === String(preferredAsin).toUpperCase())
+      : formattedProducts[0]
 
-  if (!product) {
-    throw new Error('Could not fetch product details from Amazon. Please check the URL.')
+    if (matched) product = matched
+  } catch (error) {
+    if (!isRewriteMode) throw error
+    console.warn('[amazon-review-rewrite] product lookup failed:', error?.message || error)
   }
 
-  const activeKeyword = targetKeyword || product.productName
+  if (!product && prefetched && (prefetched.asin || prefetched.productName || prefetched.amazonUrl)) {
+    product = prefetched
+  }
+
+  if (!product) {
+    if (!isRewriteMode) {
+      throw new Error('Could not fetch product details from Amazon. Please check the URL.')
+    }
+
+    product = {
+      productName: targetKeyword || 'Amazon Product',
+      asin: preferredAsin || '',
+      amazonUrl: amazonProductUrl || '',
+      imageUrl: '',
+      price: '',
+      features: []
+    }
+  } else if (prefetched) {
+    product = {
+      ...prefetched,
+      ...product,
+      asin: preferredAsin || product.asin || prefetched.asin || '',
+      productName: product.productName || prefetched.productName || targetKeyword || '',
+      amazonUrl: product.amazonUrl || prefetched.amazonUrl || amazonProductUrl || '',
+      imageUrl: product.imageUrl || prefetched.imageUrl || '',
+      price: product.price || prefetched.price || '',
+      features: product.features?.length ? product.features : prefetched.features || []
+    }
+  }
+
+  const activeKeyword = targetKeyword || product.productName || 'Amazon product'
 
   let fetchedExternalLinks = []
   let faqInstruction = ''
@@ -186,7 +226,21 @@ export async function generateAmazonReviewOutline(body, genAI) {
     3. Include a "pros_cons" section (type: h2).
     4. Include a "conclusion" (type: h2).
     5. ${faqInstruction}}
-    6- ${relatedInstruction}`
+    6- ${relatedInstruction}
+
+    ${
+      isRewriteMode
+        ? `REWRITE MODE (Amazon Single Product Review layout — same as a new Amazon Single Product Review):
+    - Current writer settings are authoritative. Obey condensed mode (${condensedMode ? 'on' : 'off'}), first-hand experience (${enableFirstHandExperience ? 'on' : 'off'}), FAQ (${includeFaq ? 'on' : 'off'}), language (${langName}), and country (${countryName}).
+    - Do NOT copy the old article's tone, length, point of view, FAQ choice, condensed mode, or heading plan when they differ from these settings.
+    - Source text is reference only. Rewrite in a fresh voice. Do not copy sentences.
+    - Prefer this ASIN if present: ${product.asin || 'unknown'}. Prefer this product name: ${product.productName || activeKeyword}. Prefer this source title when it still fits the current keyword: ${body.sourceTitle || 'none'}.
+    - If the ASIN, product name, or title cannot be recovered, still return a complete outline for "${activeKeyword}".
+
+    SOURCE ARTICLE (reference):
+    ${sourceArticleText.substring(0, 120000)}`
+        : ''
+    }`
 
   let parsedData = null
   let lastOutlineError = null
@@ -248,16 +302,51 @@ export async function generateAmazonReviewOutline(body, genAI) {
     parsedData.outline[0].productData = product
   }
 
+  let heroImage = ''
+  let heroImageId = null
+  let heroImageSource = null
+
+  if (isRewriteMode) {
+    const banned = Array.isArray(body.excludedHeroUrls) ? body.excludedHeroUrls.map(String) : []
+    const photos = await pickRelevantImages(activeKeyword, targetKeyword || activeKeyword, 6).catch(() => [])
+    const fresh = (photos || []).filter(item => {
+      const candidate = String(item?.url || '')
+
+      if (!candidate || /amazon|media-amazon/i.test(candidate)) return false
+
+      return !banned.some(url => {
+        const blocked = String(url || '')
+
+        if (!blocked) return false
+        if (candidate === blocked || blocked.includes(candidate) || candidate.includes(blocked)) return true
+
+        const pexelsId = candidate.match(/pexels\.com\/photos\/(\d+)/i)?.[1]
+        const unsplashId = candidate.match(/images\.unsplash\.com\/(?:photo-)?([^/?]+)/i)?.[1]
+        const id = pexelsId || unsplashId
+
+        return Boolean(id && id.length > 3 && blocked.includes(id))
+      })
+    })
+    const heroPick = fresh[1] || fresh[0] || null
+
+    if (heroPick?.url) {
+      heroImage = heroPick.url
+      heroImageId = heroPick.id ?? null
+      heroImageSource = heroPick.source || 'pexels'
+    }
+  }
+
   return {
     success: true,
     title: parsedData.title,
     outline: parsedData.outline,
     metaTitle: parsedData.metaTitle,
     metaDescription: parsedData.metaDescription,
-    heroImage: '',
-    heroImageId: null,
-    heroImageSource: null,
-    externalLinks: fetchedExternalLinks
+    heroImage,
+    heroImageId,
+    heroImageSource,
+    externalLinks: fetchedExternalLinks,
+    productImages: []
   }
 }
 
@@ -280,7 +369,6 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     model,
     targetKeyword,
     articleTitle,
-    condensedMode,
     enableFirstHandExperience,
     toneOfVoice,
     customToneOfVoice,
@@ -288,8 +376,22 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     improveReadability
   } = settings
 
+  const condensedMode = Boolean(settings.condensedMode || settings.enableCondensedMode)
+  const sourceArticleText = String(sectionData.sourceArticleText || settings.fetchedSourceArticle || '').trim()
+  const langObj = languages ? languages[settings.language] : null
+  const langName = langObj ? langObj.name : settings.language || 'English'
+  const countryObj = countries ? countries.find(c => c.code === settings.country) : null
+  const countryName = countryObj ? countryObj.name : settings.country || 'United States'
+
   const sectionModel = genAI.getGenerativeModel({
-    model: model || 'gemini-3.1-flash-lite'
+    model: model || 'gemini-3.1-flash-lite',
+    ...(sourceArticleText
+      ? {
+          systemInstruction: `${getBaseSystemInstruction(langName, countryName)}
+
+REWRITE RULE: Current writer settings override the source article. Do not reuse the old article's tone, length, point of view, FAQ choice, or condensed mode. Use the source only to keep the same ASIN, product name, title, and verifiable facts. If those cannot be recovered, still write this section.`
+        }
+      : {})
   })
 
   let realTimeInstruction = await getRealTimeInstruction(
@@ -397,6 +499,13 @@ export async function generateAmazonReviewSection(sectionData, genAI) {
     ${toneInstruction}
     ${povInstruction}
     ${readabilityInstruction}
+    ${
+      sourceArticleText
+        ? `REWRITE SOURCE (reference only — write a new section with the CURRENT settings above, not the old article's settings):
+Prefer ASIN ${product?.asin || 'from the outline'} and the product/title already in this outline. If a source detail is missing, keep writing.
+${sourceArticleText.substring(0, 80000)}`
+        : ''
+    }
   `
 
   if (product) {

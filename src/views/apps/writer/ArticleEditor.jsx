@@ -935,27 +935,33 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         }
       }
 
-      const stripTitleSites = [
-        'handfultool',
-        'riderequips',
-        'cheekypetpark',
-        'specialfootgear',
-        'webmarketics',
-        'babiescarrier'
-      ]
+      if (typeof window !== 'undefined') {
+        const publishDiv = document.createElement('div')
 
-      const stripImageSites = ['specialfootgear', 'webmarketics']
+        publishDiv.innerHTML = finalContent
+        publishDiv.querySelectorAll('h1').forEach(node => node.remove())
 
-      if (!isCustom && !isDbSaved) {
-        if (stripTitleSites.includes(activeSiteId)) {
-          finalContent = finalContent.replace(/<h1[^>]*>[\s\S]*?<\/h1>/i, '')
+        if (finalHeroImage) {
+          publishDiv.querySelectorAll('img').forEach(img => {
+            if ((img.getAttribute('src') || '') !== finalHeroImage) return
+
+            const paragraph = img.closest('p') || img.closest('figure')
+            const anchor = img.closest('a')
+
+            if (anchor) anchor.remove()
+            else img.remove()
+
+            if (
+              paragraph &&
+              !paragraph.textContent.replace(/\u00a0/g, ' ').trim() &&
+              !paragraph.querySelector('img, iframe, video')
+            ) {
+              paragraph.remove()
+            }
+          })
         }
 
-        if (stripImageSites.includes(activeSiteId)) {
-          const firstImageRegex = /<p>\s*<img[^>]+>\s*<\/p>|<img[^>]+>/i
-
-          finalContent = finalContent.replace(firstImageRegex, '')
-        }
+        finalContent = publishDiv.innerHTML
       }
 
       const payload = {

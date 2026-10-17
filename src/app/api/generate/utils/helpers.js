@@ -632,22 +632,20 @@ export async function attachBrandedHero(result, settings = {}) {
   if (!result?.success) return result
 
   const title = result.title || settings.targetKeyword || 'Article'
-  const productHero = settings.type === 'amazon-review-rewrite'
-  const rewriteRoundup = settings.type === 'amazon-roundup-rewrite'
+  const rewriteStock = settings.type === 'amazon-roundup-rewrite' || settings.type === 'amazon-review-rewrite'
   const youtubeThumb =
     settings.type === 'youtube-blog' && /^https?:/i.test(String(result.heroImage || ''))
       ? String(result.heroImage)
       : ''
-  const productUrls = productHero
-    ? [result.heroImage, ...(Array.isArray(result.productImages) ? result.productImages : [])].filter(
-        url => url && /^https?:/i.test(String(url)) && /amazon|media-amazon/i.test(String(url))
-      )
-    : []
   const banned = Array.isArray(result.excludedHeroUrls) ? result.excludedHeroUrls.map(String) : []
-  const photos = productHero || youtubeThumb ? [] : await pickRelevantImages(title, settings.targetKeyword || title, rewriteRoundup ? 6 : 1)
-  const fresh = photos.filter(item => !banned.some(url => urlsSharePhoto(item?.url, url) || (item?.id != null && url.includes(String(item.id)))))
-  const photo = rewriteRoundup ? fresh[1] || fresh[0] || photos[1] || photos[0] || null : photos[0] || null
-  const backgroundUrls = productHero ? productUrls : youtubeThumb ? [youtubeThumb] : photo?.url ? [photo.url] : []
+  const photos = youtubeThumb
+    ? []
+    : await pickRelevantImages(title, settings.targetKeyword || title, rewriteStock ? 6 : 1)
+  const fresh = photos.filter(
+    item => !banned.some(url => urlsSharePhoto(item?.url, url) || (item?.id != null && url.includes(String(item.id))))
+  )
+  const photo = rewriteStock ? fresh[1] || fresh[0] || photos[1] || photos[0] || null : photos[0] || null
+  const backgroundUrls = youtubeThumb ? [youtubeThumb] : photo?.url ? [photo.url] : []
   let heroImage = ''
 
   try {
@@ -655,30 +653,21 @@ export async function attachBrandedHero(result, settings = {}) {
       title,
       siteName: siteLabel(settings),
       backgroundUrl: backgroundUrls[0] || '',
-      backgroundUrls,
-      requirePhoto: productHero && productUrls.length > 0
+      backgroundUrls
     })
   } catch (error) {
     console.error('[hero] branded raster failed', error?.message || error)
-
-    if (productHero && (error?.fallbackUrl || productUrls[0])) {
-      return {
-        ...result,
-        heroImage: error?.fallbackUrl || productUrls[0],
-        heroImageId: null,
-        heroImageSource: 'amazon'
-      }
-    }
   }
 
   if (!heroImage) {
-    const fallback = productHero ? productUrls[0] || '' : result.heroImage || ''
+    const rawHero = String(result.heroImage || '')
+    const fallback = rewriteStock && /amazon|media-amazon/i.test(rawHero) ? '' : rawHero
 
     return {
       ...result,
       heroImage: fallback,
       heroImageId: fallback ? result.heroImageId ?? null : null,
-      heroImageSource: productHero && fallback ? 'amazon' : result.heroImageSource || 'gradient'
+      heroImageSource: fallback ? result.heroImageSource || 'gradient' : 'gradient'
     }
   }
 
@@ -686,7 +675,7 @@ export async function attachBrandedHero(result, settings = {}) {
     ...result,
     heroImage,
     heroImageId: null,
-    heroImageSource: productHero && productUrls.length ? 'amazon-product' : youtubeThumb ? 'branded-youtube' : photo ? 'branded-photo' : 'branded-gradient'
+    heroImageSource: youtubeThumb ? 'branded-youtube' : photo ? 'branded-photo' : 'branded-gradient'
   }
 }
 

@@ -24,6 +24,7 @@ import { countries } from '@/configs/countries'
 import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
 import { buildCheckPriceButton, escapeHtml, extractAsin, renderResponsiveTable, renderTopPickCards, rewriteAcceptsSource, rewriteSourceError, withRequiredCheckPrice } from '../utils/articleHtml'
 import { fetchInternalAmazonData, formatAmazonProducts, generateAmazonRoundupOutline, generateAmazonRoundupSection } from './amazonRoundUp'
+import { generateAmazonReviewOutline, generateAmazonReviewSection } from './amazonReview'
 
 function firstAmazonUrl(text) {
   const match = String(text || '').match(/https?:\/\/(?:www\.)?(?:amazon\.[^\s)"'<>]+|amzn\.to\/[^\s)"'<>]+)/i)
@@ -46,6 +47,14 @@ function amazonRewriteOptions(settings, sourceText, extraText = '') {
 
 function isAmazonRewriteType(type) {
   return type === 'amazon-roundup-rewrite' || type === 'amazon-review-rewrite'
+}
+
+function excludedHeroUrlsFromSource(rawHtml, sourceText) {
+  return (
+    `${rawHtml || ''}\n${sourceText || ''}`.match(/https?:\/\/[^"'\\\s<>)]+/gi)?.filter(url =>
+      /images\.pexels|pixabay|images\.unsplash|wp-content\/uploads|og:image/i.test(url)
+    ) || []
+  )
 }
 
 function decodeHtml(value) {
@@ -725,9 +734,7 @@ export async function generateRewriteOutline(body, genAI) {
       genAI
     )
 
-    const excludedHeroUrls = `${rawHtml || ''}\n${sourceText || ''}`.match(/https?:\/\/[^"'\\\s<>)]+/gi)?.filter(url =>
-      /images\.pexels|pixabay|images\.unsplash|wp-content\/uploads|og:image/i.test(url)
-    ) || []
+    const excludedHeroUrls = excludedHeroUrlsFromSource(rawHtml, sourceText)
 
     return {
       ...roundupResult,
@@ -735,6 +742,49 @@ export async function generateRewriteOutline(body, genAI) {
       sourceArticleType: detectedType,
       excludedHeroUrls,
       productImages: roundupResult.productImages || loadedProducts.productImages || [],
+      fetchedSourceArticle: sourceText.slice(0, 8000)
+    }
+  }
+
+  if (settings.type === 'amazon-review-rewrite') {
+    const product = rewriteProducts[0] || null
+    const keyword = targetKeyword || product?.productName || prompt || 'Amazon product'
+    const excludedHeroUrls = excludedHeroUrlsFromSource(rawHtml, sourceText)
+
+    const reviewResult = await generateAmazonReviewOutline(
+      {
+        ...body,
+        targetKeyword: keyword,
+        sourceTitle: articleData.title || '',
+        sourceArticleText: sourceText,
+        excludedHeroUrls,
+        prefetchedProduct: product,
+        settings: {
+          ...settings,
+          type: 'amazon-review-rewrite',
+          targetKeyword: keyword,
+          amazonProductUrl: settings.amazonProductUrl || product?.amazonUrl || '',
+          condensedMode: Boolean(settings.condensedMode || settings.enableCondensedMode),
+          enableCondensedMode: Boolean(settings.condensedMode || settings.enableCondensedMode)
+        }
+      },
+      genAI
+    )
+
+    return {
+      ...reviewResult,
+      success: true,
+      sourceArticleType: detectedType,
+      excludedHeroUrls,
+      heroImage: reviewResult.heroImage && /amazon|media-amazon/i.test(reviewResult.heroImage) ? '' : reviewResult.heroImage || '',
+      heroImageId:
+        reviewResult.heroImage && /amazon|media-amazon/i.test(reviewResult.heroImage) ? null : reviewResult.heroImageId ?? null,
+      heroImageSource:
+        reviewResult.heroImage && /amazon|media-amazon/i.test(reviewResult.heroImage)
+          ? null
+          : reviewResult.heroImageSource || null,
+      productImages: loadedProducts.productImages || reviewResult.productImages || [],
+      rewriteProducts,
       fetchedSourceArticle: sourceText.slice(0, 8000)
     }
   }
@@ -1075,6 +1125,36 @@ export async function generateRewriteSection(body, genAI) {
         },
         targetKeyword: targetKeyword || settings.targetKeyword,
         prefetchedProducts: products,
+        sourceArticleText: sourceText
+      },
+      genAI
+    )
+  }
+
+  if (settings.type === 'amazon-review-rewrite') {
+    let sourceText = String(settings.fetchedSourceArticle || '')
+
+    if (articleUrlToRewrite) {
+      try {
+        const articleData = await fetchArticleData(articleUrlToRewrite)
+
+        if (articleData?.text) sourceText = articleData.text
+      } catch (error) {
+        console.warn('[Rewrite Review] source refetch failed', error?.message || error)
+      }
+    }
+
+    return generateAmazonReviewSection(
+      {
+        ...body,
+        settings: {
+          ...settings,
+          type: 'amazon-review-rewrite',
+          condensedMode: Boolean(settings.condensedMode || settings.enableCondensedMode),
+          enableCondensedMode: Boolean(settings.condensedMode || settings.enableCondensedMode),
+          fetchedSourceArticle: sourceText.slice(0, 8000)
+        },
+        targetKeyword: targetKeyword || settings.targetKeyword,
         sourceArticleText: sourceText
       },
       genAI
