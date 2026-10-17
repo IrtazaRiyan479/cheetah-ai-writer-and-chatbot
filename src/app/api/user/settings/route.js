@@ -7,7 +7,9 @@ import { authOptions } from '@/libs/auth';
 import { planTier } from '@/libs/entitlement';
 import { isValidEmail } from '@/utils/credentials';
 
-const prisma = new PrismaClient();
+const prisma = global.prisma || new PrismaClient()
+
+if (process.env.NODE_ENV !== 'production') global.prisma = prisma
 
 export async function GET(request) {
   const session = await getServerSession(authOptions);

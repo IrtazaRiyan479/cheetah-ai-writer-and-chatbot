@@ -20,14 +20,22 @@ export default function ModuleGate({ featureKey, children }) {
         .then(response => response.json())
         .catch(() => ({})),
       fetch('/api/user/settings')
-        .then(async response => (response.ok ? response.json() : { guest: true }))
-        .catch(() => ({ guest: true }))
+        .then(async response => {
+          if (response.status === 401) return { guest: true }
+          if (!response.ok) return { unavailable: true }
+          return response.json()
+        })
+        .catch(() => ({ unavailable: true }))
     ]).then(([pricing, settings]) => {
       if (!active) return
       const mode = pricing.modes?.[featureKey] || (FREE_FEATURES.has(featureKey) ? 'free' : 'pro')
       const label = FEATURE_META[featureKey]?.label || 'This page'
       const tier = settings.user?.tier || 'free'
-      const signedOut = Boolean(settings.guest) || !settings.user
+      const signedOut = Boolean(settings.guest)
+      if (settings.unavailable && !settings.user) {
+        setStatus('ok')
+        return
+      }
       const isMaxUser = tier === 'max' || tier === 'admin'
       const isPaidUser = isMaxUser || tier === 'pro'
 

@@ -33,16 +33,16 @@ async function fetchModesAndUser() {
     fetch('/api/user/settings')
       .then(async res => {
         if (res.status === 401) return { guest: true }
-        if (!res.ok) return { guest: true }
+        if (!res.ok) return { unavailable: true }
         return res.json()
       })
-      .catch(() => ({ guest: true }))
+      .catch(() => ({ unavailable: true }))
   ])
 
   const modes = pricing.modes || settings.featureModes || {}
   const paid = Boolean(settings.user?.paid)
   const isMax = Boolean(settings.user?.isMax)
-  return { modes, paid, isMax }
+  return { modes, paid, isMax, unavailable: Boolean(settings.unavailable) && !settings.user }
 }
 
 export function FeatureAccessProvider({ children }) {
@@ -56,10 +56,12 @@ export function FeatureAccessProvider({ children }) {
 
   const refreshModes = useCallback(async () => {
     try {
-      const { modes, paid, isMax: maxUser } = await fetchModesAndUser()
+      const { modes, paid, isMax: maxUser, unavailable } = await fetchModesAndUser()
       setFeatureModes(modes || {})
-      setIsPaid(paid)
-      setIsMax(maxUser)
+      if (!unavailable) {
+        setIsPaid(paid)
+        setIsMax(maxUser)
+      }
       setModesReady(true)
     } catch {
       setModesReady(true)
