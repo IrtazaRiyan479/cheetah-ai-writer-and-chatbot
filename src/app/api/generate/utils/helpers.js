@@ -619,11 +619,21 @@ export async function buildBrandedHero({ title, siteName, backgroundUrl, backgro
   return `data:image/png;base64,${png.toString('base64')}`
 }
 
+function urlsSharePhoto(candidateUrl, bannedUrl) {
+  const a = String(candidateUrl || '')
+  const b = String(bannedUrl || '')
+  if (!a || !b) return false
+  if (a === b || b.includes(a) || a.includes(b)) return true
+  const id = a.match(/pexels\.com\/photos\/(\d+)/i)?.[1] || a.match(/images\.unsplash\.com\/(?:photo-)?([^/?]+)/i)?.[1]
+  return Boolean(id && id.length > 3 && b.includes(id))
+}
+
 export async function attachBrandedHero(result, settings = {}) {
   if (!result?.success) return result
 
   const title = result.title || settings.targetKeyword || 'Article'
-  const productHero = settings.type === 'amazon-roundup-rewrite' || settings.type === 'amazon-review-rewrite'
+  const productHero = settings.type === 'amazon-review-rewrite'
+  const rewriteRoundup = settings.type === 'amazon-roundup-rewrite'
   const youtubeThumb =
     settings.type === 'youtube-blog' && /^https?:/i.test(String(result.heroImage || ''))
       ? String(result.heroImage)
@@ -633,7 +643,10 @@ export async function attachBrandedHero(result, settings = {}) {
         url => url && /^https?:/i.test(String(url)) && /amazon|media-amazon/i.test(String(url))
       )
     : []
-  const photo = productHero || youtubeThumb ? null : (await pickRelevantImages(title, settings.targetKeyword || title, 1))[0]
+  const banned = Array.isArray(result.excludedHeroUrls) ? result.excludedHeroUrls.map(String) : []
+  const photos = productHero || youtubeThumb ? [] : await pickRelevantImages(title, settings.targetKeyword || title, rewriteRoundup ? 6 : 1)
+  const fresh = photos.filter(item => !banned.some(url => urlsSharePhoto(item?.url, url) || (item?.id != null && url.includes(String(item.id)))))
+  const photo = rewriteRoundup ? fresh[1] || fresh[0] || photos[1] || photos[0] || null : photos[0] || null
   const backgroundUrls = productHero ? productUrls : youtubeThumb ? [youtubeThumb] : photo?.url ? [photo.url] : []
   let heroImage = ''
 

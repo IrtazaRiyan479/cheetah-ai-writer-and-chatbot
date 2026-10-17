@@ -146,6 +146,75 @@ export function formatAmazonProducts(apiData, settings) {
   })
 }
 
+async function fillRoundupProducts(products, settings, keyword) {
+  const requested = Math.max(1, Math.min(10, Number(settings.numberOfProducts) || products.length || 5))
+  const kept = []
+  const seen = new Set()
+
+  for (const product of products) {
+    if (kept.length >= requested) break
+    const asin = String(product?.asin || '').toUpperCase()
+    if (asin && seen.has(asin)) continue
+    if (asin) seen.add(asin)
+    kept.push(product)
+  }
+
+  if (kept.length < requested && keyword) {
+    try {
+      const apiData = await fetchInternalAmazonData(keyword, { ...settings, asins: undefined, numberOfProducts: 10 })
+      const searched = formatAmazonProducts(apiData, { ...settings, numberOfProducts: 10 })
+
+      for (const product of searched) {
+        if (kept.length >= requested) break
+        const asin = String(product?.asin || '').toUpperCase()
+        if (asin && seen.has(asin)) continue
+        if (asin) seen.add(asin)
+        kept.push(product)
+      }
+    } catch (error) {
+      console.warn('[amazon-roundup-rewrite] product fill failed:', error?.message || error)
+    }
+  }
+
+  return kept.slice(0, requested)
+}
+
+function applyExactProductOutline(outline, products) {
+  const items = Array.isArray(outline) ? outline : []
+  const productItems = products.map((product, index) => ({
+    type: 'h2',
+    text: titleCaseWords(`${index + 1}. ${product.productName || product.asin || 'Amazon Product'}`),
+    sectionType: 'product',
+    productData: {
+      productName: product.productName || '',
+      amazonUrl: product.amazonUrl || '',
+      imageUrl: product.imageUrl || '',
+      price: product.price || '',
+      asin: product.asin || ''
+    }
+  }))
+
+  const before = []
+  const after = []
+  let seenProduct = false
+
+  for (const item of items) {
+    const isProduct = item?.sectionType === 'product' || /^\d+\.\s+/.test(String(item?.text || ''))
+    if (isProduct) {
+      seenProduct = true
+      continue
+    }
+    if (!seenProduct) before.push(item)
+    else after.push(item)
+  }
+
+  if (!before.length) {
+    before.push({ type: 'h2', sectionType: 'intro', text: 'Introduction' })
+  }
+
+  return [...before, ...productItems, ...after]
+}
+
 export async function generateAmazonRoundupOutline(body, genAI) {
   const { settings, targetKeyword } = body
   const { model, language, country, includeFaq, automaticExternalLinks } = settings
@@ -159,6 +228,10 @@ export async function generateAmazonRoundupOutline(body, genAI) {
   if (!formattedProducts.length) {
     const amazonApiData = await fetchInternalAmazonData(targetKeyword, settings)
     formattedProducts = formatAmazonProducts(amazonApiData, settings)
+  }
+
+  if (isRewriteMode) {
+    formattedProducts = await fillRoundupProducts(formattedProducts, settings, targetKeyword)
   }
 
   if (formattedProducts.length === 0) {
@@ -232,6 +305,8 @@ export async function generateAmazonRoundupOutline(body, genAI) {
 
     ${isRewriteMode && sourceArticleText ? `REWRITE MODE (Amazon Roundup layout — same as native Amazon Roundup):
     - Source article text is reference only. Rewrite in a fresh voice; do not copy sentences.
+    - The selected Number of Products is ${formattedProducts.length}. Output EXACTLY that many product H2s, even if the source article lists a different count.
+    - Prefer ASINs, names, and details from the source when they appear in the product list. Extra products may come from a fresh Amazon search.
     - Keep the EXACT layout order above (intro → numbered products → buying_guide → conclusion → optional FAQ).
     - Each product H2 MUST keep sectionType "product" and include productData (productName, amazonUrl, imageUrl, price) from the list.
     - Do not turn this into a generic blog outline.
@@ -318,11 +393,13 @@ export async function generateAmazonRoundupOutline(body, genAI) {
 
     scoredCandidates.sort((a, b) => b.score - a.score)
 
-    if (scoredCandidates[0].score >= 2.0) {
-      heroImageUrl = scoredCandidates[0].url
-      heroImageId = scoredCandidates[0].id ?? null
-      heroImageSource = scoredCandidates[0].source || null
-      console.log(`[Hero Image] Selected ${scoredCandidates[0].source} (Score: ${scoredCandidates[0].score})`)
+    const heroPick = isRewriteMode && scoredCandidates.length > 1 ? scoredCandidates[1] : scoredCandidates[0]
+
+    if (heroPick && heroPick.score >= 2.0) {
+      heroImageUrl = heroPick.url
+      heroImageId = heroPick.id ?? null
+      heroImageSource = heroPick.source || null
+      console.log(`[Hero Image] Selected ${heroPick.source} (Score: ${heroPick.score})`)
     } else {
       console.log(
         `[Hero Image] Top image score (${scoredCandidates[0].score}) below 2.0. Invoking AI generation logic.`
@@ -377,9 +454,13 @@ export async function generateAmazonRoundupOutline(body, genAI) {
 
       return next
     })
+
+    if (isRewriteMode) {
+      parsedData.outline = applyExactProductOutline(parsedData.outline, formattedProducts)
+    }
   }
 
-  if (isRewriteMode || formattedProducts.some(p => p.imageUrl)) {
+  if (!isRewriteMode && formattedProducts.some(p => p.imageUrl)) {
     const productHero = formattedProducts.find(p => p.imageUrl)?.imageUrl || ''
     if (productHero) {
       heroImageUrl = productHero

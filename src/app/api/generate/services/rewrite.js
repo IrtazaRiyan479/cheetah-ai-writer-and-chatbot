@@ -717,7 +717,7 @@ export async function generateRewriteOutline(body, genAI) {
           type: 'amazon-roundup-rewrite',
           targetKeyword: keyword,
           asins: asins.length ? asins : settings.asins,
-          numberOfProducts: rewriteProducts.length || settings.numberOfProducts || 5
+          numberOfProducts: Math.max(1, Math.min(10, Number(settings.numberOfProducts) || 5))
         },
         prefetchedProducts: rewriteProducts,
         sourceArticleText: sourceText
@@ -725,10 +725,15 @@ export async function generateRewriteOutline(body, genAI) {
       genAI
     )
 
+    const excludedHeroUrls = `${rawHtml || ''}\n${sourceText || ''}`.match(/https?:\/\/[^"'\\\s<>)]+/gi)?.filter(url =>
+      /images\.pexels|pixabay|images\.unsplash|wp-content\/uploads|og:image/i.test(url)
+    ) || []
+
     return {
       ...roundupResult,
       success: true,
       sourceArticleType: detectedType,
+      excludedHeroUrls,
       productImages: roundupResult.productImages || loadedProducts.productImages || [],
       fetchedSourceArticle: sourceText.slice(0, 8000)
     }
