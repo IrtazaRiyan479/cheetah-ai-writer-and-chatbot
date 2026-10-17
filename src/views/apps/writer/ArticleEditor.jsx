@@ -1044,7 +1044,21 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       let initialContent = `<h1>${topTitle}</h1>`
 
       if (settings.heroImage) {
-        initialContent += `<p><img src="${settings.heroImage}" alt="${topTitle}" title="${topTitle}" /></p>`
+        const youtubeHref =
+          String(settings.youtubeUrl || '').trim() ||
+          (settings.youtubeVideoId
+            ? `https://www.youtube.com/watch?v=${settings.youtubeVideoId}`
+            : settings.heroImageId && String(settings.heroImageSource || '').includes('youtube')
+              ? `https://www.youtube.com/watch?v=${settings.heroImageId}`
+              : '')
+
+        if (youtubeHref && (settings.type === 'youtube-blog' || settings.youtubeVideoId || settings.youtubeUrl)) {
+          const safeHref = youtubeHref.replace(/"/g, '&quot;')
+          const safeTitle = String(topTitle || '').replace(/"/g, '&quot;')
+          initialContent += `<p><a href="${safeHref}" target="_blank" rel="noopener noreferrer nofollow" title="Watch on YouTube"><img src="${settings.heroImage}" alt="${safeTitle}" title="${safeTitle}" /></a></p>`
+        } else {
+          initialContent += `<p><img src="${settings.heroImage}" alt="${topTitle}" title="${topTitle}" /></p>`
+        }
       } else {
         initialContent += `<p></p>`
       }

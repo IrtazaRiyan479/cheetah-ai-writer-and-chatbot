@@ -16,6 +16,27 @@ function h2Count(outline) {
   return (Array.isArray(outline) ? outline : []).filter(item => String(item?.type || '').toLowerCase() === 'h2').length
 }
 
+function h3Count(outline) {
+  return (Array.isArray(outline) ? outline : []).filter(item => String(item?.type || '').toLowerCase() === 'h3').length
+}
+
+/** Coerce model quirks: h1 -> h2, missing type -> h2, drop empty rows. */
+function normalizeOutline(outline) {
+  if (!Array.isArray(outline)) return []
+
+  return outline
+    .map(item => {
+      if (!item || typeof item !== 'object') return null
+      const text = String(item.text || item.title || item.heading || '').trim()
+      if (!text) return null
+      let type = String(item.type || 'h2').toLowerCase()
+      if (type === 'h1' || type === 'heading' || type === 'title') type = 'h2'
+      if (type !== 'h2' && type !== 'h3') type = 'h2'
+      return { ...item, type, text }
+    })
+    .filter(Boolean)
+}
+
 function sourceUnderstandingInstruction(source) {
   const automatic = /asr|gemini|timedtext|youtube-transcript/i.test(String(source || ''))
 
@@ -102,9 +123,15 @@ export async function generateYoutubeBlogOutline(body, genAI) {
 
     CRITICAL STRUCTURE REQUIREMENTS:
     1. Length: The finished article must be about ${plan.targetWords} words so it matches the video. A long video must become a long article. A short video must still be divided into ${plan.minH2} to ${plan.maxH2} H2 sections, even when each section is short. Never return fewer than ${plan.minH2} H2 objects.
-    2. Depth: Each H2 may include ${plan.h3min} to ${plan.h3max} H3 subheadings. On videos under 8 minutes, prefer no H3 unless the section has two distinct points. Do not pad a short video with filler sections.
+    2. Depth / sub-headings — REQUIRED for every outline:
+       - Use type "h2" for main sections and type "h3" for sub-headings under those sections.
+       - You MUST include H3 sub-headings. Target about ${Math.max(2, Math.floor(plan.minH2 / 2))} to ${Math.max(plan.minH2, plan.maxH2)} total H3 items across the outline.
+       - At least half of the H2 sections (except a short conclusion H2) must be followed immediately by 1 to ${Math.max(1, plan.h3max)} H3 objects.
+       - Correct flat order example: {"type":"h2","text":"..."}, {"type":"h3","text":"..."}, {"type":"h3","text":"..."}, {"type":"h2","text":"..."}, {"type":"h3","text":"..."}, {"type":"h2","text":"..."}
+       - Never output type "h1" inside the outline array. The H1 is only the top-level "title" field.
+       - Do not put all headings as h2. Mixing h2 + h3 is mandatory.
     3. Coverage: The H2s together must walk through the transcript from beginning to end, including the ending of a long video.
-    4. Flatness: Keep the JSON array flat (no nesting).
+    4. Flatness: Keep the JSON array flat (no nesting). H3 items sit after their parent H2 in sequence.
   `
 
   let parsedData = null
@@ -112,12 +139,25 @@ export async function generateYoutubeBlogOutline(body, genAI) {
   let lastOutlineError = null
 
   const acceptCandidate = candidate => {
-    const count = h2Count(candidate?.outline)
+    if (candidate && Array.isArray(candidate.outline)) {
+      candidate = { ...candidate, outline: normalizeOutline(candidate.outline) }
+    }
 
-    if (!best || count > h2Count(best.outline)) best = candidate
+    const count = h2Count(candidate?.outline)
+    const subCount = h3Count(candidate?.outline)
+
+    if (!best || count > h2Count(best.outline) || (count === h2Count(best.outline) && subCount > h3Count(best.outline))) {
+      best = candidate
+    }
 
     if (count < plan.minH2) {
       throw new Error(`Outline had ${count} H2 sections; need at least ${plan.minH2}`)
+    }
+
+    // Always require some H3 depth (short and long videos)
+    const minH3 = Math.max(2, Math.floor(count / 2))
+    if (subCount < minH3) {
+      throw new Error(`Outline had only ${subCount} H3 sub-headings (need at least ${minH3}); pure H2 lists are rejected`)
     }
 
     parsedData = candidate
@@ -140,10 +180,10 @@ export async function generateYoutubeBlogOutline(body, genAI) {
         console.warn('[Outline] Gemini quota/high demand — using Groq/Mistral')
 
         const alt = await callLightLLM({
-          system: `Return only valid JSON with keys metaTitle, metaDescription, title, outline. Include ${plan.minH2} to ${plan.maxH2} H2 items. No markdown.`,
+          system: `Return only valid JSON with keys metaTitle, metaDescription, title, outline. Include ${plan.minH2} to ${plan.maxH2} H2 items AND multiple H3 sub-headings (type h3 after their parent h2). Never return only h2. No markdown.`,
           prompt:
             outlinePrompt +
-            `\n\nReturn JSON: {"metaTitle":"","metaDescription":"","title":"","outline":[{"type":"h2","text":""}]}\nThe outline must contain at least ${plan.minH2} objects with type h2.`,
+            `\n\nReturn JSON: {"metaTitle":"","metaDescription":"","title":"","outline":[{"type":"h2","text":""},{"type":"h3","text":""}]}\nThe outline must contain at least ${plan.minH2} objects with type h2. For videos over 8 minutes include multiple type h3 sub-headings after their parent h2.`,
           json: true,
           max_tokens: Math.min(4000, 900 + plan.maxH2 * 180)
         })
@@ -176,6 +216,14 @@ export async function generateYoutubeBlogOutline(body, genAI) {
       `OUTLINE_PARSE_FAILED: Could not produce a valid outline. ${lastOutlineError?.message || ''}`.trim()
     )
   }
+
+  console.info('[Outline] youtube-blog structure', {
+    minutes: plan.minutes,
+    h2: h2Count(parsedData.outline),
+    h3: h3Count(parsedData.outline),
+    types: (parsedData.outline || []).map(item => item?.type),
+    texts: (parsedData.outline || []).map(item => String(item?.text || '').slice(0, 40))
+  })
 
   return {
     success: true,
