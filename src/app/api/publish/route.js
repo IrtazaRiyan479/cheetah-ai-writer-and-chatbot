@@ -141,11 +141,11 @@ function extFromMime(mime) {
 
 function decodeHtmlAttr(value) {
   return String(value || '')
-    .replace(/&/g, '&')
-    .replace(/"/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
+    .replace(new RegExp('&' + 'amp;', 'g'), '&')
+    .replace(new RegExp('&' + 'quot;', 'g'), '"')
+    .replace(new RegExp('&' + '#39;', 'g'), "'")
+    .replace(new RegExp('&' + 'lt;', 'g'), '<')
+    .replace(new RegExp('&' + 'gt;', 'g'), '>')
 }
 
 function parseDataUrl(src) {
@@ -248,18 +248,84 @@ async function loadImageBytes(src) {
   return { buffer, mimeType }
 }
 
+async function compressWithTiny(bytes) {
+  const key = process.env.TINYPNG_API_KEY
+
+  if (!bytes?.buffer?.length || bytes.buffer.length < 20 * 1024) return bytes
+  if (!key) {
+    console.error('TinyPNG skipped: TINYPNG_API_KEY is missing')
+
+    return bytes
+  }
+
+  const mimeType = String(bytes.mimeType || 'image/png').toLowerCase()
+
+  if (!/^image\/(png|jpe?g|webp)$/.test(mimeType)) return bytes
+
+  try {
+    const tinyKey = Buffer.from(`api:${key}`).toString('base64')
+    const shrinkRes = await fetch('https://api.tinify.com/shrink', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${tinyKey}`,
+        'Content-Type': mimeType === 'image/jpg' ? 'image/jpeg' : mimeType
+      },
+      body: bytes.buffer,
+      signal: AbortSignal.timeout(20000)
+    })
+    const shrinkData = await shrinkRes.json().catch(() => null)
+
+    if (!shrinkRes.ok || shrinkData?.error || !shrinkData?.output?.url) {
+      console.error('TinyPNG skipped:', shrinkData?.error || shrinkData?.message || shrinkRes.status)
+
+      return bytes
+    }
+
+    const compRes = await fetch(shrinkData.output.url, {
+      headers: { Authorization: `Basic ${tinyKey}` },
+      signal: AbortSignal.timeout(20000)
+    })
+
+    if (!compRes.ok) return bytes
+
+    const buffer = Buffer.from(await compRes.arrayBuffer())
+
+    if (!buffer.length || buffer.length >= bytes.buffer.length) return bytes
+
+    const compressedType = (compRes.headers.get('content-type') || shrinkData.output.type || 'image/png')
+      .split(';')[0]
+      .trim()
+      .toLowerCase()
+
+    console.log(`TinyPNG ${bytes.buffer.length} -> ${buffer.length}`)
+
+    return {
+      buffer,
+      mimeType: compressedType.startsWith('image/') ? compressedType : 'image/png'
+    }
+  } catch (error) {
+    console.error('TinyPNG skipped:', serializeError(error))
+
+    return bytes
+  }
+}
+
 async function uploadBufferToWP(bytes, siteUrl, credentials) {
   const mimeType = bytes.mimeType || 'image/jpeg'
   const filename = bytes.filename || `image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extFromMime(mimeType)}`
-  const mediaRes = await wpFetch(`${siteUrl}/wp-json/wp/v2/media?_fields=id,source_url`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${credentials}`,
-      'Content-Disposition': `attachment; filename="${filename}"`,
-      'Content-Type': mimeType
+  const mediaRes = await wpFetch(
+    `${siteUrl}/wp-json/wp/v2/media?_fields=id,source_url`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${credentials}`,
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Type': mimeType
+      },
+      body: bytes.buffer
     },
-    body: bytes.buffer
-  })
+    1
+  )
   const mediaData = await readWp(mediaRes, 'Media upload failed. Check the application password can upload files.')
   const id = pickId(mediaData, mediaRes)
 
@@ -297,6 +363,48 @@ async function mapPool(items, limit, worker) {
   await Promise.all(runners)
 }
 
+async function remoteImageIsLive(src) {
+  const headers = {
+    Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+  }
+
+  const liveFrom = res => {
+    if (!(res.ok || res.status === 206)) return false
+
+    const type = (res.headers.get('content-type') || '').toLowerCase()
+
+    if (type.includes('text/html') || type.startsWith('text/')) return false
+
+    return true
+  }
+
+  try {
+    const head = await fetch(src, {
+      method: 'HEAD',
+      redirect: 'follow',
+      headers,
+      signal: AbortSignal.timeout(8000)
+    })
+
+    if (liveFrom(head)) return true
+
+    if (![400, 403, 405, 501].includes(head.status)) return false
+
+    const ranged = await fetch(src, {
+      method: 'GET',
+      redirect: 'follow',
+      headers: { ...headers, Range: 'bytes=0-2047' },
+      signal: AbortSignal.timeout(8000)
+    })
+
+    return liveFrom(ranged)
+  } catch {
+    return false
+  }
+}
+
 async function sideloadImages(html, heroSrc, siteUrl, credentials) {
   const rawSrcs = []
   const re = /<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi
@@ -315,8 +423,12 @@ async function sideloadImages(html, heroSrc, siteUrl, credentials) {
   const uploaded = new Map()
 
   await mapPool(targets, 6, async src => {
+    const fetchSrc = decodeHtmlAttr(src)
+
     try {
-      const bytes = await loadImageBytes(decodeHtmlAttr(src))
+      if (/^https?:\/\//i.test(fetchSrc) && (await remoteImageIsLive(fetchSrc))) return
+
+      const bytes = await compressWithTiny(await loadImageBytes(fetchSrc))
       const media = await uploadBufferToWP(bytes, siteUrl, credentials)
 
       uploaded.set(src, media)
@@ -324,6 +436,8 @@ async function sideloadImages(html, heroSrc, siteUrl, credentials) {
       console.error('Image sideload skipped:', serializeError(error))
     }
   })
+
+  console.log(`Publish images: ${targets.length} checked, ${uploaded.size} uploaded`)
 
   let nextHtml = html
   let featuredMediaId = null
