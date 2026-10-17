@@ -23,7 +23,7 @@ import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
 import { buildCheckPriceButton, escapeHtml, extractAsin, renderResponsiveTable, renderTopPickCards, rewriteAcceptsSource, rewriteSourceError, withRequiredCheckPrice } from '../utils/articleHtml'
-import { fetchInternalAmazonData, formatAmazonProducts } from './amazonRoundUp'
+import { fetchInternalAmazonData, formatAmazonProducts, generateAmazonRoundupOutline, generateAmazonRoundupSection } from './amazonRoundUp'
 
 function firstAmazonUrl(text) {
   const match = String(text || '').match(/https?:\/\/(?:www\.)?(?:amazon\.[^\s)"'<>]+|amzn\.to\/[^\s)"'<>]+)/i)
@@ -702,6 +702,38 @@ export async function generateRewriteOutline(body, genAI) {
     ? await loadRewriteProducts(settings, sourceText, rawHtml)
     : { products: [], productImages: [] }
   const rewriteProducts = loadedProducts.products || []
+
+  // Rewrite Amazon Roundup → same outline/section rules as native Amazon Roundup
+  if (settings.type === 'amazon-roundup-rewrite') {
+    const keyword = targetKeyword || rewriteProducts[0]?.productName || prompt || 'Amazon products'
+    const asins = rewriteProducts.map(p => p.asin).filter(Boolean)
+
+    const roundupResult = await generateAmazonRoundupOutline(
+      {
+        ...body,
+        targetKeyword: keyword,
+        settings: {
+          ...settings,
+          type: 'amazon-roundup-rewrite',
+          targetKeyword: keyword,
+          asins: asins.length ? asins : settings.asins,
+          numberOfProducts: rewriteProducts.length || settings.numberOfProducts || 5
+        },
+        prefetchedProducts: rewriteProducts,
+        sourceArticleText: sourceText
+      },
+      genAI
+    )
+
+    return {
+      ...roundupResult,
+      success: true,
+      sourceArticleType: detectedType,
+      productImages: roundupResult.productImages || loadedProducts.productImages || [],
+      fetchedSourceArticle: sourceText.slice(0, 8000)
+    }
+  }
+
   const productListString = rewriteProducts
     .map(
       (product, index) =>
@@ -1000,6 +1032,49 @@ export async function generateRewriteSection(body, genAI) {
   const countryObj = countries ? countries.find(c => c.code === country) : null
   const countryName = countryObj ? countryObj.name : country || 'United States'
   const baseSystemInstruction = getBaseSystemInstruction(langName, countryName)
+
+  if (settings.type === 'amazon-roundup-rewrite') {
+    const outlineProducts = (Array.isArray(outlineContext) ? outlineContext : [])
+      .map(item => item?.productData)
+      .filter(Boolean)
+
+    let sourceText = String(settings.fetchedSourceArticle || '')
+    let rawHtml = ''
+
+    if (articleUrlToRewrite) {
+      try {
+        const [articleData, html] = await Promise.all([
+          fetchArticleData(articleUrlToRewrite),
+          fetchRawArticleHtml(articleUrlToRewrite)
+        ])
+        if (articleData?.text) sourceText = articleData.text
+        rawHtml = html || ''
+      } catch (e) {
+        console.warn('[Rewrite Roundup] source refetch failed', e?.message || e)
+      }
+    }
+
+    let products = outlineProducts
+    if (!products.length) {
+      const loaded = await loadRewriteProducts(settings, sourceText, rawHtml)
+      products = loaded.products || []
+    }
+
+    return generateAmazonRoundupSection(
+      {
+        ...body,
+        settings: {
+          ...settings,
+          type: 'amazon-roundup-rewrite',
+          fetchedSourceArticle: sourceText.slice(0, 8000)
+        },
+        targetKeyword: targetKeyword || settings.targetKeyword,
+        prefetchedProducts: products,
+        sourceArticleText: sourceText
+      },
+      genAI
+    )
+  }
 
   const [articleData, rawHtml] = await Promise.all([
     fetchArticleData(articleUrlToRewrite),

@@ -257,6 +257,9 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
         if (data.comparisonShared) updateSetting('comparisonShared', data.comparisonShared)
         if (data.metaTitle) updateSetting('metaTitle', data.metaTitle)
         if (data.metaDescription) updateSetting('metaDescription', data.metaDescription)
+        if (data.fetchedSourceArticle) updateSetting('fetchedSourceArticle', data.fetchedSourceArticle)
+        if (data.productImages) updateSetting('productImages', data.productImages)
+        if (data.rewriteProducts) updateSetting('rewriteProducts', data.rewriteProducts)
         setOutline(data.outline)
 
         if (settings.useOutlineEditor) {

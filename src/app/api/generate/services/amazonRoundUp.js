@@ -149,12 +149,20 @@ export function formatAmazonProducts(apiData, settings) {
 export async function generateAmazonRoundupOutline(body, genAI) {
   const { settings, targetKeyword } = body
   const { model, language, country, includeFaq, automaticExternalLinks } = settings
+  const sourceArticleText = String(body.sourceArticleText || '').trim()
+  const isRewriteMode = Boolean(sourceArticleText) || settings.type === 'amazon-roundup-rewrite'
 
-  const amazonApiData = await fetchInternalAmazonData(targetKeyword, settings)
-  const formattedProducts = formatAmazonProducts(amazonApiData, settings)
+  let formattedProducts = Array.isArray(body.prefetchedProducts)
+    ? body.prefetchedProducts.filter(p => p && (p.productName || p.asin || p.amazonUrl))
+    : []
+
+  if (!formattedProducts.length) {
+    const amazonApiData = await fetchInternalAmazonData(targetKeyword, settings)
+    formattedProducts = formatAmazonProducts(amazonApiData, settings)
+  }
 
   if (formattedProducts.length === 0) {
-    throw new Error('No Amazon products found for this keyword. Please check the keyword or Amazon API limit.')
+    throw new Error('No Amazon products found for this keyword. Please check the keyword, ASINs, or Amazon API limit.')
   }
 
   const langObj = languages ? languages[language] : null
@@ -221,6 +229,15 @@ export async function generateAmazonRoundupOutline(body, genAI) {
     4. Include a "conclusion" (type: h2).
     5. ${faqInstruction}
     6. ${relatedInstruction}
+
+    ${isRewriteMode && sourceArticleText ? `REWRITE MODE (Amazon Roundup layout — same as native Amazon Roundup):
+    - Source article text is reference only. Rewrite in a fresh voice; do not copy sentences.
+    - Keep the EXACT layout order above (intro → numbered products → buying_guide → conclusion → optional FAQ).
+    - Each product H2 MUST keep sectionType "product" and include productData (productName, amazonUrl, imageUrl, price) from the list.
+    - Do not turn this into a generic blog outline.
+
+    SOURCE ARTICLE (reference):
+    ${sourceArticleText.substring(0, 120000)}` : ''}
   `
 
   let parsedData = null
@@ -334,11 +351,41 @@ export async function generateAmazonRoundupOutline(body, genAI) {
   }
 
   if (Array.isArray(parsedData.outline)) {
+    // Ensure product H2s carry live productData (same as native roundup frontend needs)
+    let productCursor = 0
     parsedData.outline = parsedData.outline.map(item => {
-      if (!item || typeof item.text !== 'string') return item
+      if (!item || typeof item !== 'object') return item
+      const next = { ...item, text: typeof item.text === 'string' ? titleCaseWords(item.text) : item.text }
+      const isProduct =
+        next.sectionType === 'product' || /^\d+\.\s+/.test(String(next.text || ''))
 
-      return { ...item, text: titleCaseWords(item.text) }
+      if (isProduct && formattedProducts[productCursor]) {
+        const product = formattedProducts[productCursor]
+        productCursor += 1
+        next.sectionType = 'product'
+        next.productData = {
+          productName: product.productName,
+          amazonUrl: product.amazonUrl,
+          imageUrl: product.imageUrl,
+          price: product.price,
+          asin: product.asin
+        }
+        if (product.productName && !/^\d+\.\s+/.test(String(next.text || ''))) {
+          next.text = titleCaseWords(`${productCursor}. ${product.productName}`)
+        }
+      }
+
+      return next
     })
+  }
+
+  if (isRewriteMode || formattedProducts.some(p => p.imageUrl)) {
+    const productHero = formattedProducts.find(p => p.imageUrl)?.imageUrl || ''
+    if (productHero) {
+      heroImageUrl = productHero
+      heroImageId = null
+      heroImageSource = 'amazon'
+    }
   }
 
   return {
@@ -350,7 +397,9 @@ export async function generateAmazonRoundupOutline(body, genAI) {
     externalLinks: fetchedExternalLinks,
     heroImage: heroImageUrl,
     heroImageId,
-    heroImageSource
+    heroImageSource,
+    productImages: formattedProducts.map(p => p.imageUrl).filter(Boolean),
+    rewriteProducts: formattedProducts
   }
 }
 
@@ -371,8 +420,20 @@ export async function generateAmazonRoundupSection(body, genAI) {
 
   const { model, enableFirstHandExperience, improveReadability, pointOfView, toneOfVoice, customToneOfVoice } = settings
 
-  const amazonApiData = body.shared?.amazon || (await fetchInternalAmazonData(targetKeyword || articleTitle, settings))
-  const formattedProducts = formatAmazonProducts(amazonApiData, settings)
+  const outlineProducts = (Array.isArray(outlineContext) ? outlineContext : [])
+    .map(item => item?.productData)
+    .filter(product => product && (product.imageUrl || product.asin || product.productName || product.amazonUrl))
+
+  let formattedProducts = Array.isArray(body.prefetchedProducts) && body.prefetchedProducts.length
+    ? body.prefetchedProducts
+    : outlineProducts
+
+  if (!formattedProducts.length) {
+    const amazonApiData = body.shared?.amazon || (await fetchInternalAmazonData(targetKeyword || articleTitle, settings))
+    formattedProducts = formatAmazonProducts(amazonApiData, settings)
+  }
+
+  const sourceArticleText = String(body.sourceArticleText || settings.fetchedSourceArticle || '').trim()
 
   const activeHeadingText = heading || text || section.text || section.heading || 'Section'
   let activeSectionType = section.sectionType || section.type
@@ -442,6 +503,8 @@ export async function generateAmazonRoundupSection(body, genAI) {
     ${linkInstruction}
     ${extLinkInstruction}
     ${keywordSEOInstructions}
+    ${sourceArticleText ? `REWRITE SOURCE (reference only — rewrite freshly, same Amazon Roundup layout rules):
+${sourceArticleText.substring(0, 80000)}` : ''}
   `
 
   if (activeSectionType === 'intro') {
