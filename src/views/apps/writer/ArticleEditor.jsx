@@ -44,6 +44,7 @@ import InputLabel from '@mui/material/InputLabel'
 import Alert from '@mui/material/Alert'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Checkbox from '@mui/material/Checkbox'
+import Switch from '@mui/material/Switch'
 
 import { toast } from 'react-toastify'
 
@@ -821,6 +822,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
   const [isPublishing, setIsPublishing] = useState(false)
   const [publishTitle, setPublishTitle] = useState('')
   const [heroImageUrl, setHeroImageUrl] = useState(settings?.heroImage || '')
+  const [trimTitleAndHero, setTrimTitleAndHero] = useState(true)
   const [publishSuccessData, setPublishSuccessData] = useState(null)
 
   const editor = useEditor({
@@ -935,7 +937,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         }
       }
 
-      if (typeof window !== 'undefined') {
+      if (trimTitleAndHero && typeof window !== 'undefined') {
         const publishDiv = document.createElement('div')
 
         publishDiv.innerHTML = finalContent
@@ -2419,6 +2421,16 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                 onChange={e => setHeroImageUrl(e.target.value)}
                 helperText='Provide a direct link to an image. We will upload it to your WP Media Library.'
               />
+
+              <FormControlLabel
+                control={
+                  <Switch checked={trimTitleAndHero} onChange={e => setTrimTitleAndHero(e.target.checked)} />
+                }
+                label='Remove title and hero from the article body'
+              />
+              <Typography variant='caption' color='text.secondary' className='-mt-2'>
+                Title and featured image are still sent separately. Turn this off to keep the H1 and hero inside the post content.
+              </Typography>
 
               <Divider className='my-2' />
 
