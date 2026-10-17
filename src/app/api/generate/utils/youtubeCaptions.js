@@ -553,6 +553,8 @@ function resultFromTrack(base, text, trackOrSource) {
 async function loadYoutubeVideo(videoId) {
   const attempts = []
   const oembedPromise = fetchOembed(videoId)
+  // Start Gemini immediately in parallel — it is the reliable path when timedtext is blocked
+  const geminiPromise = fetchViaGeminiYoutube(videoId, '')
   const packagePromise = fetchViaYoutubeTranscriptPackage(videoId)
   const visitorData = await fetchVisitorData(videoId)
 
@@ -562,7 +564,7 @@ async function loadYoutubeVideo(videoId) {
   let transcript = ''
   let winningTrack = null
 
-  // Fast caption path — single Android client only
+  // Fast caption path — single Android client, one track try only
   for (const spec of PLAYER_CLIENTS) {
     const label = `${spec.client.clientName}${spec.client.clientVersion || ''}`
 
@@ -583,7 +585,8 @@ async function loadYoutubeVideo(videoId) {
 
       attempts.push(`${label}:tracks:${nextPlayer.tracks.length}`)
 
-      const orderedTracks = [...nextPlayer.tracks].sort((a, b) => rankTrack(b) - rankTrack(a)).slice(0, 2)
+      // Prefer English / manual track; only try the best one to save time
+      const orderedTracks = [...nextPlayer.tracks].sort((a, b) => rankTrack(b) - rankTrack(a)).slice(0, 1)
 
       for (const track of orderedTracks) {
         const text = await readCaptionTrack(track, videoId)
@@ -619,27 +622,42 @@ async function loadYoutubeVideo(videoId) {
 
   if (transcript && winningTrack) return resultFromTrack(base, transcript, winningTrack)
 
-  // Package fallback
-  try {
-    const pkg = await packagePromise
+  // Package (usually same blocked path) — do not await long; race with Gemini
+  let pkgResult = { text: '', source: '' }
 
-    if (pkg.text?.length > 40) {
-      attempts.push(`pkg:${pkg.source}`)
-      return resultFromTrack(base, pkg.text, pkg.source)
+  try {
+    pkgResult = await Promise.race([
+      packagePromise,
+      new Promise(resolve => setTimeout(() => resolve({ text: '', source: 'pkg:timeout' }), 4000))
+    ])
+
+    if (pkgResult.text?.length > 40) {
+      attempts.push(`pkg:${pkgResult.source}`)
+      return resultFromTrack(base, pkgResult.text, pkgResult.source)
     }
 
-    attempts.push('pkg:empty')
+    attempts.push(pkgResult.source === 'pkg:timeout' ? 'pkg:timeout' : 'pkg:empty')
   } catch (error) {
     attempts.push(`pkg:${error?.message || error}`)
   }
 
-  // Approach B — Gemini watches the YouTube URL (no timedtext / no PO token)
+  // Gemini was already running in parallel
   try {
-    const gemini = await fetchViaGeminiYoutube(videoId, title)
+    const gemini = await geminiPromise
 
     if (gemini.text?.length > 80) {
       attempts.push(`gemini:${gemini.source}`)
       return resultFromTrack(base, gemini.text, gemini.source)
+    }
+
+    // Rare: first Gemini call started with empty title — one retry with title (same keys, preferred model only)
+    if (title) {
+      const retry = await fetchViaGeminiYoutube(videoId, title)
+
+      if (retry.text?.length > 80) {
+        attempts.push(`gemini-retry:${retry.source}`)
+        return resultFromTrack(base, retry.text, retry.source)
+      }
     }
 
     attempts.push('gemini:empty')

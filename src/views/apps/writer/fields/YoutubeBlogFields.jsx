@@ -36,7 +36,7 @@ const YoutubeBlogFields = ({ settings, updateSetting }) => {
 
     const validateUrl = async () => {
       setIsValidating(true)
-      setStatusText('Checking the video and captions...')
+      setStatusText('Fetching the video and captions...')
       setStatusColor('text-textSecondary')
 
       try {
