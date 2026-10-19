@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 
 import { useRouter, useSearchParams } from 'next/navigation'
+
 import { useSession } from 'next-auth/react'
 
 import Card from '@mui/material/Card'
@@ -840,11 +841,13 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
   const searchParams = useSearchParams()
   const draftId = searchParams.get('draftId')
   const { data: session, status: sessionStatus } = useSession()
+
   const canUsePredefinedSites =
     sessionStatus === 'authenticated' &&
     String(session?.user?.email || '')
       .trim()
       .toLowerCase() === ADMIN_WP_SITES_EMAIL
+
   const { modeOf } = useFeatureAccess()
   const [isGenerating, setIsGenerating] = useState(true)
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -874,8 +877,9 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
   const [publishDialogOpen, setPublishDialogOpen] = useState(false)
   const [siteSelectionType, setSiteSelectionType] = useState('')
-  const resolvedSiteSelection =
-    isPredefinedWpSite(siteSelectionType) && !canUsePredefinedSites ? '' : siteSelectionType
+
+  const resolvedSiteSelection = isPredefinedWpSite(siteSelectionType) && !canUsePredefinedSites ? '' : siteSelectionType
+
   const [customWPData, setCustomWPData] = useState({ name: '', url: '', username: '', password: '' })
   const [saveSiteToDb, setSaveSiteToDb] = useState(false)
   const [userSavedSites, setUserSavedSites] = useState([])
@@ -2769,17 +2773,12 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
               onClick={() => handlePublishToWP('publish', settings.metaTitle, settings.metaDescription)}
               disabled={isPublishing || !publishTitle.trim()}
             >
-              {isPublishing ? <CircularProgress size={24} /> : 'Publish Live'}
+              {isPublishing ? <CircularProgress size={24} /> : 'Publish'}
             </Button>
           </DialogActions>
         )}
       </Dialog>
-      <Dialog
-        open={Boolean(scheduleAnchorEl)}
-        onClose={() => setScheduleAnchorEl(null)}
-        maxWidth='sm'
-        fullWidth
-      >
+      <Dialog open={Boolean(scheduleAnchorEl)} onClose={() => setScheduleAnchorEl(null)} maxWidth='sm' fullWidth>
         <DialogTitle>Schedule on WordPress</DialogTitle>
         <DialogContent>
           <Typography variant='body2' color='text.secondary' className='mbe-4'>
