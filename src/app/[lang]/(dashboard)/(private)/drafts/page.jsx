@@ -63,7 +63,16 @@ const readOutlineMeta = article => {
       .slice(0, 4)
       .join(' · ')
 
+    const heroImage =
+      parsed.heroImage ||
+      parsed.image ||
+      parsed.featuredImage ||
+      parsed.settings?.heroImage ||
+      parsed.settings?.youtubeThumbnail ||
+      ''
+
     return {
+      img: heroImage,
       desc: headings || 'Outline is ready. Open it, review the headings, then click Write Article.'
     }
   } catch {
@@ -140,7 +149,7 @@ export default function DraftsPage() {
 
   return (
     <ModuleGate featureKey='module-drafts'>
-      <div className='p-6 max-w-6xl mx-auto'>
+      <div className='w-full p-6'>
         <div className='flex justify-between items-center mb-8'>
           <Typography variant='h4' className='font-bold'>
             My Drafts
@@ -187,17 +196,18 @@ export default function DraftsPage() {
             {articles.map(article => {
               const outlineMeta = readOutlineMeta(article)
               const { img, desc } = extractPreview(article.content)
+              const cardImg = outlineMeta?.img || img
 
               const preview = outlineMeta ? outlineMeta.desc : desc
 
               return (
-                <Grid item xs={12} sm={6} md={4} key={article.id}>
+                <Grid item xs={12} sm={outlineMeta ? 12 : 6} md={outlineMeta ? 12 : 4} key={article.id}>
                   <Card className='shadow-md rounded-xl hover:shadow-lg transition-shadow duration-300 flex flex-col h-full border border-gray-100 overflow-hidden'>
                     {/* Hero Image Section */}
-                    {img ? (
+                    {cardImg ? (
                       <Box
-                        className='w-full h-80 bg-cover bg-center border-b border-gray-100'
-                        style={{ backgroundImage: `url(${img})` }}
+                        className={`w-full bg-cover bg-center border-b border-gray-100 ${outlineMeta ? 'h-96' : 'h-80'}`}
+                        style={{ backgroundImage: `url(${cardImg})`, width: '100%' }}
                       />
                     ) : (
                       <Box className='w-full h-40 bg-gray-50 flex items-center justify-center border-b border-gray-100'>

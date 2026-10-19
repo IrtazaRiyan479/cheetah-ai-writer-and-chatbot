@@ -2,8 +2,12 @@
 
 import { useState, useEffect } from 'react'
 
+import { useSearchParams } from 'next/navigation'
+
 import Grid from '@mui/material/Grid'
 import Container from '@mui/material/Container'
+import CircularProgress from '@mui/material/CircularProgress'
+import Typography from '@mui/material/Typography'
 
 import WriterIntro from '@views/apps/writer/WriterIntro'
 import ArticleTypeMenu from '@views/apps/writer/ArticleTypeMenu'
@@ -64,12 +68,105 @@ const defaultSettings = {
   amazonDomain: 'amazon.com'
 }
 
+function normalizeOutlineItems(items) {
+  if (!Array.isArray(items)) return []
+
+  return items.map((item, index) => {
+    if (typeof item === 'string') return { id: `heading-${index}`, type: 'h2', text: item }
+
+    return {
+      id: item?.id || `heading-${index}`,
+      type: item?.type || 'h2',
+      text: String(item?.text || item?.heading || item?.title || '')
+    }
+  })
+}
+
+function unpackOutlineArticle(article) {
+  let parsed = null
+
+  try {
+    parsed = article?.outline ? JSON.parse(article.outline) : null
+  } catch {
+    parsed = null
+  }
+
+  const savedSettings =
+    parsed && !Array.isArray(parsed) && parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {}
+  const items = Array.isArray(parsed) ? parsed : parsed?.outline
+  const imgMatch = String(article?.content || '').match(/<img[^>]+src=["']([^"']+)["']/i)
+  const heroImage =
+    parsed?.heroImage ||
+    parsed?.image ||
+    savedSettings.heroImage ||
+    savedSettings.youtubeThumbnail ||
+    (imgMatch ? imgMatch[1] : '') ||
+    ''
+
+  return {
+    title: article?.title || savedSettings.generatedTitle || '',
+    settings: {
+      ...savedSettings,
+      heroImage: heroImage || savedSettings.heroImage || '',
+      generatedTitle: savedSettings.generatedTitle || article?.title || '',
+      targetKeyword: savedSettings.targetKeyword || article?.title || '',
+      useOutlineEditor: true
+    },
+    outline: normalizeOutlineItems(items)
+  }
+}
+
 const AffiGenieWriter = () => {
   const [settings, setSettings] = useState(defaultSettings)
   const [presets, setPresets] = useState([])
   const [selectedPresetId, setSelectedPresetId] = useState('default')
   const [step, setStep] = useState(0)
   const [outline, setOutline] = useState([])
+  const searchParams = useSearchParams()
+  const outlineId = searchParams.get('outlineId')
+  const [hydratingOutline, setHydratingOutline] = useState(Boolean(outlineId))
+  const [outlineError, setOutlineError] = useState('')
+
+  useEffect(() => {
+    if (!outlineId) return
+
+    let cancelled = false
+
+    const loadOutline = async () => {
+      setHydratingOutline(true)
+      setOutlineError('')
+
+      try {
+        const res = await fetch(`/api/drafts?id=${encodeURIComponent(outlineId)}`)
+        const data = await res.json()
+
+        if (!res.ok || !data.article) {
+          throw new Error(data?.error || 'Outline not found')
+        }
+
+        const loaded = unpackOutlineArticle(data.article)
+
+        if (cancelled) return
+
+        setSettings({ ...defaultSettings, ...loaded.settings })
+        setOutline(loaded.outline)
+        setStep(1)
+      } catch (error) {
+        if (!cancelled) {
+          setOutlineError(error?.message || 'Could not open this outline.')
+          setStep(0)
+        }
+      } finally {
+        if (!cancelled) setHydratingOutline(false)
+      }
+    }
+
+    loadOutline()
+
+    return () => {
+      cancelled = true
+    }
+  }, [outlineId])
 
   const fetchPresets = async () => {
     try {
@@ -153,8 +250,19 @@ const AffiGenieWriter = () => {
   return (
     <ModuleGate featureKey='module-writer'>
     <FeatureAccessProvider>
-    <Container maxWidth='md' className='p-0'>
-      {step === 0 && (
+    <Container maxWidth={step === 1 ? false : 'md'} className={step === 1 ? 'w-full max-w-none p-0' : 'p-0'}>
+      {hydratingOutline ? (
+        <div className='flex items-center gap-3 p-6'>
+          <CircularProgress size={28} />
+          <Typography>Opening outline…</Typography>
+        </div>
+      ) : null}
+      {outlineError && step === 0 ? (
+        <Typography color='error' className='p-6'>
+          {outlineError}
+        </Typography>
+      ) : null}
+      {step === 0 && !hydratingOutline && (
         <Grid container spacing={6}>
           <Grid size={{ xs: 12 }}>
             <WriterIntro />
@@ -193,7 +301,9 @@ const AffiGenieWriter = () => {
         </Grid>
       )}
 
-      {step === 1 && <OutlineEditor settings={settings} setStep={setStep} outline={outline} setOutline={setOutline} />}
+      {step === 1 && !hydratingOutline && (
+        <OutlineEditor settings={settings} setStep={setStep} outline={outline} setOutline={setOutline} />
+      )}
 
       {step === 2 && (
         <ArticleEditor

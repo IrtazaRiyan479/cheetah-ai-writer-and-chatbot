@@ -525,6 +525,20 @@ async function resolvePost(response, data, { siteUrl, authHeaders, title }) {
   return { id, link, featured_media: featured, status }
 }
 
+function wpFutureDateGmt(scheduledAt) {
+  const when = new Date(scheduledAt)
+
+  if (!scheduledAt || Number.isNaN(when.getTime())) {
+    throw new Error('Choose a date and time to schedule this post.')
+  }
+
+  if (when.getTime() <= Date.now() + 60 * 1000) {
+    throw new Error('Schedule time must be at least one minute in the future.')
+  }
+
+  return when.toISOString().replace(/\.\d{3}Z$/, '+00:00')
+}
+
 export async function POST(request) {
   try {
     const session = await getServerSession(authOptions)
@@ -551,7 +565,8 @@ export async function POST(request) {
       language,
       articleType,
       settings,
-      trimTitleAndHero
+      trimTitleAndHero,
+      scheduledAt
     } = body
 
     let siteUrl, wpUsername, wpPassword
@@ -642,7 +657,7 @@ export async function POST(request) {
     const postPayload = {
       title: title || 'Untitled AI Article',
       content: finalContent,
-      status: status || 'draft',
+      status: status === 'publish' ? 'publish' : 'draft',
       meta: {
         meta_title: metaTitle || '',
         meta_description: metaDescription || '',
@@ -653,6 +668,11 @@ export async function POST(request) {
         _yoast_wpseo_title: metaTitle || '',
         _yoast_wpseo_metadesc: metaDescription || ''
       }
+    }
+
+    if (status === 'future') {
+      postPayload.status = 'future'
+      postPayload.date_gmt = wpFutureDateGmt(scheduledAt)
     }
 
     if (featuredMediaId) {

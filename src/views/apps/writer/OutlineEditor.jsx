@@ -106,9 +106,21 @@ const OutlineEditor = ({ settings, setStep, outline, setOutline }) => {
   }
 
   return (
-    <Grid container spacing={6}>
+    <Grid container spacing={6} className='w-full max-w-none'>
+      {settings.heroImage ? (
+        <Grid size={{ xs: 12 }}>
+          <div className='w-full overflow-hidden rounded-xl border border-gray-100'>
+            <img
+              src={settings.heroImage}
+              alt={settings.generatedTitle || settings.targetKeyword || 'Outline hero'}
+              className='block w-full object-cover'
+              style={{ width: '100%', maxHeight: 480, objectFit: 'cover' }}
+            />
+          </div>
+        </Grid>
+      ) : null}
       {/* LEFT COLUMN: Outline Editor */}
-      <Grid size={{ xs: 12, md: 8 }}>
+      <Grid size={{ xs: 12, lg: 9 }}>
         <div className='flex items-center justify-between mbe-4'>
           <Typography variant='h5' className='font-bold'>Outline Editor</Typography>
           <Button variant='outlined' color='secondary' onClick={() => setStep(0)} startIcon={<i className='ri-arrow-left-line' />}>
@@ -172,7 +184,7 @@ const OutlineEditor = ({ settings, setStep, outline, setOutline }) => {
       </Grid>
 
       {/* RIGHT COLUMN: Summary Panel */}
-      <Grid size={{ xs: 12, md: 4 }}>
+      <Grid size={{ xs: 12, lg: 3 }}>
         <Card className='shadow-sm sticky top-6 mbs-11'>
           <CardContent>
             <Typography variant='h6' className='mbe-4 font-bold'>Article Details</Typography>

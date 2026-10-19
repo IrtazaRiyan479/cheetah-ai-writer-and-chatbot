@@ -46,6 +46,8 @@ import Alert from '@mui/material/Alert'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Checkbox from '@mui/material/Checkbox'
 import Switch from '@mui/material/Switch'
+import IconButton from '@mui/material/IconButton'
+import Popover from '@mui/material/Popover'
 
 import { toast } from 'react-toastify'
 
@@ -61,6 +63,26 @@ import {
   buildArticleIdentityMarker,
   titleCaseWords
 } from '@/app/api/generate/utils/articleHtml'
+
+function minScheduleInputValue() {
+  const when = new Date(Date.now() + 2 * 60 * 1000)
+  const pad = n => String(n).padStart(2, '0')
+
+  return `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}T${pad(when.getHours())}:${pad(when.getMinutes())}`
+}
+
+function scheduleLabel(value) {
+  const when = new Date(value)
+
+  if (Number.isNaN(when.getTime())) return ''
+
+  return when.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  })
+}
 
 function slimPublishSettings(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
@@ -861,6 +883,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
   const [heroImageUrl, setHeroImageUrl] = useState(settings?.heroImage || '')
   const [trimTitleAndHero, setTrimTitleAndHero] = useState(true)
   const [publishSuccessData, setPublishSuccessData] = useState(null)
+  const [scheduleAt, setScheduleAt] = useState('')
+  const [scheduleAnchorEl, setScheduleAnchorEl] = useState(null)
 
   const editor = useEditor({
     extensions,
@@ -908,6 +932,20 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       toast.error('Select a WordPress site first.')
 
       return
+    }
+
+    let scheduledAtIso = ''
+
+    if (status === 'future') {
+      const when = new Date(scheduleAt)
+
+      if (!scheduleAt || Number.isNaN(when.getTime()) || when.getTime() <= Date.now() + 60 * 1000) {
+        toast.error('Pick a schedule time at least one minute from now.')
+
+        return
+      }
+
+      scheduledAtIso = when.toISOString()
     }
 
     if (isPublishing) return
@@ -1098,7 +1136,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         metaTitle: metaTitle,
         metaDescription: metaDescription,
         articleType: settings.type || '',
-        settings: slimPublishSettings(settings)
+        settings: slimPublishSettings(settings),
+        scheduledAt: status === 'future' ? scheduledAtIso : ''
       }
 
       const res = await fetch('/api/publish', {
@@ -1116,12 +1155,20 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           toast.warning(result.functionsPhp.error || 'Published, but functions.php was not updated.')
         }
 
+        const wpStatus = result.status || status
+
         setPublishSuccessData({
           link: result.link,
           editLink: result.editLink,
           id: result.wpPostId,
-          status: result.status,
-          type: result.status === 'draft' ? 'wp-draft-success' : 'wp-publish-success'
+          status: wpStatus,
+          scheduledLabel: status === 'future' ? scheduleLabel(scheduleAt) : '',
+          type:
+            wpStatus === 'draft'
+              ? 'wp-draft-success'
+              : wpStatus === 'future'
+                ? 'wp-schedule-success'
+                : 'wp-publish-success'
         })
       } else {
         const statusCode = res.status
@@ -1213,6 +1260,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
   useEffect(() => {
     if (publishDialogOpen) {
       setPublishSuccessData(null)
+      setScheduleAt('')
+      setScheduleAnchorEl(null)
       setPublishTitle(settings?.generatedTitle || settings?.targetKeyword || 'My AI Generated Article')
 
       if (settings?.heroImage && !heroImageUrl) {
@@ -2473,9 +2522,11 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
               ? '🎉 Draft Saved!'
               : publishSuccessData?.type === 'wp-draft-success'
                 ? '📝 Sent to WordPress Drafts'
-                : publishSuccessData
-                  ? '🎉 Successfully Published!'
-                  : 'Publish to WordPress'}
+                : publishSuccessData?.type === 'wp-schedule-success'
+                  ? 'Scheduled on WordPress'
+                  : publishSuccessData
+                    ? '🎉 Successfully Published!'
+                    : 'Publish to WordPress'}
         </DialogTitle>
         <DialogContent className='flex flex-col gap-4 mt-2'>
           {publishSuccessData?.type === 'unauthenticated' ? (
@@ -2516,6 +2567,29 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                   rel='noopener noreferrer'
                 >
                   Open Draft in WP Admin
+                </Button>
+              )}
+            </div>
+          ) : publishSuccessData?.type === 'wp-schedule-success' ? (
+            <div className='flex flex-col items-center justify-center p-6 text-center gap-4'>
+              <div className='text-primary text-6xl'>
+                <i className='ri-calendar-schedule-line' />
+              </div>
+              <Typography variant='h6'>This post is scheduled on WordPress</Typography>
+              <Typography variant='body2' color='text.secondary'>
+                {publishSuccessData.scheduledLabel
+                  ? `WordPress will publish it on ${publishSuccessData.scheduledLabel}.`
+                  : 'WordPress will publish it at the time you picked.'}
+              </Typography>
+              {publishSuccessData.editLink && (
+                <Button
+                  variant='contained'
+                  color='primary'
+                  href={publishSuccessData.editLink}
+                  target='_blank'
+                  rel='noopener noreferrer'
+                >
+                  Open Scheduled Post
                 </Button>
               )}
             </div>
@@ -2644,6 +2718,15 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         </DialogContent>
         {!publishSuccessData && (
           <DialogActions className='p-4' sx={{ flexWrap: 'wrap', gap: 0 }}>
+            <IconButton
+              color={scheduleAt ? 'primary' : 'default'}
+              onClick={e => setScheduleAnchorEl(e.currentTarget)}
+              disabled={isPublishing || !publishTitle.trim()}
+              aria-label='Schedule post'
+              title={scheduleAt ? `Scheduled for ${scheduleLabel(scheduleAt)}` : 'Schedule post'}
+            >
+              <i className='ri-calendar-schedule-line text-xl' />
+            </IconButton>
             <Button color='error' onClick={() => setPublishDialogOpen(false)} disabled={isPublishing}>
               Cancel
             </Button>
@@ -2669,6 +2752,40 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           </DialogActions>
         )}
       </Dialog>
+      <Popover
+        open={Boolean(scheduleAnchorEl)}
+        anchorEl={scheduleAnchorEl}
+        onClose={() => setScheduleAnchorEl(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <div className='flex flex-col gap-3 p-4' style={{ width: 280 }}>
+          <Typography variant='subtitle2' className='font-bold'>
+            Schedule on WordPress
+          </Typography>
+          <TextField
+            type='datetime-local'
+            label='Publish at'
+            size='small'
+            value={scheduleAt}
+            onChange={e => setScheduleAt(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ min: minScheduleInputValue() }}
+            helperText='Uses your local time. WordPress publishes it on the selected site.'
+          />
+          <Button
+            variant='contained'
+            color='primary'
+            disabled={isPublishing || !scheduleAt || !publishTitle.trim()}
+            onClick={() => {
+              setScheduleAnchorEl(null)
+              handlePublishToWP('future', settings.metaTitle, settings.metaDescription)
+            }}
+          >
+            {isPublishing ? <CircularProgress size={22} /> : 'Schedule Post'}
+          </Button>
+        </div>
+      </Popover>
     </div>
   )
 }

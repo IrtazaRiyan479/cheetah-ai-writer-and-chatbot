@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -45,6 +45,7 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
   const [batchKeywords, setBatchKeywords] = useState('')
   const [isBatching, setIsBatching] = useState(false)
   const searchParams = useSearchParams()
+  const router = useRouter()
   const draftId = searchParams.get('draftId')
 
   const ComponentMap = {
@@ -260,6 +261,62 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
         if (data.fetchedSourceArticle) updateSetting('fetchedSourceArticle', data.fetchedSourceArticle)
         if (data.productImages) updateSetting('productImages', data.productImages)
         if (data.rewriteProducts) updateSetting('rewriteProducts', data.rewriteProducts)
+
+        const heroImage = data.heroImage || data.youtubeThumbnail || ''
+        const savedSettings = {
+          ...requestSettings,
+          generatedTitle: data.title || requestSettings.generatedTitle || '',
+          heroImage,
+          heroImageId: data.heroImageId ?? requestSettings.heroImageId ?? null,
+          heroImageSource: data.heroImageSource || requestSettings.heroImageSource || '',
+          useOutlineEditor: Boolean(settings.useOutlineEditor)
+        }
+
+        if (data.externalLinks) savedSettings.fetchedExternalLinks = data.externalLinks
+        if (data.fetchedTranscript) savedSettings.fetchedTranscript = data.fetchedTranscript
+        if (data.fetchedVideoTitle) savedSettings.fetchedVideoTitle = data.fetchedVideoTitle
+        if (data.youtubeDurationSeconds) savedSettings.youtubeDurationSeconds = data.youtubeDurationSeconds
+        if (data.youtubeThumbnail) savedSettings.youtubeThumbnail = data.youtubeThumbnail
+        if (data.youtubeVideoId) savedSettings.youtubeVideoId = data.youtubeVideoId
+        if (data.youtubeTranscriptSource) savedSettings.youtubeTranscriptSource = data.youtubeTranscriptSource
+        if (data.comparisonShared) savedSettings.comparisonShared = data.comparisonShared
+        if (data.metaTitle) savedSettings.metaTitle = data.metaTitle
+        if (data.metaDescription) savedSettings.metaDescription = data.metaDescription
+        if (data.fetchedSourceArticle) savedSettings.fetchedSourceArticle = data.fetchedSourceArticle
+        if (data.productImages) savedSettings.productImages = data.productImages
+        if (data.rewriteProducts) savedSettings.rewriteProducts = data.rewriteProducts
+
+        if (settings.useOutlineEditor) {
+          try {
+            const safeHero = String(heroImage).replace(/"/g, '%22')
+            const safeTitle = String(savedSettings.generatedTitle || 'Outline').replace(/"/g, '')
+            const saveRes = await fetch('/api/drafts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                title: savedSettings.generatedTitle || savedSettings.targetKeyword || 'Untitled Outline',
+                content: safeHero ? `<p><img src="${safeHero}" alt="${safeTitle}" /></p>` : '',
+                status: 'outline',
+                outline: JSON.stringify({
+                  review: true,
+                  heroImage,
+                  settings: savedSettings,
+                  outline: data.outline
+                })
+              })
+            })
+            const saved = await saveRes.json()
+            const segment = window.location.pathname.split('/').filter(Boolean)[0]
+            const lang = ['en', 'fr', 'ar'].includes(segment) ? segment : 'en'
+
+            if (saved?.article?.id) {
+              router.replace(`/${lang}/writer?outlineId=${saved.article.id}`)
+            }
+          } catch (error) {
+            console.error('Failed to save outline draft', error)
+          }
+        }
+
         setOutline(data.outline)
 
         if (settings.useOutlineEditor) {
