@@ -62,7 +62,6 @@ export async function fetchInternalAmazonData(keyword, settings) {
 
         lastError = new Error(`Amazon API ${response.status}: ${message.slice(0, 300)}`)
 
-        // Retry transient failures
         if (
           response.status >= 500 ||
           response.status === 429 ||
@@ -154,6 +153,7 @@ async function fillRoundupProducts(products, settings, keyword) {
   for (const product of products) {
     if (kept.length >= requested) break
     const asin = String(product?.asin || '').toUpperCase()
+
     if (asin && seen.has(asin)) continue
     if (asin) seen.add(asin)
     kept.push(product)
@@ -167,6 +167,7 @@ async function fillRoundupProducts(products, settings, keyword) {
       for (const product of searched) {
         if (kept.length >= requested) break
         const asin = String(product?.asin || '').toUpperCase()
+
         if (asin && seen.has(asin)) continue
         if (asin) seen.add(asin)
         kept.push(product)
@@ -181,6 +182,7 @@ async function fillRoundupProducts(products, settings, keyword) {
 
 function applyExactProductOutline(outline, products) {
   const items = Array.isArray(outline) ? outline : []
+
   const productItems = products.map((product, index) => ({
     type: 'h2',
     text: titleCaseWords(`${index + 1}. ${product.productName || product.asin || 'Amazon Product'}`),
@@ -200,10 +202,12 @@ function applyExactProductOutline(outline, products) {
 
   for (const item of items) {
     const isProduct = item?.sectionType === 'product' || /^\d+\.\s+/.test(String(item?.text || ''))
+
     if (isProduct) {
       seenProduct = true
       continue
     }
+
     if (!seenProduct) before.push(item)
     else after.push(item)
   }
@@ -227,6 +231,7 @@ export async function generateAmazonRoundupOutline(body, genAI) {
 
   if (!formattedProducts.length) {
     const amazonApiData = await fetchInternalAmazonData(targetKeyword, settings)
+
     formattedProducts = formatAmazonProducts(amazonApiData, settings)
   }
 
@@ -303,7 +308,9 @@ export async function generateAmazonRoundupOutline(body, genAI) {
     5. ${faqInstruction}
     6. ${relatedInstruction}
 
-    ${isRewriteMode && sourceArticleText ? `REWRITE MODE (Amazon Roundup layout — same as native Amazon Roundup):
+    ${
+      isRewriteMode && sourceArticleText
+        ? `REWRITE MODE (Amazon Roundup layout — same as native Amazon Roundup):
     - Source article text is reference only. Rewrite in a fresh voice; do not copy sentences.
     - The selected Number of Products is ${formattedProducts.length}. Output EXACTLY that many product H2s, even if the source article lists a different count.
     - Prefer ASINs, names, and details from the source when they appear in the product list. Extra products may come from a fresh Amazon search.
@@ -312,7 +319,9 @@ export async function generateAmazonRoundupOutline(body, genAI) {
     - Do not turn this into a generic blog outline.
 
     SOURCE ARTICLE (reference):
-    ${sourceArticleText.substring(0, 120000)}` : ''}
+    ${sourceArticleText.substring(0, 120000)}`
+        : ''
+    }
   `
 
   let parsedData = null
@@ -428,16 +437,17 @@ export async function generateAmazonRoundupOutline(body, genAI) {
   }
 
   if (Array.isArray(parsedData.outline)) {
-    // Ensure product H2s carry live productData (same as native roundup frontend needs)
     let productCursor = 0
+
     parsedData.outline = parsedData.outline.map(item => {
       if (!item || typeof item !== 'object') return item
       const next = { ...item, text: typeof item.text === 'string' ? titleCaseWords(item.text) : item.text }
-      const isProduct =
-        next.sectionType === 'product' || /^\d+\.\s+/.test(String(next.text || ''))
+
+      const isProduct = next.sectionType === 'product' || /^\d+\.\s+/.test(String(next.text || ''))
 
       if (isProduct && formattedProducts[productCursor]) {
         const product = formattedProducts[productCursor]
+
         productCursor += 1
         next.sectionType = 'product'
         next.productData = {
@@ -447,6 +457,7 @@ export async function generateAmazonRoundupOutline(body, genAI) {
           price: product.price,
           asin: product.asin
         }
+
         if (product.productName && !/^\d+\.\s+/.test(String(next.text || ''))) {
           next.text = titleCaseWords(`${productCursor}. ${product.productName}`)
         }
@@ -462,6 +473,7 @@ export async function generateAmazonRoundupOutline(body, genAI) {
 
   if (!isRewriteMode && formattedProducts.some(p => p.imageUrl)) {
     const productHero = formattedProducts.find(p => p.imageUrl)?.imageUrl || ''
+
     if (productHero) {
       heroImageUrl = productHero
       heroImageId = null
@@ -505,12 +517,13 @@ export async function generateAmazonRoundupSection(body, genAI) {
     .map(item => item?.productData)
     .filter(product => product && (product.imageUrl || product.asin || product.productName || product.amazonUrl))
 
-  let formattedProducts = Array.isArray(body.prefetchedProducts) && body.prefetchedProducts.length
-    ? body.prefetchedProducts
-    : outlineProducts
+  let formattedProducts =
+    Array.isArray(body.prefetchedProducts) && body.prefetchedProducts.length ? body.prefetchedProducts : outlineProducts
 
   if (!formattedProducts.length) {
-    const amazonApiData = body.shared?.amazon || (await fetchInternalAmazonData(targetKeyword || articleTitle, settings))
+    const amazonApiData =
+      body.shared?.amazon || (await fetchInternalAmazonData(targetKeyword || articleTitle, settings))
+
     formattedProducts = formatAmazonProducts(amazonApiData, settings)
   }
 
@@ -584,8 +597,12 @@ export async function generateAmazonRoundupSection(body, genAI) {
     ${linkInstruction}
     ${extLinkInstruction}
     ${keywordSEOInstructions}
-    ${sourceArticleText ? `REWRITE SOURCE (reference only — rewrite freshly, same Amazon Roundup layout rules):
-${sourceArticleText.substring(0, 80000)}` : ''}
+    ${
+      sourceArticleText
+        ? `REWRITE SOURCE (reference only — rewrite freshly, same Amazon Roundup layout rules):
+${sourceArticleText.substring(0, 80000)}`
+        : ''
+    }
   `
 
   if (activeSectionType === 'intro') {
@@ -704,7 +721,6 @@ ${sourceArticleText.substring(0, 80000)}` : ''}
     })
 
     if (!alt?.text) {
-      // Do NOT throw — worker must continue other sections
       console.error('[Section] All providers exhausted. Skipping this heading.')
 
       return {

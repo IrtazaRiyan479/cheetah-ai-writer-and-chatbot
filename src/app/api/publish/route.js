@@ -1,6 +1,8 @@
-import { NextResponse } from 'next/server'
 import { readFile } from 'fs/promises'
 import path from 'path'
+
+import { NextResponse } from 'next/server'
+
 import { getServerSession } from 'next-auth'
 
 import { authOptions } from '@/libs/auth'
@@ -24,6 +26,7 @@ function normalizeWpSiteUrl(url) {
 function wpMessage(data, status, fallback) {
   const code = data?.code || data?.data?.code || ''
   const raw = data?.message || data?.error || fallback || 'WordPress request failed'
+
   const message = String(raw)
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
@@ -43,7 +46,9 @@ function extractWpJson(raw) {
     }
   }
 
-  const text = String(raw).replace(/^\uFEFF/, '').trim()
+  const text = String(raw)
+    .replace(/^\uFEFF/, '')
+    .trim()
 
   if (!text) return null
 
@@ -96,7 +101,9 @@ async function readWp(res, fallback) {
   const data = extractWpJson(raw)
 
   if (!res.ok) {
-    throw new Error(data ? wpMessage(data, res.status, fallback) : `WordPress HTTP ${res.status}: ${(raw || fallback).slice(0, 300)}`)
+    throw new Error(
+      data ? wpMessage(data, res.status, fallback) : `WordPress HTTP ${res.status}: ${(raw || fallback).slice(0, 300)}`
+    )
   }
 
   return data || {}
@@ -135,7 +142,11 @@ const IMAGE_EXT = {
 }
 
 function extFromMime(mime) {
-  const sub = String(mime || '').split('/')[1]?.split('+')[0]?.toLowerCase() || 'jpg'
+  const sub =
+    String(mime || '')
+      .split('/')[1]
+      ?.split('+')[0]
+      ?.toLowerCase() || 'jpg'
 
   return sub === 'jpeg' ? 'jpg' : sub.replace(/[^a-z0-9]/g, '') || 'jpg'
 }
@@ -167,7 +178,9 @@ function parseDataUrl(src) {
 }
 
 async function loadLocalUpload(src) {
-  let pathname = String(src || '').split('?')[0].split('#')[0]
+  let pathname = String(src || '')
+    .split('?')[0]
+    .split('#')[0]
 
   try {
     if (/^https?:\/\//i.test(pathname)) pathname = new URL(pathname).pathname
@@ -253,6 +266,7 @@ async function compressWithTiny(bytes) {
   const key = process.env.TINYPNG_API_KEY
 
   if (!bytes?.buffer?.length || bytes.buffer.length < 20 * 1024) return bytes
+
   if (!key) {
     console.error('TinyPNG skipped: TINYPNG_API_KEY is missing')
 
@@ -265,6 +279,7 @@ async function compressWithTiny(bytes) {
 
   try {
     const tinyKey = Buffer.from(`api:${key}`).toString('base64')
+
     const shrinkRes = await fetch('https://api.tinify.com/shrink', {
       method: 'POST',
       headers: {
@@ -274,6 +289,7 @@ async function compressWithTiny(bytes) {
       body: bytes.buffer,
       signal: AbortSignal.timeout(20000)
     })
+
     const shrinkData = await shrinkRes.json().catch(() => null)
 
     if (!shrinkRes.ok || shrinkData?.error || !shrinkData?.output?.url) {
@@ -313,7 +329,9 @@ async function compressWithTiny(bytes) {
 
 async function uploadBufferToWP(bytes, siteUrl, credentials) {
   const mimeType = bytes.mimeType || 'image/jpeg'
-  const filename = bytes.filename || `image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extFromMime(mimeType)}`
+  const filename =
+    bytes.filename || `image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extFromMime(mimeType)}`
+
   const mediaRes = await wpFetch(
     `${siteUrl}/wp-json/wp/v2/media?_fields=id,source_url`,
     {
@@ -327,6 +345,7 @@ async function uploadBufferToWP(bytes, siteUrl, credentials) {
     },
     1
   )
+
   const mediaData = await readWp(mediaRes, 'Media upload failed. Check the application password can upload files.')
   const id = pickId(mediaData, mediaRes)
 
@@ -338,6 +357,7 @@ async function uploadBufferToWP(bytes, siteUrl, credentials) {
     const readBack = await wpFetch(`${siteUrl}/wp-json/wp/v2/media/${id}?_fields=id,source_url`, {
       headers: { Authorization: `Basic ${credentials}` }
     })
+
     const confirmed = await readWp(readBack, 'Uploaded the image but could not read its URL.')
 
     sourceUrl = confirmed.source_url || ''
@@ -352,6 +372,7 @@ async function mapPool(items, limit, worker) {
   if (!items.length) return
 
   let cursor = 0
+
   const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
     while (cursor < items.length) {
       const index = cursor
@@ -483,13 +504,16 @@ async function resolvePost(response, data, { siteUrl, authHeaders, title }) {
       order: 'desc',
       _fields: 'id,link,status,featured_media,title'
     })
+
     const foundRes = await wpFetch(`${siteUrl}/wp-json/wp/v2/posts?${params}`, { headers: authHeaders })
     const found = await readWp(foundRes, 'WordPress created the post but did not return an id.')
     const rows = Array.isArray(found) ? found : []
+
     const wanted = String(title || '')
       .replace(/<[^>]+>/g, '')
       .trim()
       .toLowerCase()
+
     const match = rows.find(row => {
       const rawTitle = row?.title?.rendered || row?.title?.raw || row?.title || ''
 
@@ -515,6 +539,7 @@ async function resolvePost(response, data, { siteUrl, authHeaders, title }) {
     const readBack = await wpFetch(`${siteUrl}/wp-json/wp/v2/posts/${id}?_fields=id,link,status,featured_media`, {
       headers: authHeaders
     })
+
     const confirmed = await readWp(readBack, 'Could not read the published post back')
 
     link = confirmed.link || link
@@ -542,6 +567,7 @@ function wpFutureDateGmt(scheduledAt) {
 export async function POST(request) {
   try {
     const session = await getServerSession(authOptions)
+
     const gate = await assertCanGenerate({
       userId: session?.user?.id,
       email: session?.user?.email,
@@ -552,6 +578,7 @@ export async function POST(request) {
     if (!gate.ok) return NextResponse.json({ success: false, error: gate.error }, { status: gate.status })
 
     const body = await request.json()
+
     const {
       title,
       content,
@@ -634,11 +661,10 @@ export async function POST(request) {
       settings: slimSettings(settings)
     })
 
-    // Toggle ON → never inject body hero (featured_media only).
-    // Toggle OFF → inject only if body has no leading image (avoids duplicate heroes).
     const contentHead = String(articleHtml)
       .replace(/<style[\s\S]*?<\/style>/gi, '')
       .slice(0, 3000)
+
     const bodyAlreadyHasLeadingImg = /<img\b/i.test(contentHead)
 
     const heroHtml =
@@ -684,7 +710,9 @@ export async function POST(request) {
       headers: { ...authHeaders, 'Content-Type': 'application/json' },
       body: JSON.stringify(postPayload)
     })
+
     const data = await readWp(response, 'Failed to publish to WordPress')
+
     const created = await resolvePost(response, data, {
       siteUrl: cleanSiteUrl,
       authHeaders,
@@ -692,11 +720,15 @@ export async function POST(request) {
     })
 
     if (featuredMediaId && Number(created.featured_media) !== Number(featuredMediaId)) {
-      const retry = await wpFetch(`${cleanSiteUrl}/wp-json/wp/v2/posts/${created.id}?_fields=id,link,status,featured_media`, {
-        method: 'POST',
-        headers: { ...authHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ featured_media: featuredMediaId })
-      })
+      const retry = await wpFetch(
+        `${cleanSiteUrl}/wp-json/wp/v2/posts/${created.id}?_fields=id,link,status,featured_media`,
+        {
+          method: 'POST',
+          headers: { ...authHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ featured_media: featuredMediaId })
+        }
+      )
+
       const retried = await readWp(retry, 'Could not attach the featured image')
       let featured = Number(retried.featured_media)
 
@@ -705,6 +737,7 @@ export async function POST(request) {
           `${cleanSiteUrl}/wp-json/wp/v2/posts/${created.id}?_fields=id,featured_media,link`,
           { headers: authHeaders }
         )
+
         const confirmed = await readWp(readBack, 'Could not read the published post back')
 
         featured = Number(confirmed.featured_media)

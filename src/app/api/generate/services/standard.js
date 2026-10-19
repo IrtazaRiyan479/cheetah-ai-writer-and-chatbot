@@ -345,17 +345,21 @@ export async function generateStandardBlogSection(body, genAI) {
       `
 
   if (deepSearch) {
-    const interaction = await withGeminiKey(async apiKey => {
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: { retryOptions: { attempts: 0 } }
-      })
-      return ai.interactions.create({
-        agent: 'deep-research-preview-04-2026',
-        input: `${baseSystemInstruction}\n\nYou are an expert researcher. Conduct a deep web search based on the following instructions. \n\nCRITICAL RULE: DO NOT output your research notes, search queries, or internal reasoning. Your FINAL output MUST strictly be the final, ready-to-publish Markdown text adhering exactly to the layout requirements provided below.\n\n---\n\n${sectionPrompt}`,
-        background: true
-      })
-    }, { paid: Boolean(genAI?.paid) })
+    const interaction = await withGeminiKey(
+      async apiKey => {
+        const ai = new GoogleGenAI({
+          apiKey,
+          httpOptions: { retryOptions: { attempts: 0 } }
+        })
+
+        return ai.interactions.create({
+          agent: 'deep-research-preview-04-2026',
+          input: `${baseSystemInstruction}\n\nYou are an expert researcher. Conduct a deep web search based on the following instructions. \n\nCRITICAL RULE: DO NOT output your research notes, search queries, or internal reasoning. Your FINAL output MUST strictly be the final, ready-to-publish Markdown text adhering exactly to the layout requirements provided below.\n\n---\n\n${sectionPrompt}`,
+          background: true
+        })
+      },
+      { paid: Boolean(genAI?.paid) }
+    )
 
     if (genAI?.paid && interaction?.id) rememberPaidInteraction(interaction.id)
 
@@ -393,7 +397,6 @@ export async function generateStandardBlogSection(body, genAI) {
     })
 
     if (!alt?.text) {
-      // Do NOT throw — worker must continue other sections
       console.error('[Section] All providers exhausted. Skipping this heading.')
 
       return {

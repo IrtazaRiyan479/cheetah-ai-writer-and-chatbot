@@ -28,7 +28,6 @@ export function mediaKey(item) {
 
     if (pexels) return `pexels:${pexels[1]}`
 
-    // Pixabay /get/gHASH_640.jpg is a download token, NOT a photo id
     const pix = u.pathname.match(/\/get\/g([a-f0-9]+)_/)
 
     if (pix) return `pixabay-file:${pix[1]}`
@@ -296,7 +295,6 @@ export async function fetchPixabayImage(query, { page = 1, perPage = 15 } = {}) 
     if (!data.hits?.length) return []
 
     return data.hits.map(h => ({
-      id: h.id, // stable photo id — this is what you track
       url: h.webformatURL || h.largeImageURL,
       alt: h.tags || query,
       source: 'Pixabay'
@@ -381,11 +379,11 @@ function visualTokens(str) {
 }
 
 function coreSubjectQuery(topic, heading) {
-  const topicVis = visualTokens(topic).slice(0, 3) // e.g. german shepherd puppy
+  const topicVis = visualTokens(topic).slice(0, 3)
 
   const headingVis = visualTokens(heading)
     .filter(w => !topicVis.includes(w))
-    .slice(0, 2) // e.g. crate, leash, obedience
+    .slice(0, 2)
 
   const q = [...topicVis, ...headingVis].join(' ').trim()
 
@@ -437,10 +435,39 @@ JSON: {"isRealisticStockPhoto":true,"stockSearchQuery":"3-6 words","aiGeneration
   return visualFallback()
 }
 
-const GENERIC_IMAGE_WORDS = ['nature', 'flower', 'flowers', 'succulent', 'landscape', 'mountain', 'mountains', 'background', 'abstract', 'wallpaper', 'scenery', 'sunset']
+const GENERIC_IMAGE_WORDS = [
+  'nature',
+  'flower',
+  'flowers',
+  'succulent',
+  'landscape',
+  'mountain',
+  'mountains',
+  'background',
+  'abstract',
+  'wallpaper',
+  'scenery',
+  'sunset'
+]
 
 export function buildSubjectQuery(title, keyword) {
-  const stop = new Set(['the', 'and', 'for', 'with', 'from', 'your', 'best', 'top', 'how', 'what', 'why', 'guide', 'review', 'reviews'])
+  const stop = new Set([
+    'the',
+    'and',
+    'for',
+    'with',
+    'from',
+    'your',
+    'best',
+    'top',
+    'how',
+    'what',
+    'why',
+    'guide',
+    'review',
+    'reviews'
+  ])
+
   const tokens = `${keyword || ''} ${title || ''}`
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
@@ -452,7 +479,12 @@ export function buildSubjectQuery(title, keyword) {
 
 function isIrrelevantImage(image, query) {
   const alt = `${image?.alt || ''} ${image?.tags || ''}`.toLowerCase()
-  const queryTokens = String(query || '').toLowerCase().split(/\s+/).filter(word => word.length > 2)
+
+  const queryTokens = String(query || '')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(word => word.length > 2)
+
   const overlap = queryTokens.filter(word => alt.includes(word))
   const banned = GENERIC_IMAGE_WORDS.filter(word => alt.includes(word))
   const queryAllowsBanned = banned.some(word => queryTokens.includes(word))
@@ -496,20 +528,34 @@ export async function pickRelevantImages(title, keyword, count = 4) {
 
 function siteLabel(settings = {}) {
   const raw = settings.siteName || settings.clientSite || settings.website || settings.targetSite || ''
-  const host = String(raw).replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '')
-  const name = host.replace(/\.[a-z]{2,}$/i, '').replace(/[-_]/g, ' ').trim()
+
+  const host = String(raw)
+    .replace(/^https?:\/\//, '')
+    .split('/')[0]
+    .replace(/^www\./, '')
+
+  const name = host
+    .replace(/\.[a-z]{2,}$/i, '')
+    .replace(/[-_]/g, ' ')
+    .trim()
 
   return name ? name.replace(/\b\w/g, char => char.toUpperCase()) : 'AffiGenie'
 }
 
 function heroSvg(title, siteName, hasPhoto) {
-  const xml = value => String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const xml = value =>
+    String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+
   let font = 58
   let lines = []
 
   while (font >= 28) {
     const max = Math.max(14, Math.floor(1000 / (font * 0.52)))
     const words = String(title || 'Article').split(/\s+/)
+
     lines = []
     let line = ''
 
@@ -531,7 +577,11 @@ function heroSvg(title, siteName, hasPhoto) {
 
   lines = lines.slice(0, 4)
   const startY = 250 - ((lines.length - 1) * font) / 2
-  const text = lines.map((line, index) => `<tspan x="80" dy="${index === 0 ? 0 : font + 8}">${xml(line)}</tspan>`).join('')
+
+  const text = lines
+    .map((line, index) => `<tspan x="80" dy="${index === 0 ? 0 : font + 8}">${xml(line)}</tspan>`)
+    .join('')
+
   const underlineY = startY + lines.length * (font + 6)
 
   return `<svg width="1200" height="675" xmlns="http://www.w3.org/2000/svg">
@@ -614,7 +664,10 @@ export async function buildBrandedHero({ title, siteName, backgroundUrl, backgro
     })
   }
 
-  const png = await base.composite([{ input: svg, top: 0, left: 0 }]).png().toBuffer()
+  const png = await base
+    .composite([{ input: svg, top: 0, left: 0 }])
+    .png()
+    .toBuffer()
 
   return `data:image/png;base64,${png.toString('base64')}`
 }
@@ -622,9 +675,11 @@ export async function buildBrandedHero({ title, siteName, backgroundUrl, backgro
 function urlsSharePhoto(candidateUrl, bannedUrl) {
   const a = String(candidateUrl || '')
   const b = String(bannedUrl || '')
+
   if (!a || !b) return false
   if (a === b || b.includes(a) || a.includes(b)) return true
   const id = a.match(/pexels\.com\/photos\/(\d+)/i)?.[1] || a.match(/images\.unsplash\.com\/(?:photo-)?([^/?]+)/i)?.[1]
+
   return Boolean(id && id.length > 3 && b.includes(id))
 }
 
@@ -633,17 +688,20 @@ export async function attachBrandedHero(result, settings = {}) {
 
   const title = result.title || settings.targetKeyword || 'Article'
   const rewriteStock = settings.type === 'amazon-roundup-rewrite' || settings.type === 'amazon-review-rewrite'
+
   const youtubeThumb =
-    settings.type === 'youtube-blog' && /^https?:/i.test(String(result.heroImage || ''))
-      ? String(result.heroImage)
-      : ''
+    settings.type === 'youtube-blog' && /^https?:/i.test(String(result.heroImage || '')) ? String(result.heroImage) : ''
+
   const banned = Array.isArray(result.excludedHeroUrls) ? result.excludedHeroUrls.map(String) : []
+
   const photos = youtubeThumb
     ? []
     : await pickRelevantImages(title, settings.targetKeyword || title, rewriteStock ? 6 : 1)
+
   const fresh = photos.filter(
     item => !banned.some(url => urlsSharePhoto(item?.url, url) || (item?.id != null && url.includes(String(item.id))))
   )
+
   const photo = rewriteStock ? fresh[1] || fresh[0] || photos[1] || photos[0] || null : photos[0] || null
   const backgroundUrls = youtubeThumb ? [youtubeThumb] : photo?.url ? [photo.url] : []
   let heroImage = ''
@@ -666,7 +724,7 @@ export async function attachBrandedHero(result, settings = {}) {
     return {
       ...result,
       heroImage: fallback,
-      heroImageId: fallback ? result.heroImageId ?? null : null,
+      heroImageId: fallback ? (result.heroImageId ?? null) : null,
       heroImageSource: fallback ? result.heroImageSource || 'gradient' : 'gradient'
     }
   }
@@ -683,7 +741,12 @@ export function calculateRelevanceScore(altText, query, topic) {
   const haystack = `${altText || ''} ${topic || ''} ${query || ''}`.toLowerCase()
   const altOnly = String(altText || '').toLowerCase()
 
-  if (GENERIC_IMAGE_WORDS.some(word => altOnly.includes(word) && !`${query || ''} ${topic || ''}`.toLowerCase().includes(word))) return 0
+  if (
+    GENERIC_IMAGE_WORDS.some(
+      word => altOnly.includes(word) && !`${query || ''} ${topic || ''}`.toLowerCase().includes(word)
+    )
+  )
+    return 0
   if (!altText) return 0
   void haystack
 
@@ -830,6 +893,7 @@ export function calculateRelevanceScore(altText, query, topic) {
 
 export async function generateFallbackImage(prompt) {
   const paid = resolvePaidTier(undefined, 'gemini-3-pro-image')
+
   if (!listGeminiApiKeys({ paid }).length) return null
 
   try {
@@ -1048,7 +1112,6 @@ export async function isYouTubeVideoAvailable(url) {
 
     return res.ok
   } catch (error) {
-    // Network blip → assume embeddable rather than killing the section
     console.warn('YouTube oEmbed check failed, assuming available:', error?.message || error)
 
     return true
@@ -1239,9 +1302,11 @@ export async function fetchSerperPlacesData(query, count = 10, countryCode = 'us
 
     const data = await res.json()
     const places = data.places ? data.places.slice(0, count) : []
+
     return places.map(place => {
       const lat = Number(place.latitude ?? place.lat ?? place.gpsCoordinates?.latitude)
       const lng = Number(place.longitude ?? place.lng ?? place.gpsCoordinates?.longitude)
+
       return {
         ...place,
         latitude: Number.isFinite(lat) ? lat : place.latitude,
@@ -1257,7 +1322,6 @@ export async function fetchSerperPlacesData(query, count = 10, countryCode = 'us
 }
 
 export { fetchYoutubeVideoData } from './youtubeCaptions'
-
 
 export function getBaseSystemInstruction(language, country) {
   const baseSystemInstruction = `You are an advanced, lightning-fast AI writing assistant.
@@ -1275,10 +1339,13 @@ export function getBaseSystemInstruction(language, country) {
 
 export function getToneInstruction(toneOfVoice, customToneOfVoice) {
   let toneInstruction = ''
+
   const pretty = value => {
     const raw = String(value || '').trim()
+
     if (!raw) return 'Professional'
     if (raw.toLowerCase() === 'seo') return 'SEO Optimized (Confident, Knowledgeable, Neutral, and Clear)'
+
     return raw.charAt(0).toUpperCase() + raw.slice(1)
   }
 
@@ -1391,11 +1458,9 @@ export async function getMediaInstruction(
       if (canHaveImage) {
         const coreTopic = articleTitle || targetKeyword
 
-        // Fast path: build a decent stock query without waiting on Gemini when possible
         let smartImageData
 
         try {
-          // Soft timeout so a slow/rate-limited Gemini doesn't block the whole section
           const kwPromise = getSmartImageKeyword(coreTopic, heading, genAI)
 
           const timeoutPromise = new Promise((_, reject) =>
@@ -1527,8 +1592,6 @@ export async function getMediaInstruction(
           }
         } catch (videoErr) {
           console.error('[Media] YouTube path failed (section continues without video):', videoErr?.message || videoErr)
-
-          // Do not rethrow — section text must still generate
         }
       }
 

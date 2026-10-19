@@ -161,13 +161,12 @@ export async function generateListicleOutline(body, genAI) {
         json: true,
         max_tokens: 1200,
         waitOn429: true,
-        prompt: outlinePrompt // same prompt you send Gemini
+        prompt: outlinePrompt
       })
 
       const parsed = parseJsonSafe(alt?.text)
 
       if (parsed?.outline || Array.isArray(parsed)) {
-        // normalize to your outline shape and return success
       }
 
       throw new Error(`OUTLINE_PARSE_FAILED: Could not produce a valid outline after ${attempt} attempts. ${msg}`)
@@ -399,7 +398,6 @@ export async function generateListicleSection(body, genAI) {
     })
 
     if (!alt?.text) {
-      // Do NOT throw — worker must continue other sections
       console.error('[Section] All providers exhausted. Skipping this heading.')
 
       return {

@@ -22,8 +22,22 @@ import {
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
 import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
-import { buildCheckPriceButton, escapeHtml, extractAsin, renderResponsiveTable, renderTopPickCards, rewriteAcceptsSource, rewriteSourceError, withRequiredCheckPrice } from '../utils/articleHtml'
-import { fetchInternalAmazonData, formatAmazonProducts, generateAmazonRoundupOutline, generateAmazonRoundupSection } from './amazonRoundUp'
+import {
+  buildCheckPriceButton,
+  escapeHtml,
+  extractAsin,
+  renderResponsiveTable,
+  renderTopPickCards,
+  rewriteAcceptsSource,
+  rewriteSourceError,
+  withRequiredCheckPrice
+} from '../utils/articleHtml'
+import {
+  fetchInternalAmazonData,
+  formatAmazonProducts,
+  generateAmazonRoundupOutline,
+  generateAmazonRoundupSection
+} from './amazonRoundUp'
 import { generateAmazonReviewOutline, generateAmazonReviewSection } from './amazonReview'
 
 function firstAmazonUrl(text) {
@@ -51,9 +65,9 @@ function isAmazonRewriteType(type) {
 
 function excludedHeroUrlsFromSource(rawHtml, sourceText) {
   return (
-    `${rawHtml || ''}\n${sourceText || ''}`.match(/https?:\/\/[^"'\\\s<>)]+/gi)?.filter(url =>
-      /images\.pexels|pixabay|images\.unsplash|wp-content\/uploads|og:image/i.test(url)
-    ) || []
+    `${rawHtml || ''}\n${sourceText || ''}`
+      .match(/https?:\/\/[^"'\\\s<>)]+/gi)
+      ?.filter(url => /images\.pexels|pixabay|images\.unsplash|wp-content\/uploads|og:image/i.test(url)) || []
   )
 }
 
@@ -78,7 +92,9 @@ function imageRank(url) {
 }
 
 function addAmazonImage(found, raw) {
-  let url = decodeHtml(raw).trim().replace(/\\u0026/g, '&')
+  let url = decodeHtml(raw)
+    .trim()
+    .replace(/\\u0026/g, '&')
 
   if (url.startsWith('//')) url = `https:${url}`
   if (!/^https?:/i.test(url)) return
@@ -116,7 +132,8 @@ function extractAmazonImages(html) {
     if (src) addAmazonImage(found, src[1])
   }
 
-  const bare = source.match(/https?:\/\/[^\s"'<>]+(?:m\.media-amazon|images-amazon|ssl-images-amazon)[^\s"'<>]*/gi) || []
+  const bare =
+    source.match(/https?:\/\/[^\s"'<>]+(?:m\.media-amazon|images-amazon|ssl-images-amazon)[^\s"'<>]*/gi) || []
 
   bare.forEach(url => addAmazonImage(found, url))
 
@@ -126,7 +143,10 @@ function extractAmazonImages(html) {
 function extractAsins(text) {
   const ids = []
   const source = String(text || '')
-  const re = /(?:dp|gp\/product|gp\/aw\/d|ASIN|product)\/([A-Z0-9]{10})(?=[/?&#\s"'<]|$)|data-asin=["']([A-Z0-9]{10})["']/gi
+
+  const re =
+    /(?:dp|gp\/product|gp\/aw\/d|ASIN|product)\/([A-Z0-9]{10})(?=[/?&#\s"'<]|$)|data-asin=["']([A-Z0-9]{10})["']/gi
+
   let match
 
   while ((match = re.exec(source))) {
@@ -158,7 +178,10 @@ function productImageHtml(product, keyword) {
 
 function stripStockMedia(text) {
   return String(text || '')
-    .replace(/<img\b[^>]*src=["'][^"']*(?:images\.pexels\.com|images\.unsplash\.com|pixabay\.com|cdn\.pixabay)[^"']*["'][^>]*>/gi, '')
+    .replace(
+      /<img\b[^>]*src=["'][^"']*(?:images\.pexels\.com|images\.unsplash\.com|pixabay\.com|cdn\.pixabay)[^"']*["'][^>]*>/gi,
+      ''
+    )
     .replace(/!\[[^\]]*\]\((https?:\/\/[^)]*(?:pexels|pixabay|unsplash)[^)]*)\)/gi, '')
     .replace(/<iframe\b[^>]*youtube[^>]*>[\s\S]*?<\/iframe>/gi, '')
     .replace(/https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\/\S+/gi, '')
@@ -181,8 +204,10 @@ function insertAfterFirstBlock(body, snippet) {
 
 async function loadRewriteProducts(settings, sourceText, rawHtml) {
   const blob = `${rawHtml || ''}\n${sourceText || ''}`
+
   const limit =
     settings.type === 'amazon-review-rewrite' ? 1 : Math.max(1, Math.min(10, Number(settings.numberOfProducts) || 5))
+
   const asins = extractAsins(blob).slice(0, 10)
   const scraped = extractAmazonImages(blob)
   const lookupAsins = asins.slice(0, limit)
@@ -231,15 +256,18 @@ async function loadRewriteProducts(settings, sourceText, rawHtml) {
 
   let imageCursor = 0
 
-  products = products.slice(0, limit).map(product => {
-    if (product.imageUrl && imageRank(product.imageUrl) >= 80) return product
+  products = products
+    .slice(0, limit)
+    .map(product => {
+      if (product.imageUrl && imageRank(product.imageUrl) >= 80) return product
 
-    const imageUrl = scraped[imageCursor] || scraped[0] || product.imageUrl || ''
+      const imageUrl = scraped[imageCursor] || scraped[0] || product.imageUrl || ''
 
-    imageCursor += 1
+      imageCursor += 1
 
-    return { ...product, imageUrl }
-  }).filter(product => product.imageUrl || product.asin || product.productName)
+      return { ...product, imageUrl }
+    })
+    .filter(product => product.imageUrl || product.asin || product.productName)
 
   const productImages = [...new Set([...products.map(product => product.imageUrl), ...scraped].filter(Boolean))]
 
@@ -253,7 +281,12 @@ function attachProductsToOutline(outline, products) {
 
   return outline.map(item => {
     const text = String(item?.text || '')
-    const clean = text.replace(/^\d+\.\s*/, '').toLowerCase().trim()
+
+    const clean = text
+      .replace(/^\d+\.\s*/, '')
+      .toLowerCase()
+      .trim()
+
     const numbered = /^\d+\.\s+/.test(text)
     const looksProduct = item?.sectionType === 'product' || numbered
 
@@ -300,7 +333,11 @@ function matchRewriteProduct(heading, outlineContext, products) {
 
   if (fromOutline?.imageUrl || fromOutline?.asin) return fromOutline
 
-  const clean = String(heading || '').replace(/^\d+\.\s*/, '').toLowerCase().trim()
+  const clean = String(heading || '')
+    .replace(/^\d+\.\s*/, '')
+    .toLowerCase()
+    .trim()
+
   const named = (products || []).find(product => {
     const name = String(product.productName || '').toLowerCase()
 
@@ -318,7 +355,8 @@ function matchRewriteProduct(heading, outlineContext, products) {
   let productCursor = 0
 
   for (const item of outlineContext || []) {
-    const isProduct = item?.sectionType === 'product' || item?.productData?.imageUrl || /^\d+\.\s+/.test(item?.text || '')
+    const isProduct =
+      item?.sectionType === 'product' || item?.productData?.imageUrl || /^\d+\.\s+/.test(item?.text || '')
 
     if (!isProduct) continue
 
@@ -346,6 +384,7 @@ function mergeRewriteProduct(primary, fallback) {
 
 function reviewProductFromOutline(outlineContext) {
   const items = Array.isArray(outlineContext) ? outlineContext : []
+
   const withData = items.find(
     item =>
       item?.productData &&
@@ -412,7 +451,10 @@ function normalizeAmazonReviewRewriteOutline(outline, settings, product) {
       children: []
     })
   } else {
-    groups[0] = { ...groups[0], item: { ...groups[0].item, sectionType: 'intro', text: ensureKeyword(groups[0].item.text) } }
+    groups[0] = {
+      ...groups[0],
+      item: { ...groups[0].item, sectionType: 'intro', text: ensureKeyword(groups[0].item.text) }
+    }
   }
 
   groups = groups.map((group, index) => {
@@ -429,12 +471,17 @@ function normalizeAmazonReviewRewriteOutline(outline, settings, product) {
     `Key Features of ${keyword || 'This Product'}`,
     `Real-World Performance of ${keyword || 'This Product'}`
   ]
+
   let featureCount = groups.filter(group => group.item.sectionType === 'features').length
   let insertAt = 1
 
   while (featureCount < 2) {
     groups.splice(insertAt, 0, {
-      item: { type: 'h2', text: featureDefaults[featureCount] || `Feature ${featureCount + 1}`, sectionType: 'features' },
+      item: {
+        type: 'h2',
+        text: featureDefaults[featureCount] || `Feature ${featureCount + 1}`,
+        sectionType: 'features'
+      },
       children: []
     })
     featureCount += 1
@@ -447,6 +494,7 @@ function normalizeAmazonReviewRewriteOutline(outline, settings, product) {
     if (!matches.length) {
       const faqIndex = groups.findIndex(group => group.item.sectionType === 'faq')
       const conclusionIndex = groups.findIndex(group => group.item.sectionType === 'conclusion')
+
       const at =
         sectionType === 'pros_cons'
           ? conclusionIndex >= 0
@@ -469,6 +517,7 @@ function normalizeAmazonReviewRewriteOutline(outline, settings, product) {
 
     groups = groups.map(group => {
       if (group.item.sectionType !== sectionType) return group
+
       if (!seen) {
         seen = true
 
@@ -514,6 +563,7 @@ function normalizeAmazonReviewRewriteOutline(outline, settings, product) {
 function amazonReviewRewriteOutlineDirective(settings, product, faqInstruction, relatedInstruction) {
   const condensed = Boolean(settings.condensedMode || settings.enableCondensedMode)
   const keyword = settings.targetKeyword || product?.productName || 'this product'
+
   const featureNote = product?.features?.length
     ? `Ground feature headings in these listing features when the source covers them: ${product.features.slice(0, 8).join(' | ')}.`
     : 'Ground feature headings in the source article.'
@@ -588,9 +638,11 @@ function amazonReviewRewriteSectionDirective({
 }) {
   const condensed = Boolean(settings.condensedMode || settings.enableCondensedMode)
   const activeKeyword = targetKeyword || product?.productName || 'this product'
+
   const cta = priceButton
     ? `<div class="affigenie-cta" style="display:block;width:100%;max-width:100%;text-align:center;margin:25px 0;">\n${priceButton}\n</div>`
     : ''
+
   const productContext = product
     ? `PRODUCT CONTEXT (do not invent a different product, price, or name):
       - Product Name: ${product.productName || activeKeyword}
@@ -598,6 +650,7 @@ function amazonReviewRewriteSectionDirective({
       - Core Features: ${product.features?.length ? product.features.join(' | ') : 'Use only features present in the source article.'}
       - Affiliate URL: ${product.amazonUrl || ''}`
     : ''
+
   const shared = `
     AMAZON SINGLE PRODUCT REVIEW LAYOUT for sectionType "${sectionType}":
     Rewrite this part of the source in the same layout used by Amazon Single Product Review. One product only.
@@ -649,9 +702,9 @@ function amazonReviewRewriteSectionDirective({
 
 export function detectSourceArticleType(htmlOrText = '') {
   const source = String(htmlOrText || '')
+
   const marker =
-    source.match(/data-affigenie-type=["']([a-z0-9-]+)["']/i) ||
-    source.match(/affigenie-article-type:([a-z0-9-]+)/i)
+    source.match(/data-affigenie-type=["']([a-z0-9-]+)["']/i) || source.match(/affigenie-article-type:([a-z0-9-]+)/i)
 
   return marker?.[1] ? marker[1].toLowerCase() : ''
 }
@@ -675,6 +728,7 @@ function lengthInstruction(articleLength, customSectionCount) {
     custom: `Use exactly ${Math.max(2, Math.min(20, Number(customSectionCount) || 6))} H2 sections in the outline.`,
     default: 'Match the source article depth; prefer 5-8 H2 sections unless the source is clearly shorter or longer.'
   }
+
   return map[articleLength] || map.default
 }
 
@@ -707,12 +761,13 @@ export async function generateRewriteOutline(body, genAI) {
   assertRewriteSource(settings.type, detectedType)
 
   const amazonRewrite = isAmazonRewriteType(settings.type)
+
   const loadedProducts = amazonRewrite
     ? await loadRewriteProducts(settings, sourceText, rawHtml)
     : { products: [], productImages: [] }
+
   const rewriteProducts = loadedProducts.products || []
 
-  // Rewrite Amazon Roundup → same outline/section rules as native Amazon Roundup
   if (settings.type === 'amazon-roundup-rewrite') {
     const keyword = targetKeyword || rewriteProducts[0]?.productName || prompt || 'Amazon products'
     const asins = rewriteProducts.map(p => p.asin).filter(Boolean)
@@ -776,9 +831,14 @@ export async function generateRewriteOutline(body, genAI) {
       success: true,
       sourceArticleType: detectedType,
       excludedHeroUrls,
-      heroImage: reviewResult.heroImage && /amazon|media-amazon/i.test(reviewResult.heroImage) ? '' : reviewResult.heroImage || '',
+      heroImage:
+        reviewResult.heroImage && /amazon|media-amazon/i.test(reviewResult.heroImage)
+          ? ''
+          : reviewResult.heroImage || '',
       heroImageId:
-        reviewResult.heroImage && /amazon|media-amazon/i.test(reviewResult.heroImage) ? null : reviewResult.heroImageId ?? null,
+        reviewResult.heroImage && /amazon|media-amazon/i.test(reviewResult.heroImage)
+          ? null
+          : (reviewResult.heroImageId ?? null),
       heroImageSource:
         reviewResult.heroImage && /amazon|media-amazon/i.test(reviewResult.heroImage)
           ? null
@@ -804,10 +864,12 @@ export async function generateRewriteOutline(body, genAI) {
   const baseSystemInstruction = getBaseSystemInstruction(langName, countryName)
 
   const reviewKeyword = targetKeyword || rewriteProducts[0]?.productName || 'main topic'
+
   const reviewSchemaNote =
     settings.type === 'amazon-review-rewrite'
       ? ` Each outline object MUST also include "sectionType" set to "intro", "features", "pros_cons", "conclusion"${includeFaq ? ', or "faq"' : ''}. This rewrite MUST use the Amazon Single Product Review layout, not a roundup or a generic blog outline.`
       : ''
+
   const outlineKeyword = settings.type === 'amazon-review-rewrite' ? reviewKeyword : targetKeyword || 'main topic'
 
   const closingRule =
@@ -894,7 +956,7 @@ export async function generateRewriteOutline(body, genAI) {
       const result = await outlineModel.generateContent(outlinePrompt)
 
       responseText = result.response.text()
-      JSON.parse(responseText) // validate early
+      JSON.parse(responseText)
       break
     } catch (err) {
       lastOutlineError = err
@@ -996,7 +1058,8 @@ export async function generateRewriteOutline(body, genAI) {
     const jsonResult = JSON.parse(responseText)
 
     if (amazonRewrite) {
-      heroImageUrl = loadedProducts.productImages?.[0] || rewriteProducts.find(product => product.imageUrl)?.imageUrl || ''
+      heroImageUrl =
+        loadedProducts.productImages?.[0] || rewriteProducts.find(product => product.imageUrl)?.imageUrl || ''
       heroImageId = null
       heroImageSource = heroImageUrl ? 'amazon' : null
       console.log(`[Hero Image] Amazon rewrite product photo: ${heroImageUrl ? 'found' : 'missing'}`)
@@ -1004,6 +1067,7 @@ export async function generateRewriteOutline(body, genAI) {
 
     if (settings.type === 'amazon-roundup-rewrite' && Array.isArray(jsonResult.outline)) {
       const h2s = jsonResult.outline.filter(item => !item?.type || item.type === 'h2')
+
       const hasProduct = jsonResult.outline.some(
         item => item?.sectionType === 'product' || /^\d+\.\s+/.test(item?.text || '')
       )
@@ -1015,6 +1079,7 @@ export async function generateRewriteOutline(body, genAI) {
           if (!item || index >= h2s.length - 2) return
 
           item.sectionType = 'product'
+
           if (product.productName && !/^\d+\./.test(item.text || '')) {
             item.text = `${index + 1}. ${product.productName}`
           }
@@ -1102,6 +1167,7 @@ export async function generateRewriteSection(body, genAI) {
           fetchArticleData(articleUrlToRewrite),
           fetchRawArticleHtml(articleUrlToRewrite)
         ])
+
         if (articleData?.text) sourceText = articleData.text
         rawHtml = html || ''
       } catch (e) {
@@ -1110,8 +1176,10 @@ export async function generateRewriteSection(body, genAI) {
     }
 
     let products = outlineProducts
+
     if (!products.length) {
       const loaded = await loadRewriteProducts(settings, sourceText, rawHtml)
+
       products = loaded.products || []
     }
 
@@ -1165,6 +1233,7 @@ export async function generateRewriteSection(body, genAI) {
     fetchArticleData(articleUrlToRewrite),
     fetchRawArticleHtml(articleUrlToRewrite)
   ])
+
   const sourceText = articleData.text || ''
 
   if (!articleData.success && !String(rawHtml || '').trim()) {
@@ -1189,7 +1258,10 @@ export async function generateRewriteSection(body, genAI) {
     }
 
     reviewImageHtml = amazonReviewImageHtml(reviewProduct, targetKeyword)
-    reviewPriceButton = buildCheckPriceButton(reviewProduct?.amazonUrl, amazonReviewLinkOptions(settings, reviewProduct))
+    reviewPriceButton = buildCheckPriceButton(
+      reviewProduct?.amazonUrl,
+      amazonReviewLinkOptions(settings, reviewProduct)
+    )
   }
 
   const sectionModel = genAI.getGenerativeModel({
@@ -1234,11 +1306,13 @@ export async function generateRewriteSection(body, genAI) {
     assignedMediaElement = media.assignedMediaElement
     mediaUrl = media.mediaUrl
   }
+
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice)
   let povInstruction = getPovInstruction(pointOfView)
   let readabilityInstruction = getReadabilityInstruction(improveReadability)
 
   const rewriteType = settings.type || 'rewrite'
+
   const typeLayout =
     rewriteType === 'amazon-review-rewrite'
       ? `SINGLE-PRODUCT REVIEW LAYOUT: Match Amazon Single Product Review. One product only. Intro has the product image and Check Price button, feature sections follow, pros and cons are one two-column table, and the conclusion ends with the Check Price button.`
@@ -1346,7 +1420,6 @@ export async function generateRewriteSection(body, genAI) {
     })
 
     if (!alt?.text) {
-      // Do NOT throw — worker must continue other sections
       console.error('[Section] All providers exhausted. Skipping this heading.')
 
       return {
@@ -1386,7 +1459,8 @@ export async function generateRewriteSection(body, genAI) {
           asin: reviewProduct?.asin,
           language: settings.language,
           domain: settings.amazonDomain || 'www.amazon.com',
-          partnerTag: settings.amazonTrackingId || settings.partnerTag || process.env.AMAZON_PARTNER_TAG || 'babiescarrier-20'
+          partnerTag:
+            settings.amazonTrackingId || settings.partnerTag || process.env.AMAZON_PARTNER_TAG || 'babiescarrier-20'
         })
       }
 
@@ -1398,6 +1472,7 @@ export async function generateRewriteSection(body, genAI) {
           targetKeyword || reviewProduct?.productName || heading,
           4
         )
+
         const chosen = (extras || []).find(image => image?.url && image.url !== reviewProduct?.imageUrl)
 
         if (chosen?.url) {
@@ -1408,79 +1483,83 @@ export async function generateRewriteSection(body, genAI) {
         }
       }
     } else {
-    const outlineProducts = (Array.isArray(outlineContext) ? outlineContext : [])
-      .map(item => item?.productData)
-      .filter(product => product && (product.imageUrl || product.asin || product.productName))
-    let products = outlineProducts.some(product => product.imageUrl) ? outlineProducts : []
+      const outlineProducts = (Array.isArray(outlineContext) ? outlineContext : [])
+        .map(item => item?.productData)
+        .filter(product => product && (product.imageUrl || product.asin || product.productName))
 
-    if (!products.length) {
-      const loaded = await loadRewriteProducts(settings, sourceText, rawHtml)
+      let products = outlineProducts.some(product => product.imageUrl) ? outlineProducts : []
 
-      products = loaded.products || []
-    }
+      if (!products.length) {
+        const loaded = await loadRewriteProducts(settings, sourceText, rawHtml)
 
-    const outlineItem = (Array.isArray(outlineContext) ? outlineContext : []).find(item => item?.text === heading)
-    const sectionType = outlineItem?.sectionType || (Number(sectionIndex) === 0 ? 'intro' : '')
-    const isIntro = sectionType === 'intro' || Number(sectionIndex) === 0
-
-    if (settings.type === 'amazon-roundup-rewrite' && isIntro && products.length) {
-      const linkOptions = {
-        language: settings.language,
-        domain: settings.amazonDomain || 'www.amazon.com',
-        partnerTag: settings.amazonTrackingId || process.env.AMAZON_PARTNER_TAG || ''
+        products = loaded.products || []
       }
-      const layout =
-        settings.roundupLayout === 'top-pick'
-          ? renderTopPickCards(products, linkOptions)
-          : renderResponsiveTable({
-              headers: ['Image', 'Product', 'Link'],
-              rows: products.slice(0, 3).map(product => {
-                const safeTitle = escapeHtml(
-                  String(product.productName || product.asin || 'Amazon product').replace(/[\r\n]+/g, ' ')
-                )
-                const safeImageUrl = escapeHtml(String(product.imageUrl || ''))
-                const altText = escapeHtml(`${targetKeyword || ''} ${product.productName || ''}`.trim())
-                const button = buildCheckPriceButton(product.amazonUrl, { ...linkOptions, asin: product.asin })
 
-                return [
-                  safeImageUrl
-                    ? `<img src="${safeImageUrl}" alt="${altText}" title="${safeTitle}" style="width:80px;height:80px;max-width:100%;object-fit:contain;border-radius:8px;" />`
-                    : '',
-                  safeTitle,
-                  button
-                ]
-              })
-            })
+      const outlineItem = (Array.isArray(outlineContext) ? outlineContext : []).find(item => item?.text === heading)
+      const sectionType = outlineItem?.sectionType || (Number(sectionIndex) === 0 ? 'intro' : '')
+      const isIntro = sectionType === 'intro' || Number(sectionIndex) === 0
 
-      if (settings.roundupLayout === 'top-pick') {
-        text = text.replace(/<table\b[\s\S]*?<\/table>/gi, '')
-        if (!/affigenie-product-cards/i.test(text)) text += `\n\n${layout}`
-      } else if (layout && !/<table[\s>]/i.test(text)) {
-        text += `\n\n${layout}`
-      }
-    }
-
-    const productForImage =
-      sectionType === 'product' || matchRewriteProduct(heading, outlineContext, products)
-        ? matchRewriteProduct(heading, outlineContext, products)
-        : null
-    const imageHtml = productImageHtml(productForImage, targetKeyword)
-
-    if (imageHtml && !text.includes(String(productForImage.imageUrl))) {
-      text = insertAfterFirstBlock(text, imageHtml)
-    }
-
-    const buttonTarget = productForImage?.amazonUrl
-      ? {
-          url: productForImage.amazonUrl,
-          asin: productForImage.asin,
+      if (settings.type === 'amazon-roundup-rewrite' && isIntro && products.length) {
+        const linkOptions = {
           language: settings.language,
           domain: settings.amazonDomain || 'www.amazon.com',
           partnerTag: settings.amazonTrackingId || process.env.AMAZON_PARTNER_TAG || ''
         }
-      : amazonRewriteOptions(settings, sourceText, text)
 
-    text = withRequiredCheckPrice(text, buttonTarget)
+        const layout =
+          settings.roundupLayout === 'top-pick'
+            ? renderTopPickCards(products, linkOptions)
+            : renderResponsiveTable({
+                headers: ['Image', 'Product', 'Link'],
+                rows: products.slice(0, 3).map(product => {
+                  const safeTitle = escapeHtml(
+                    String(product.productName || product.asin || 'Amazon product').replace(/[\r\n]+/g, ' ')
+                  )
+
+                  const safeImageUrl = escapeHtml(String(product.imageUrl || ''))
+                  const altText = escapeHtml(`${targetKeyword || ''} ${product.productName || ''}`.trim())
+                  const button = buildCheckPriceButton(product.amazonUrl, { ...linkOptions, asin: product.asin })
+
+                  return [
+                    safeImageUrl
+                      ? `<img src="${safeImageUrl}" alt="${altText}" title="${safeTitle}" style="width:80px;height:80px;max-width:100%;object-fit:contain;border-radius:8px;" />`
+                      : '',
+                    safeTitle,
+                    button
+                  ]
+                })
+              })
+
+        if (settings.roundupLayout === 'top-pick') {
+          text = text.replace(/<table\b[\s\S]*?<\/table>/gi, '')
+          if (!/affigenie-product-cards/i.test(text)) text += `\n\n${layout}`
+        } else if (layout && !/<table[\s>]/i.test(text)) {
+          text += `\n\n${layout}`
+        }
+      }
+
+      const productForImage =
+        sectionType === 'product' || matchRewriteProduct(heading, outlineContext, products)
+          ? matchRewriteProduct(heading, outlineContext, products)
+          : null
+
+      const imageHtml = productImageHtml(productForImage, targetKeyword)
+
+      if (imageHtml && !text.includes(String(productForImage.imageUrl))) {
+        text = insertAfterFirstBlock(text, imageHtml)
+      }
+
+      const buttonTarget = productForImage?.amazonUrl
+        ? {
+            url: productForImage.amazonUrl,
+            asin: productForImage.asin,
+            language: settings.language,
+            domain: settings.amazonDomain || 'www.amazon.com',
+            partnerTag: settings.amazonTrackingId || process.env.AMAZON_PARTNER_TAG || ''
+          }
+        : amazonRewriteOptions(settings, sourceText, text)
+
+      text = withRequiredCheckPrice(text, buttonTarget)
     }
   }
 

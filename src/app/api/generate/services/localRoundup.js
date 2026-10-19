@@ -35,6 +35,7 @@ function normalizeWebsiteUrl(value) {
 
   if (!raw || /^(?:not available|n\/a|none|null|undefined|#|\[insert website url\])$/i.test(raw)) return ''
   raw = raw.replace(/^[<\[]+|[>\]]+$/g, '')
+
   if (!/^https?:\/\//i.test(raw)) {
     if (/^[a-z0-9.-]+\.[a-z]{2,}(?:[/?#]|$)/i.test(raw)) raw = `https://${raw}`
     else return ''
@@ -59,7 +60,13 @@ function isBlockedPlaceHost(hostname) {
 
   if (!host || host === 'localhost' || host.endsWith('.localhost')) return true
   if (host === 'google.com' || host.endsWith('.google.com') || /^google\.[a-z.]+$/.test(host)) return true
-  if (host.includes('tripadvisor.') || host === 'tripadvisor.com' || host.endsWith('.yelp.com') || host === 'yelp.com') {
+
+  if (
+    host.includes('tripadvisor.') ||
+    host === 'tripadvisor.com' ||
+    host.endsWith('.yelp.com') ||
+    host === 'yelp.com'
+  ) {
     return true
   }
 
@@ -145,9 +152,12 @@ function isRelatedWebsite(value) {
 
     if (!host || host === 'localhost' || host.endsWith('.localhost')) return false
     if (host === 'google.com' || host.endsWith('.google.com') || /^google\.[a-z.]+$/.test(host)) return false
-    if (['goo.gl', 'g.co', 'g.page', 'maps.apple.com', 'bing.com', 'yahoo.com', 'duckduckgo.com'].some(
-      domain => host === domain || host.endsWith(`.${domain}`)
-    )) {
+
+    if (
+      ['goo.gl', 'g.co', 'g.page', 'maps.apple.com', 'bing.com', 'yahoo.com', 'duckduckgo.com'].some(
+        domain => host === domain || host.endsWith(`.${domain}`)
+      )
+    ) {
       return false
     }
 
@@ -161,6 +171,7 @@ function rawWebsite(place) {
   if (!place || typeof place !== 'object') return ''
 
   const attrs = place.attributes && typeof place.attributes === 'object' ? place.attributes : {}
+
   const candidates = [
     place.website,
     place.websiteUrl,
@@ -189,6 +200,7 @@ function rawRelatedWebsite(place) {
   if (!place || typeof place !== 'object') return ''
 
   const attrs = place.attributes && typeof place.attributes === 'object' ? place.attributes : {}
+
   const candidates = [
     place.relatedWebsite,
     place.website,
@@ -254,7 +266,7 @@ function scoreOfficialWebsite(url, resultTitle, place) {
 
   if (websiteNameTokens(place?.title).some(token => token.length > 3 && hostFlat.includes(token))) score += 5
   if (websiteNameMatches(resultTitle, place?.title)) score += 3
-  if (path === '/' ) score += 2
+  if (path === '/') score += 2
   else if ((path.match(/\//g) || []).length <= 1) score += 1
   if (/\/(biz|place|places|listing|profile|menu)\//i.test(path)) score -= 4
 
@@ -347,7 +359,11 @@ function hostIncludesToken(url, token) {
   if (needle.length < 4) return false
 
   try {
-    return new URL(url).hostname.replace(/^www\./, '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(needle)
+    return new URL(url).hostname
+      .replace(/^www\./, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '')
+      .includes(needle)
   } catch {
     return false
   }
@@ -383,6 +399,7 @@ function pickOfficialFromRows(rows, title) {
 
     if (hostIncludesToken(url, primary)) score += 6
     if (websiteNameMatches(row?.title || row?.name || '', primary)) score += 2
+
     if (score > bestScore) {
       best = url
       bestScore = score
@@ -400,6 +417,7 @@ function pickRelatedFromRows(rows, title) {
 
   for (const row of rows || []) {
     const urls = []
+
     const push = value => {
       const url = unwrapResultUrl(value)
 
@@ -439,6 +457,7 @@ function pickRelatedFromRows(rows, title) {
       if (index === 0 && (row?.website || row?.websiteUrl || row?.websiteURI || row?.websiteUri)) score += 2
       if (hostIncludesToken(url, venueToken || primary)) score += 4
       if (!isBlockedPlaceHost(host)) score += 6
+
       if (score > bestScore) {
         best = url
         bestScore = score
@@ -460,11 +479,13 @@ async function findOfficialWebsite(place, country, language) {
   const gl = String(country || 'us').toLowerCase()
   const hl = String(language || 'en').toLowerCase()
   const websiteQuery = [title, locality, 'website'].filter(Boolean).join(' ')
+
   const [placeRows, mapsData, searchData] = await Promise.all([
     fetchSerperPlacesData([title, locality].filter(Boolean).join(' '), 5, gl, hl),
     serperJson('maps', { q: [title, locality].filter(Boolean).join(' '), gl, hl }),
     serperJson('search', { q: websiteQuery, gl, hl })
   ])
+
   const fromPlaces = pickOfficialFromRows(placeRows, title)
 
   if (fromPlaces) return fromPlaces
@@ -492,6 +513,7 @@ async function findOfficialWebsite(place, country, language) {
     ...(graph.sitelinks || []),
     ...(searchData?.answerBox?.link ? [{ title: searchData.answerBox.title, link: searchData.answerBox.link }] : [])
   ]
+
   const fromSearch = pickOfficialFromRows(organic, title)
 
   if (fromSearch) return fromSearch
@@ -500,7 +522,8 @@ async function findOfficialWebsite(place, country, language) {
   const fallbackGraph = fallback?.knowledgeGraph || {}
   const fallbackSite = unwrapResultUrl(fallbackGraph.website || fallbackGraph.attributes?.Website)
 
-  if (fallbackSite && isOfficialWebsite(fallbackSite) && hostIncludesToken(fallbackSite, token || title)) return fallbackSite
+  if (fallbackSite && isOfficialWebsite(fallbackSite) && hostIncludesToken(fallbackSite, token || title))
+    return fallbackSite
 
   const strictFallback = pickOfficialFromRows(fallback?.organic || [], title)
 
@@ -528,6 +551,7 @@ async function ensurePlaceWebsite(place, country, language) {
     [primaryPlaceName(normalized.title), placeLocality(normalized.title, '')].filter(Boolean).join(', '),
     country
   )
+
   let phone = normalized.phone || geo?.phone || ''
 
   if (geo?.website && isOfficialWebsite(geo.website)) {
@@ -543,11 +567,14 @@ async function ensurePlaceWebsite(place, country, language) {
 export function applyExactWebsiteLink(text, website) {
   const source = String(text || '')
   const href = isRelatedWebsite(website) ? normalizeWebsiteUrl(website) : ''
+
   const lineRe = new RegExp(
     `^[ \\t]*(?:[-*][ \\t]+|\\d+\\.[ \\t]+)?(?:\\*\\*)?\\s*(?:${WEBSITE_LINE})\\b[^\\n]*$\\n?`,
     'gim'
   )
+
   const itemRe = new RegExp(`<li\\b[^>]*>[\\s\\S]*?(?:${WEBSITE_LINE})\\b[\\s\\S]*?<\\/li>\\s*`, 'gi')
+
   const paragraphRe = new RegExp(
     `<p\\b[^>]*>\\s*(?:<(?:strong|b)>\\s*)?(?:${WEBSITE_LINE})\\b[\\s\\S]*?<\\/p>\\s*`,
     'gi'
@@ -706,7 +733,9 @@ function geocodePlace(query, country) {
     const cc = String(country || '')
       .trim()
       .toLowerCase()
+
     const countryParam = /^[a-z]{2}$/.test(cc) ? `&countrycodes=${cc}` : ''
+
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&extratags=1&q=${encodeURIComponent(q)}${countryParam}`,
       {
@@ -774,8 +803,7 @@ async function ensurePlaceCoordinates(place, country, keyword) {
       address: normalized.address || geo.address || '',
       phone: normalized.phone || geo.phone || '',
       website: normalized.website || (isOfficialWebsite(geo.website) ? geo.website : ''),
-      relatedWebsite:
-        normalized.relatedWebsite || (geo.website && !isOfficialWebsite(geo.website) ? geo.website : '')
+      relatedWebsite: normalized.relatedWebsite || (geo.website && !isOfficialWebsite(geo.website) ? geo.website : '')
     }
   }
 
@@ -795,6 +823,7 @@ async function resolvePlace({ heading, keyword, country, language, outlineContex
   }
 
   let place = named
+
   const queries = [cleaned, [cleaned, keyword].filter(Boolean).join(' ')].filter(
     (query, index, all) => query && all.indexOf(query) === index
   )
@@ -840,8 +869,7 @@ async function resolvePlace({ heading, keyword, country, language, outlineContex
         longitude: geo.longitude,
         phone: place?.phone || geo.phone || '',
         website: place?.website || (isOfficialWebsite(geo.website) ? geo.website : ''),
-        relatedWebsite:
-          place?.relatedWebsite || (geo.website && !isOfficialWebsite(geo.website) ? geo.website : ''),
+        relatedWebsite: place?.relatedWebsite || (geo.website && !isOfficialWebsite(geo.website) ? geo.website : ''),
         rating: place?.rating || '',
         ratingCount: place?.ratingCount || '',
         cid: place?.cid || ''
@@ -860,10 +888,12 @@ export function applyExactLocationLink(text, mapLink, address) {
   if (!source || !href) return source
 
   const safeHref = escAttr(href)
+
   const lineRe = new RegExp(
     `^([ \\t]*(?:[-*][ \\t]+)?(?:\\*\\*)?(?:${LOCATION_LABEL})(?:\\*\\*)?\\s*:\\s*(?:\\*\\*)?\\s*)(.*)$`,
     'gim'
   )
+
   let replaced = false
   let next = source.replace(lineRe, (full, prefix, rest) => {
     replaced = true
@@ -1093,6 +1123,7 @@ export async function generateLocalRoundupOutline(body, genAI) {
         country,
         language
       )
+
       const prefix = numberingArray[currentPlaceIndex] ? `${numberingArray[currentPlaceIndex]} ` : ''
 
       item.text = `${prefix}${place?.title || placesData[currentPlaceIndex].title}`
@@ -1314,8 +1345,9 @@ export async function generateLocalRoundupSection(body, genAI) {
   const websiteBullet = placeWebsite
     ? `* **Visit Website:** <a href="${escUrlAttr(placeWebsite)}" target="_blank" rel="noopener noreferrer">View Website</a>`
     : ''
+
   const websiteRule = placeWebsite
-    ? "The Visit Website href above is the best page found for this place: its own site when one exists, otherwise the closest related page. Output that anchor exactly. Do not invent or swap the URL."
+    ? 'The Visit Website href above is the best page found for this place: its own site when one exists, otherwise the closest related page. Output that anchor exactly. Do not invent or swap the URL.'
     : 'Do NOT output a Visit Website, View Website, Official Website, or Website URL line. No website was found for this place. Never invent a website URL.'
 
   let sectionStructureRequirements =
@@ -1394,7 +1426,6 @@ export async function generateLocalRoundupSection(body, genAI) {
     })
 
     if (!alt?.text) {
-      // Do NOT throw — worker must continue other sections
       console.error('[Section] All providers exhausted. Skipping this heading.')
 
       return {

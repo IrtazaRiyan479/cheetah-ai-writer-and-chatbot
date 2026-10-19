@@ -28,10 +28,13 @@ function normalizeOutline(outline) {
     .map(item => {
       if (!item || typeof item !== 'object') return null
       const text = String(item.text || item.title || item.heading || '').trim()
+
       if (!text) return null
       let type = String(item.type || 'h2').toLowerCase()
+
       if (type === 'h1' || type === 'heading' || type === 'title') type = 'h2'
       if (type !== 'h2' && type !== 'h3') type = 'h2'
+
       return { ...item, type, text }
     })
     .filter(Boolean)
@@ -77,7 +80,9 @@ export async function generateYoutubeBlogOutline(body, genAI) {
       : await fetchYoutubeVideoData(youtubeUrl)
 
   if (!videoData.success) {
-    throw new Error(videoData.error || 'Could not fetch captions. The video might be private, age-restricted, or missing subtitles.')
+    throw new Error(
+      videoData.error || 'Could not fetch captions. The video might be private, age-restricted, or missing subtitles.'
+    )
   }
 
   const transcript = videoData.transcript || videoData.text || ''
@@ -85,6 +90,7 @@ export async function generateYoutubeBlogOutline(body, genAI) {
   const videoTitle = videoData.title || settings.fetchedVideoTitle || 'YouTube Video'
   const durationSeconds = Number(videoData.durationSeconds || settings.youtubeDurationSeconds) || 0
   const plan = youtubeSectionPlan(durationSeconds, transcript)
+
   const thumbnail =
     videoData.thumbnail ||
     settings.youtubeThumbnail ||
@@ -146,7 +152,11 @@ export async function generateYoutubeBlogOutline(body, genAI) {
     const count = h2Count(candidate?.outline)
     const subCount = h3Count(candidate?.outline)
 
-    if (!best || count > h2Count(best.outline) || (count === h2Count(best.outline) && subCount > h3Count(best.outline))) {
+    if (
+      !best ||
+      count > h2Count(best.outline) ||
+      (count === h2Count(best.outline) && subCount > h3Count(best.outline))
+    ) {
       best = candidate
     }
 
@@ -154,10 +164,12 @@ export async function generateYoutubeBlogOutline(body, genAI) {
       throw new Error(`Outline had ${count} H2 sections; need at least ${plan.minH2}`)
     }
 
-    // Always require some H3 depth (short and long videos)
     const minH3 = Math.max(2, Math.floor(count / 2))
+
     if (subCount < minH3) {
-      throw new Error(`Outline had only ${subCount} H3 sub-headings (need at least ${minH3}); pure H2 lists are rejected`)
+      throw new Error(
+        `Outline had only ${subCount} H3 sub-headings (need at least ${minH3}); pure H2 lists are rejected`
+      )
     }
 
     parsedData = candidate

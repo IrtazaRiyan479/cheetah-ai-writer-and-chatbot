@@ -66,7 +66,6 @@ export async function POST(request) {
       }
     })
 
-
     return NextResponse.json({ success: true, article: newArticle })
   } catch (error) {
     console.error(error)
@@ -75,7 +74,6 @@ export async function POST(request) {
   }
 }
 
-// Fetch user's drafts
 export async function GET(request) {
   try {
     const session = await getServerSession(authOptions)
@@ -110,7 +108,6 @@ export async function GET(request) {
   }
 }
 
-// Delete a draft
 export async function DELETE(request) {
   try {
     const session = await getServerSession(authOptions)

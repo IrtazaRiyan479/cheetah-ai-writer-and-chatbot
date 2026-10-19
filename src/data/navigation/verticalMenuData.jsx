@@ -3,6 +3,7 @@ const verticalMenuData = (session) => {
     { label: 'Home', href: '/home', icon: 'ri-home-smile-fill' },
     { label: 'AffiGenieChat', href: '/chat', icon: 'ri-chat-ai-2-fill' },
     { label: 'AffiGenieWriter', href: '/writer', icon: 'ri-edit-box-fill' },
+    { label: 'Publishing Calendar', href: '/calendar', icon: 'ri-calendar-schedule-line' },
     { label: 'AffiGenieImages', href: '/images', icon: 'ri-image-ai-fill' },
     { label: 'AffiGenieLinks', href: '/links', icon: 'ri-links-line' },
     { label: 'AffiGenieMagnets', href: '/magnets', icon: 'ri-book-marked-fill' },

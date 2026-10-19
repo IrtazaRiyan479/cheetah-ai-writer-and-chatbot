@@ -1,14 +1,12 @@
-// Third-party Imports
 import { createSlice } from '@reduxjs/toolkit'
 
-// Data Imports
-import { events } from '@/fake-db/apps/calendar'
+import { PUBLISH_CALENDARS } from '@/fake-db/apps/calendar'
 
 const initialState = {
-  events: events,
-  filteredEvents: events,
+  events: [],
+  filteredEvents: [],
   selectedEvent: null,
-  selectedCalendars: ['Personal', 'Business', 'Family', 'Holiday', 'ETC']
+  selectedCalendars: [...PUBLISH_CALENDARS]
 }
 
 const filterEventsUsingCheckbox = (events, selectedCalendars) => {
@@ -17,37 +15,48 @@ const filterEventsUsingCheckbox = (events, selectedCalendars) => {
 
 export const calendarSlice = createSlice({
   name: 'calendar',
-  initialState: initialState,
+  initialState,
   reducers: {
+    setEvents: (state, action) => {
+      state.filteredEvents = action.payload || []
+      state.events = filterEventsUsingCheckbox(state.filteredEvents, state.selectedCalendars)
+    },
     filterEvents: state => {
-      state.filteredEvents = state.events
+      state.events = filterEventsUsingCheckbox(state.filteredEvents, state.selectedCalendars)
     },
     addEvent: (state, action) => {
-      const newEvent = { ...action.payload, id: `${parseInt(state.events[state.events.length - 1]?.id ?? '') + 1}` }
+      const newEvent = action.payload.id
+        ? action.payload
+        : { ...action.payload, id: `local-${Date.now()}` }
 
-      state.events.push(newEvent)
+      state.filteredEvents.push(newEvent)
+      state.events = filterEventsUsingCheckbox(state.filteredEvents, state.selectedCalendars)
     },
     updateEvent: (state, action) => {
-      state.events = state.events.map(event => {
-        if (action.payload._def && event.id === action.payload._def.publicId) {
+      const payload = action.payload
+
+      state.filteredEvents = state.filteredEvents.map(event => {
+        if (payload._def && event.id === payload._def.publicId) {
           return {
             id: event.id,
-            url: action.payload._def.url,
-            title: action.payload._def.title,
-            allDay: action.payload._def.allDay,
-            end: action.payload._instance.range.end,
-            start: action.payload._instance.range.start,
-            extendedProps: action.payload._def.extendedProps
+            url: payload._def.url,
+            title: payload._def.title,
+            allDay: payload._def.allDay,
+            end: payload._instance.range.end,
+            start: payload._instance.range.start,
+            extendedProps: payload._def.extendedProps
           }
-        } else if (event.id === action.payload.id) {
-          return action.payload
-        } else {
-          return event
         }
+
+        if (event.id === payload.id) return payload
+
+        return event
       })
+      state.events = filterEventsUsingCheckbox(state.filteredEvents, state.selectedCalendars)
     },
     deleteEvent: (state, action) => {
-      state.events = state.events.filter(event => event.id !== action.payload)
+      state.filteredEvents = state.filteredEvents.filter(event => event.id !== action.payload)
+      state.events = filterEventsUsingCheckbox(state.filteredEvents, state.selectedCalendars)
     },
     selectedEvent: (state, action) => {
       state.selectedEvent = action.payload
@@ -55,21 +64,20 @@ export const calendarSlice = createSlice({
     filterCalendarLabel: (state, action) => {
       const index = state.selectedCalendars.indexOf(action.payload)
 
-      if (index !== -1) {
-        state.selectedCalendars.splice(index, 1)
-      } else {
-        state.selectedCalendars.push(action.payload)
-      }
+      if (index !== -1) state.selectedCalendars.splice(index, 1)
+      else state.selectedCalendars.push(action.payload)
 
       state.events = filterEventsUsingCheckbox(state.filteredEvents, state.selectedCalendars)
     },
     filterAllCalendarLabels: (state, action) => {
-      state.selectedCalendars = action.payload ? ['Personal', 'Business', 'Family', 'Holiday', 'ETC'] : []
+      state.selectedCalendars = action.payload ? [...PUBLISH_CALENDARS] : []
       state.events = filterEventsUsingCheckbox(state.filteredEvents, state.selectedCalendars)
     }
   }
 })
+
 export const {
+  setEvents,
   filterEvents,
   addEvent,
   updateEvent,
@@ -78,4 +86,5 @@ export const {
   filterCalendarLabel,
   filterAllCalendarLabels
 } = calendarSlice.actions
+
 export default calendarSlice.reducer

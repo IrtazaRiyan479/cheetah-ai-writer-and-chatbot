@@ -48,12 +48,14 @@ import Checkbox from '@mui/material/Checkbox'
 import Switch from '@mui/material/Switch'
 import IconButton from '@mui/material/IconButton'
 import Popover from '@mui/material/Popover'
+import Tooltip from '@mui/material/Tooltip'
 
 import { toast } from 'react-toastify'
 
 import { serializeError } from '@/utils/serializeError'
 
 import { useFeatureAccess } from './FeatureAccessContext'
+import AppReactDatepicker from '@/libs/styles/AppReactDatepicker'
 
 import {
   getAffigenieArticleCss,
@@ -1156,6 +1158,23 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         }
 
         const wpStatus = result.status || status
+
+        const lane = status === 'future' ? 'Scheduled' : status === 'draft' ? 'Draft' : 'Published'
+
+        fetch('/api/calendar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: publishTitle,
+            start: status === 'future' ? scheduledAtIso : new Date().toISOString(),
+            end: status === 'future' ? scheduledAtIso : new Date().toISOString(),
+            allDay: status !== 'future',
+            calendar: lane,
+            url: result.link || result.editLink || '',
+            description: result.editLink ? `Edit: ${result.editLink}` : '',
+            guests: []
+          })
+        }).catch(() => {})
 
         setPublishSuccessData({
           link: result.link,
@@ -2631,7 +2650,14 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
               <FormControlLabel
                 control={<Switch checked={trimTitleAndHero} onChange={e => setTrimTitleAndHero(e.target.checked)} />}
-                label='Remove title and hero from the article body'
+                label={
+                  <span className='inline-flex items-center gap-1'>
+                    <Tooltip title='When on, the H1 and the featured image are removed from the post body so WordPress does not show them twice.'>
+                      <i className='ri-information-line text-base' />
+                    </Tooltip>
+                    Remove title and hero from the article body
+                  </span>
+                }
               />
 
               <Divider className='my-2' />
@@ -2763,15 +2789,33 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           <Typography variant='subtitle2' className='font-bold'>
             Schedule on WordPress
           </Typography>
-          <TextField
-            type='datetime-local'
-            label='Publish at'
-            size='small'
-            value={scheduleAt}
-            onChange={e => setScheduleAt(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            inputProps={{ min: minScheduleInputValue() }}
-            helperText='Uses your local time. WordPress publishes it on the selected site.'
+          <AppReactDatepicker
+            selected={scheduleAt ? new Date(scheduleAt) : null}
+            onChange={date => {
+              if (!date) {
+                setScheduleAt('')
+
+                return
+              }
+
+              const pad = n => String(n).padStart(2, '0')
+
+              setScheduleAt(
+                `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+              )
+            }}
+            showTimeSelect
+            timeIntervals={15}
+            minDate={new Date()}
+            dateFormat='MMM d, yyyy h:mm aa'
+            customInput={
+              <TextField
+                size='small'
+                fullWidth
+                label='Publish at'
+                helperText='Uses your local time. WordPress publishes it on the selected site.'
+              />
+            }
           />
           <Button
             variant='contained'
