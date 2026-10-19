@@ -972,6 +972,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
         if (saveData.success) {
           setUserSavedSites(prev => [...prev, saveData.site])
+          activeCustomData = { ...customWPData, id: saveData.site?.id }
 
           if (saveData.functionsPhp?.status === 'added') {
             toast.success('Added the meta tag code to this site’s functions.php.')
@@ -987,6 +988,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
         if (targetDbSite) {
           activeCustomData = {
+            id: targetDbSite.id,
             url: targetDbSite.url,
             username: targetDbSite.username,
             password: targetDbSite.password
@@ -1139,7 +1141,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         metaDescription: metaDescription,
         articleType: settings.type || '',
         settings: slimPublishSettings(settings),
-        scheduledAt: status === 'future' ? scheduledAtIso : ''
+        scheduledAt: status === 'future' ? scheduledAtIso : '',
+        articleId: draftId || undefined
       }
 
       const res = await fetch('/api/publish', {
@@ -1158,23 +1161,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         }
 
         const wpStatus = result.status || status
-
-        const lane = status === 'future' ? 'Scheduled' : status === 'draft' ? 'Draft' : 'Published'
-
-        fetch('/api/calendar', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: publishTitle,
-            start: status === 'future' ? scheduledAtIso : new Date().toISOString(),
-            end: status === 'future' ? scheduledAtIso : new Date().toISOString(),
-            allDay: status !== 'future',
-            calendar: lane,
-            url: result.link || result.editLink || '',
-            description: result.editLink ? `Edit: ${result.editLink}` : '',
-            guests: []
-          })
-        }).catch(() => {})
 
         setPublishSuccessData({
           link: result.link,

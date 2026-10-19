@@ -3,6 +3,7 @@ import path from 'path'
 
 import { NextResponse } from 'next/server'
 
+import { PrismaClient } from '@prisma/client'
 import { getServerSession } from 'next-auth'
 
 import { authOptions } from '@/libs/auth'
@@ -13,6 +14,10 @@ import { serializeError } from '@/utils/serializeError'
 import { escapeHtml, finalizeArticleHtml } from '../generate/utils/articleHtml'
 
 export const maxDuration = 60
+
+const prisma = global.prismaPublish || new PrismaClient()
+
+if (process.env.NODE_ENV !== 'production') global.prismaPublish = prisma
 
 function normalizeWpSiteUrl(url) {
   let clean = String(url || '').trim()
@@ -564,6 +569,63 @@ function wpFutureDateGmt(scheduledAt) {
   return when.toISOString().replace(/\.\d{3}Z$/, '+00:00')
 }
 
+async function mirrorPublishedArticle({ userId, body, created, editLink, siteKey, title, content }) {
+  const wpStatus = String(created.status || '')
+  const calendar = wpStatus === 'future' ? 'Scheduled' : wpStatus === 'publish' ? 'Published' : 'Draft'
+  const localStatus = wpStatus === 'future' ? 'scheduled' : wpStatus === 'publish' ? 'published' : 'draft'
+  const when = wpStatus === 'future' && body.scheduledAt ? new Date(body.scheduledAt) : new Date()
+  const start = Number.isNaN(when.getTime()) ? new Date().toISOString() : when.toISOString()
+  const data = {
+    title: title || 'Untitled AI Article',
+    content: content || '',
+    status: localStatus,
+    wpPostId: Number(created.id),
+    targetSite: siteKey || null,
+    scheduledAt: wpStatus === 'future' && !Number.isNaN(when.getTime()) ? when : null,
+    publishMeta: JSON.stringify({
+      calendar,
+      start,
+      end: start,
+      allDay: wpStatus !== 'future',
+      url: created.link || editLink || '',
+      siteKey: siteKey || '',
+      link: created.link || '',
+      editLink: editLink || ''
+    })
+  }
+
+  const articleId = body.articleId ? String(body.articleId) : ''
+  let existing = null
+
+  if (articleId) {
+    existing = await prisma.article.findFirst({ where: { id: articleId, userId } })
+  }
+
+  if (!existing) {
+    existing = await prisma.article.findFirst({ where: { userId, wpPostId: Number(created.id) } })
+  }
+
+  if (existing) {
+    const updated = await prisma.article.update({
+      where: { id: existing.id },
+      data: {
+        title: data.title,
+        status: data.status,
+        wpPostId: data.wpPostId,
+        targetSite: data.targetSite,
+        scheduledAt: data.scheduledAt,
+        publishMeta: data.publishMeta
+      }
+    })
+
+    return updated.id
+  }
+
+  const createdRow = await prisma.article.create({ data: { userId, ...data } })
+
+  return createdRow.id
+}
+
 export async function POST(request) {
   try {
     const session = await getServerSession(authOptions)
@@ -752,6 +814,33 @@ export async function POST(request) {
 
     const editLink = `${cleanSiteUrl}/wp-admin/post.php?post=${created.id}&action=edit`
 
+    let articleId = body.articleId || null
+
+    try {
+      const user = session?.user?.email
+        ? await prisma.user.findUnique({ where: { email: session.user.email } })
+        : null
+
+      if (user) {
+        let siteKey = null
+
+        if (siteType === 'predefined') siteKey = siteId || null
+        else if (customSite?.id) siteKey = `db_${customSite.id}`
+
+        articleId = await mirrorPublishedArticle({
+          userId: user.id,
+          body,
+          created: { ...created, status: created.status || postPayload.status },
+          editLink,
+          siteKey,
+          title: postPayload.title,
+          content: finalContent
+        })
+      }
+    } catch (mirrorError) {
+      console.error('Publish mirror skipped:', serializeError(mirrorError))
+    }
+
     return NextResponse.json({
       success: true,
       wpPostId: created.id,
@@ -759,7 +848,8 @@ export async function POST(request) {
       editLink,
       status: created.status || postPayload.status,
       featuredMediaId,
-      functionsPhp
+      functionsPhp,
+      articleId
     })
   } catch (error) {
     console.error('WordPress API Error:', serializeError(error))

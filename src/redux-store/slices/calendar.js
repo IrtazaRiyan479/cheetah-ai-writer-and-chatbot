@@ -25,11 +25,9 @@ export const calendarSlice = createSlice({
       state.events = filterEventsUsingCheckbox(state.filteredEvents, state.selectedCalendars)
     },
     addEvent: (state, action) => {
-      const newEvent = action.payload.id
-        ? action.payload
-        : { ...action.payload, id: `local-${Date.now()}` }
+      if (!action.payload?.id) return
 
-      state.filteredEvents.push(newEvent)
+      state.filteredEvents.push(action.payload)
       state.events = filterEventsUsingCheckbox(state.filteredEvents, state.selectedCalendars)
     },
     updateEvent: (state, action) => {

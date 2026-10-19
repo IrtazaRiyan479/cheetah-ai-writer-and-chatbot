@@ -33,12 +33,15 @@ const defaultState = {
   description: '',
   endDate: new Date(),
   calendar: 'Scheduled',
-  startDate: new Date()
+  startDate: new Date(),
+  siteKey: ''
 }
 
 const AddEventSidebar = props => {
-  const { calendarStore, dispatch, addEventSidebarOpen, handleAddEventSidebarToggle, onPersist } = props
+  const { calendarStore, dispatch, addEventSidebarOpen, handleAddEventSidebarToggle, onPersist, siteOptions = [] } =
+    props
   const [values, setValues] = useState(defaultState)
+  const [siteError, setSiteError] = useState(false)
 
   const PickersComponent = forwardRef(({ ...props }, ref) => {
     return (
@@ -76,7 +79,8 @@ const AddEventSidebar = props => {
         description: event.extendedProps?.description || '',
         calendar: event.extendedProps?.calendar || 'Scheduled',
         endDate: event.end !== null ? new Date(event.end) : new Date(event.start),
-        startDate: event.start !== null ? new Date(event.start) : new Date()
+        startDate: event.start !== null ? new Date(event.start) : new Date(),
+        siteKey: event.extendedProps?.siteKey || ''
       })
     }
   }, [setValue, calendarStore.selectedEvent])
@@ -84,33 +88,25 @@ const AddEventSidebar = props => {
   const resetToEmptyValues = useCallback(() => {
     setValue('title', '')
     setValues(defaultState)
+    setSiteError(false)
   }, [setValue])
 
   const handleSidebarClose = () => {
     setValues(defaultState)
+    setSiteError(false)
     clearErrors()
     dispatch(selectedEvent(null))
     handleAddEventSidebarToggle()
   }
 
   const onSubmit = async data => {
-    const modifiedEvent = {
-      url: values.url,
-      display: 'block',
-      title: data.title,
-      end: values.endDate,
-      allDay: values.allDay,
-      start: values.startDate,
-      extendedProps: {
-        calendar: values.calendar,
-        guests: values.guests?.length ? values.guests : undefined,
-        description: values.description.length ? values.description : undefined
-      }
-    }
+    const isNew = !calendarStore.selectedEvent?.id
 
-    const isNew =
-      calendarStore.selectedEvent === null ||
-      (calendarStore.selectedEvent !== null && !calendarStore.selectedEvent.title?.length)
+    if (!values.siteKey) {
+      setSiteError(true)
+
+      return
+    }
 
     const saved = await onPersist?.(isNew ? 'create' : 'update', {
       id: isNew ? undefined : calendarStore.selectedEvent.id,
@@ -121,25 +117,32 @@ const AddEventSidebar = props => {
       url: values.url,
       calendar: values.calendar,
       guests: values.guests,
-      description: values.description
+      description: values.description,
+      siteKey: values.siteKey
     })
 
-    if (saved?.id) modifiedEvent.id = saved.id
+    if (!saved?.id) return
 
-    if (isNew) dispatch(addEvent(modifiedEvent))
-    else dispatch(updateEvent({ ...modifiedEvent, id: calendarStore.selectedEvent.id }))
+    if (isNew) dispatch(addEvent(saved))
+    else dispatch(updateEvent(saved))
 
     dispatch(filterEvents())
     handleSidebarClose()
   }
 
   const handleDeleteButtonClick = async () => {
-    if (calendarStore.selectedEvent?.id) {
-      await onPersist?.('delete', { id: calendarStore.selectedEvent.id })
-      dispatch(deleteEvent(calendarStore.selectedEvent.id))
-      dispatch(filterEvents())
+    if (!calendarStore.selectedEvent?.id) {
+      handleSidebarClose()
+
+      return
     }
 
+    const removed = await onPersist?.('delete', { id: calendarStore.selectedEvent.id })
+
+    if (removed == null) return
+
+    dispatch(deleteEvent(calendarStore.selectedEvent.id))
+    dispatch(filterEvents())
     handleSidebarClose()
   }
 
@@ -150,10 +153,7 @@ const AddEventSidebar = props => {
   }
 
   const RenderSidebarFooter = () => {
-    if (
-      calendarStore.selectedEvent === null ||
-      (calendarStore.selectedEvent && !calendarStore.selectedEvent.title?.length)
-    ) {
+    if (!calendarStore.selectedEvent?.id) {
       return (
         <div className='flex gap-4'>
           <Button type='submit' variant='contained'>
@@ -195,11 +195,9 @@ const AddEventSidebar = props => {
     >
       <Box className='flex justify-between items-center sidebar-header pli-5 plb-4 border-be'>
         <Typography variant='h5'>
-          {calendarStore.selectedEvent && calendarStore.selectedEvent.title?.length
-            ? 'Update Publishing Slot'
-            : 'Schedule Article'}
+          {calendarStore.selectedEvent?.id ? 'Update Publishing Slot' : 'Schedule Article'}
         </Typography>
-        {calendarStore.selectedEvent && calendarStore.selectedEvent.title?.length ? (
+        {calendarStore.selectedEvent?.id ? (
           <Box className='flex items-center' sx={{ gap: 1 }}>
             <IconButton size='small' onClick={handleDeleteButtonClick}>
               <i className='ri-delete-bin-7-line text-2xl' />
@@ -235,6 +233,36 @@ const AddEventSidebar = props => {
                   />
                 )}
               />
+            </FormControl>
+            <FormControl fullWidth className='mbe-5' error={siteError}>
+              <InputLabel id='event-wp-site'>WordPress site</InputLabel>
+              <Select
+                label='WordPress site'
+                value={values.siteKey}
+                labelId='event-wp-site'
+                disabled={Boolean(calendarStore.selectedEvent?.extendedProps?.wpPostId)}
+                onChange={e => {
+                  setSiteError(false)
+                  setValues({ ...values, siteKey: e.target.value })
+                }}
+              >
+                <MenuItem value='' disabled>
+                  Select a site
+                </MenuItem>
+                {siteOptions.map(site => (
+                  <MenuItem key={site.value} value={site.value}>
+                    {site.label}
+                  </MenuItem>
+                ))}
+                {values.siteKey && !siteOptions.some(site => site.value === values.siteKey) ? (
+                  <MenuItem value={values.siteKey}>{values.siteKey}</MenuItem>
+                ) : null}
+              </Select>
+              {siteError ? (
+                <Typography variant='caption' color='error' className='mts-1'>
+                  Choose the WordPress site this post belongs to.
+                </Typography>
+              ) : null}
             </FormControl>
             <FormControl fullWidth className='mbe-5'>
               <InputLabel id='event-calendar'>Publishing lane</InputLabel>

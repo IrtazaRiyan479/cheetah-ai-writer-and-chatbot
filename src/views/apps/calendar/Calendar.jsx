@@ -33,7 +33,8 @@ export function serializeCalendarEvent(calendarEvent) {
     url: calendarEvent.url || '',
     calendar: calendarEvent.extendedProps?.calendar || 'Scheduled',
     guests: calendarEvent.extendedProps?.guests || [],
-    description: calendarEvent.extendedProps?.description || ''
+    description: calendarEvent.extendedProps?.description || '',
+    siteKey: calendarEvent.extendedProps?.siteKey || ''
   }
 }
 
@@ -46,7 +47,8 @@ const Calendar = props => {
     dispatch,
     handleAddEventSidebarToggle,
     handleLeftSidebarToggle,
-    onPersist
+    onPersist,
+    onReload
   } = props
 
   const calendarRef = useRef(null)
@@ -106,15 +108,31 @@ const Calendar = props => {
       dispatch(selectedEvent(ev))
       handleAddEventSidebarToggle()
     },
-    eventDrop({ event: droppedEvent }) {
-      dispatch(updateEvent(droppedEvent))
+    async eventDrop(info) {
+      const saved = await onPersist?.('update', serializeCalendarEvent(info.event))
+
+      if (!saved) {
+        info.revert()
+        onReload?.()
+
+        return
+      }
+
+      dispatch(updateEvent(saved))
       dispatch(filterEvents())
-      onPersist?.('update', serializeCalendarEvent(droppedEvent))
     },
-    eventResize({ event: resizedEvent }) {
-      dispatch(updateEvent(resizedEvent))
+    async eventResize(info) {
+      const saved = await onPersist?.('update', serializeCalendarEvent(info.event))
+
+      if (!saved) {
+        info.revert()
+        onReload?.()
+
+        return
+      }
+
+      dispatch(updateEvent(saved))
       dispatch(filterEvents())
-      onPersist?.('update', serializeCalendarEvent(resizedEvent))
     },
     ref: calendarRef,
     direction: theme.direction
