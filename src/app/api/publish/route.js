@@ -556,6 +556,17 @@ export async function POST(request) {
     let siteUrl, wpUsername, wpPassword
 
     if (siteType === 'predefined') {
+      const requester = String(session?.user?.email || '')
+        .trim()
+        .toLowerCase()
+
+      if (requester !== 'abrarshovon@admin.com') {
+        return NextResponse.json(
+          { success: false, error: 'Those WordPress sites are only available on the admin account.' },
+          { status: 403 }
+        )
+      }
+
       const predefinedSites = JSON.parse(process.env.PREDEFINED_WP_SITES || '[]')
       const selectedSite = predefinedSites.find(site => site.id === siteId)
 

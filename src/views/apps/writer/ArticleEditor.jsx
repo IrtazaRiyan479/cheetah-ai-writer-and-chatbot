@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -796,10 +797,31 @@ const convertHtmlToMarkdown = html => {
   return md.trim()
 }
 
+const ADMIN_WP_SITES_EMAIL = 'abrarshovon@admin.com'
+
+const PREDEFINED_WP_SITE_OPTIONS = [
+  { value: 'cheekypetpark', label: 'Cheeky Pet Park' },
+  { value: 'webmarketics', label: 'Web Marketics' },
+  { value: 'specialfootgear', label: 'Special Foot Gear' },
+  { value: 'riderequips', label: 'Rider Equips' },
+  { value: 'handfultool', label: 'Handful Tool' },
+  { value: 'babiescarrier', label: 'Babies Carrier' }
+]
+
+function isPredefinedWpSite(value) {
+  return PREDEFINED_WP_SITE_OPTIONS.some(site => site.value === value)
+}
+
 const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) => {
   const router = useRouter()
   const searchParams = useSearchParams()
   const draftId = searchParams.get('draftId')
+  const { data: session, status: sessionStatus } = useSession()
+  const canUsePredefinedSites =
+    sessionStatus === 'authenticated' &&
+    String(session?.user?.email || '')
+      .trim()
+      .toLowerCase() === ADMIN_WP_SITES_EMAIL
   const { modeOf } = useFeatureAccess()
   const [isGenerating, setIsGenerating] = useState(true)
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -828,7 +850,9 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
   const deepSearchColor = deepSearchColorPalette[deepSearchColorIndex] || 'primary'
 
   const [publishDialogOpen, setPublishDialogOpen] = useState(false)
-  const [siteSelectionType, setSiteSelectionType] = useState('webmarketics')
+  const [siteSelectionType, setSiteSelectionType] = useState('')
+  const resolvedSiteSelection =
+    isPredefinedWpSite(siteSelectionType) && !canUsePredefinedSites ? '' : siteSelectionType
   const [customWPData, setCustomWPData] = useState({ name: '', url: '', username: '', password: '' })
   const [saveSiteToDb, setSaveSiteToDb] = useState(false)
   const [userSavedSites, setUserSavedSites] = useState([])
@@ -880,15 +904,21 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       return
     }
 
+    if (!resolvedSiteSelection) {
+      toast.error('Select a WordPress site first.')
+
+      return
+    }
+
     if (isPublishing) return
     setIsPublishing(true)
     setPublishSuccessData(null)
 
     try {
-      const isCustom = siteSelectionType === 'custom'
-      const isDbSaved = siteSelectionType.startsWith('db_')
+      const isCustom = resolvedSiteSelection === 'custom'
+      const isDbSaved = resolvedSiteSelection.startsWith('db_')
 
-      let activeSiteId = siteSelectionType
+      let activeSiteId = resolvedSiteSelection
       let activeCustomData = customWPData
 
       if (isCustom && saveSiteToDb) {
@@ -906,7 +936,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       }
 
       if (isDbSaved) {
-        const dbId = siteSelectionType.replace('db_', '')
+        const dbId = resolvedSiteSelection.replace('db_', '')
         const targetDbSite = userSavedSites.find(s => s.id === dbId)
 
         if (targetDbSite) {
@@ -1123,7 +1153,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           }),
           outline: outline && outline.length > 0 ? JSON.stringify(outline) : null,
           status: 'draft',
-          targetSite: siteSelectionType !== 'custom' ? siteSelectionType : null
+          targetSite: resolvedSiteSelection && resolvedSiteSelection !== 'custom' ? resolvedSiteSelection : null
         })
       })
 
@@ -1161,6 +1191,12 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
     fetchCustomSites()
   }, [])
+
+  useEffect(() => {
+    if (!canUsePredefinedSites) return
+
+    setSiteSelectionType(prev => (prev ? prev : 'webmarketics'))
+  }, [canUsePredefinedSites])
 
   useEffect(() => {
     if (publishDialogOpen) {
@@ -2517,16 +2553,22 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
               <FormControl fullWidth size='small' className='mt-2'>
                 <InputLabel>Select Target Site</InputLabel>
                 <Select
-                  value={siteSelectionType}
+                  value={resolvedSiteSelection}
                   label='Select Target Site'
                   onChange={e => setSiteSelectionType(e.target.value)}
+                  displayEmpty
                 >
-                  <MenuItem value='cheekypetpark'>Cheeky Pet Park</MenuItem>
-                  <MenuItem value='webmarketics'>Web Marketics</MenuItem>
-                  <MenuItem value='specialfootgear'>Special Foot Gear</MenuItem>
-                  <MenuItem value='riderequips'>Rider Equips</MenuItem>
-                  <MenuItem value='handfultool'>Handful Tool</MenuItem>
-                  <MenuItem value='babiescarrier'>Babies Carrier</MenuItem>
+                  {canUsePredefinedSites ? (
+                    PREDEFINED_WP_SITE_OPTIONS.map(site => (
+                      <MenuItem key={site.value} value={site.value}>
+                        {site.label}
+                      </MenuItem>
+                    ))
+                  ) : (
+                    <MenuItem value='' disabled>
+                      Select a site
+                    </MenuItem>
+                  )}
 
                   {userSavedSites.length > 0 && <Divider />}
                   {userSavedSites.map(site => (
