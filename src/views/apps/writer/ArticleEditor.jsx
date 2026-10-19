@@ -47,7 +47,6 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 import Checkbox from '@mui/material/Checkbox'
 import Switch from '@mui/material/Switch'
 import IconButton from '@mui/material/IconButton'
-import Popover from '@mui/material/Popover'
 import Tooltip from '@mui/material/Tooltip'
 
 import { toast } from 'react-toastify'
@@ -2635,11 +2634,22 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
               />
 
               <FormControlLabel
+                sx={{ alignItems: 'center', mr: 0 }}
                 control={<Switch checked={trimTitleAndHero} onChange={e => setTrimTitleAndHero(e.target.checked)} />}
                 label={
-                  <span className='inline-flex items-center gap-1'>
+                  <span style={{ display: 'inline', lineHeight: 1.45 }}>
                     <Tooltip title='When on, the H1 and the featured image are removed from the post body so WordPress does not show them twice.'>
-                      <i className='ri-information-line text-base' />
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          verticalAlign: 'middle',
+                          marginRight: 6,
+                          cursor: 'help'
+                        }}
+                      >
+                        <i className='ri-information-line text-base' />
+                      </span>
                     </Tooltip>
                     Remove title and hero from the article body
                   </span>
@@ -2764,45 +2774,50 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           </DialogActions>
         )}
       </Dialog>
-      <Popover
+      <Dialog
         open={Boolean(scheduleAnchorEl)}
-        anchorEl={scheduleAnchorEl}
         onClose={() => setScheduleAnchorEl(null)}
-        anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
-        transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        maxWidth='sm'
+        fullWidth
       >
-        <div className='flex flex-col gap-3 p-4' style={{ width: 280 }}>
-          <Typography variant='subtitle2' className='font-bold'>
-            Schedule on WordPress
+        <DialogTitle>Schedule on WordPress</DialogTitle>
+        <DialogContent>
+          <Typography variant='body2' color='text.secondary' className='mbe-4'>
+            {scheduleAt
+              ? `Publishes ${scheduleLabel(scheduleAt)}. Uses your local time on the selected site.`
+              : 'Pick a date and time. Uses your local time. WordPress publishes it on the selected site.'}
           </Typography>
-          <AppReactDatepicker
-            selected={scheduleAt ? new Date(scheduleAt) : null}
-            onChange={date => {
-              if (!date) {
-                setScheduleAt('')
+          <div className='flex justify-center'>
+            <AppReactDatepicker
+              inline
+              selected={scheduleAt ? new Date(scheduleAt) : null}
+              onChange={date => {
+                if (!date) {
+                  setScheduleAt('')
 
-                return
-              }
+                  return
+                }
 
-              const pad = n => String(n).padStart(2, '0')
+                const pad = n => String(n).padStart(2, '0')
 
-              setScheduleAt(
-                `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
-              )
-            }}
-            showTimeSelect
-            timeIntervals={15}
-            minDate={new Date()}
-            dateFormat='MMM d, yyyy h:mm aa'
-            customInput={
-              <TextField
-                size='small'
-                fullWidth
-                label='Publish at'
-                helperText='Uses your local time. WordPress publishes it on the selected site.'
-              />
-            }
-          />
+                setScheduleAt(
+                  `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+                )
+              }}
+              showTimeSelect
+              timeIntervals={15}
+              minDate={new Date()}
+              dateFormat='MMM d, yyyy h:mm aa'
+            />
+          </div>
+        </DialogContent>
+        <DialogActions className='p-4'>
+          <Button color='secondary' onClick={() => setScheduleAt('')} disabled={!scheduleAt || isPublishing}>
+            Clear
+          </Button>
+          <Button color='error' onClick={() => setScheduleAnchorEl(null)} disabled={isPublishing}>
+            Cancel
+          </Button>
           <Button
             variant='contained'
             color='primary'
@@ -2814,8 +2829,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           >
             {isPublishing ? <CircularProgress size={22} /> : 'Schedule Post'}
           </Button>
-        </div>
-      </Popover>
+        </DialogActions>
+      </Dialog>
     </div>
   )
 }
