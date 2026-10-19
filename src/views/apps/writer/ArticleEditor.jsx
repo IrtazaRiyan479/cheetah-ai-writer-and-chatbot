@@ -932,6 +932,12 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
         if (saveData.success) {
           setUserSavedSites(prev => [...prev, saveData.site])
+
+          if (saveData.functionsPhp?.status === 'added') {
+            toast.success('Added the meta tag code to this site’s functions.php.')
+          } else if (saveData.functionsPhp?.status === 'failed') {
+            toast.warning(saveData.functionsPhp.error || 'Saved the site, but functions.php was not updated.')
+          }
         }
       }
 
@@ -1104,6 +1110,12 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       const result = await res.json()
 
       if (result.success) {
+        if (result.functionsPhp?.status === 'added') {
+          toast.success('Added the meta tag code to this site’s functions.php.')
+        } else if (result.functionsPhp?.status === 'failed') {
+          toast.warning(result.functionsPhp.error || 'Published, but functions.php was not updated.')
+        }
+
         setPublishSuccessData({
           link: result.link,
           editLink: result.editLink,

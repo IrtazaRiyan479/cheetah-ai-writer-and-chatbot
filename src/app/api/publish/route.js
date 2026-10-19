@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth'
 
 import { authOptions } from '@/libs/auth'
 import { assertCanGenerate } from '@/libs/entitlement'
+import { ensureAiMetaFunctions } from '@/libs/wpThemeFunctions'
 import { serializeError } from '@/utils/serializeError'
 
 import { escapeHtml, finalizeArticleHtml } from '../generate/utils/articleHtml'
@@ -594,6 +595,16 @@ export async function POST(request) {
     const credentials = Buffer.from(`${wpUsername}:${appPassword}`).toString('base64')
     const authHeaders = { Authorization: `Basic ${credentials}` }
 
+    let functionsPhp = null
+
+    if (siteType === 'custom') {
+      functionsPhp = await ensureAiMetaFunctions({
+        siteUrl: cleanSiteUrl,
+        username: wpUsername,
+        password: appPassword
+      })
+    }
+
     const sideloaded = await sideloadImages(content || '', featuredImageUrl || '', cleanSiteUrl, credentials)
     let featuredMediaId = sideloaded.featuredMediaId
     let heroSrc = sideloaded.heroSrc || ''
@@ -694,7 +705,8 @@ export async function POST(request) {
       link: created.link,
       editLink,
       status: created.status || postPayload.status,
-      featuredMediaId
+      featuredMediaId,
+      functionsPhp
     })
   } catch (error) {
     console.error('WordPress API Error:', serializeError(error))

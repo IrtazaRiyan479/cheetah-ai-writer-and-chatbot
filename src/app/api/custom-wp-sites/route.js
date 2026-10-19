@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import { getServerSession } from "next-auth/next"
 import { authOptions } from '@/libs/auth'
+import { ensureAiMetaFunctions } from '@/libs/wpThemeFunctions'
 
 const prisma = new PrismaClient()
 
@@ -27,7 +28,7 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const session = await getServerSession()
+    const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -50,7 +51,9 @@ export async function POST(request) {
       }
     })
 
-    return NextResponse.json({ success: true, site: newSite })
+    const functionsPhp = await ensureAiMetaFunctions({ siteUrl: url, username, password })
+
+    return NextResponse.json({ success: true, site: newSite, functionsPhp })
   } catch (error) {
     console.error(error)
     return NextResponse.json({ error: "Failed to save site" }, { status: 500 })
