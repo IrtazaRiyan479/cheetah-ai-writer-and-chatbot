@@ -26,6 +26,7 @@ export default function GatedSelect({ menuKey, value, onChange, options, label, 
 
   const resolved = (options || menu?.options || []).map(option => {
     const known = menu?.options?.find(item => item.value === option.value)
+
     return { ...option, featureKey: option.featureKey || known?.featureKey }
   })
 
@@ -37,6 +38,7 @@ export default function GatedSelect({ menuKey, value, onChange, options, label, 
     if (option.featureKey && modeOf(option.featureKey) === 'pro' && !isPaid) return false
     if (String(option.value) !== String(menu.defaultValue) && modeOf(menu.key) === 'max' && !isMax) return false
     if (String(option.value) !== String(menu.defaultValue) && modeOf(menu.key) === 'pro' && !isPaid) return false
+
     return true
   }
 
@@ -47,14 +49,20 @@ export default function GatedSelect({ menuKey, value, onChange, options, label, 
 
   useEffect(() => {
     if (!menu) return
+
     if (hidden) {
       if (value !== menu.defaultValue) onChange(menu.defaultValue)
+
       return
     }
+
     const current = resolved.find(option => option.value === value)
+
     if (current && canUse(current)) return
+
     const fallback =
       resolved.find(option => option.value === menu.defaultValue && canUse(option)) || resolved.find(canUse)
+
     if (fallback && fallback.value !== value) onChange(fallback.value)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hidden, value, isPaid, isMax, featureModes])
@@ -76,14 +84,17 @@ export default function GatedSelect({ menuKey, value, onChange, options, label, 
             if (menuLocked) {
               requireFeature(menu.key, { label: label || menu.label })
               setOpen(false)
+
               return
             }
+
             setOpen(true)
           }}
           onClose={() => setOpen(false)}
           onChange={event => {
             const next = event.target.value
             const option = visible.find(item => item.value === next)
+
             if (option?.featureKey && !requireFeature(option.featureKey, { label: option.label })) return
             if (String(next) !== String(menu.defaultValue) && !requireFeature(menu.key)) return
             onChange(next)
@@ -102,6 +113,7 @@ export default function GatedSelect({ menuKey, value, onChange, options, label, 
 
 export function GatedNumber({ featureKey, label, value, onChange, placeholder = 'No limit' }) {
   const { modeOf, requireFeature } = useFeatureAccess()
+
   if (modeOf(featureKey) === 'off') return null
 
   return (
@@ -117,6 +129,7 @@ export function GatedNumber({ featureKey, label, value, onChange, placeholder = 
         value={value || ''}
         onChange={event => {
           const next = event.target.value
+
           if (next && !requireFeature(featureKey, { label })) return
           onChange(next)
         }}
@@ -182,11 +195,14 @@ export function InternalLinkFields({ sites, custom, onSites, onCustom, siteOptio
   const [savedSites, setSavedSites] = useState([])
   const [showCustomField, setShowCustomField] = useState(false)
   const [saveForLater, setSaveForLater] = useState(false)
+  const [domainsOpen, setDomainsOpen] = useState(false)
+
   const isAdmin =
     status === 'authenticated' &&
     String(session?.user?.email || '')
       .trim()
       .toLowerCase() === ADMIN_INTERNAL_SITES_EMAIL
+
   const builtIn = Array.isArray(siteOptions) ? siteOptions : []
   const savedOnly = savedSites.filter(site => !builtIn.some(item => item.toLowerCase() === site.toLowerCase()))
   const selectableSites = showSites ? [...(isAdmin ? builtIn : []), ...savedOnly] : []
@@ -254,11 +270,17 @@ export function InternalLinkFields({ sites, custom, onSites, onCustom, siteOptio
             <Select
               multiple
               displayEmpty
-              value={selected.filter(site => selectableSites.some(item => item.toLowerCase() === String(site).toLowerCase()))}
+              open={domainsOpen}
+              onOpen={() => setDomainsOpen(true)}
+              onClose={() => setDomainsOpen(false)}
+              value={selected.filter(site =>
+                selectableSites.some(item => item.toLowerCase() === String(site).toLowerCase())
+              )}
               onChange={event => {
                 const raw = typeof event.target.value === 'string' ? event.target.value.split(',') : event.target.value
 
                 if (raw.includes(ADD_DOMAIN_VALUE)) {
+                  setDomainsOpen(false)
                   if (!requireFeature('menu-custom-internal-urls')) return
                   setShowCustomField(true)
                   onSites(raw.filter(item => item !== ADD_DOMAIN_VALUE))
@@ -289,7 +311,14 @@ export function InternalLinkFields({ sites, custom, onSites, onCustom, siteOptio
                 </MenuItem>
               ))}
               {showCustom ? (
-                <MenuItem value={ADD_DOMAIN_VALUE}>
+                <MenuItem
+                  value={ADD_DOMAIN_VALUE}
+                  onClick={() => {
+                    setDomainsOpen(false)
+                    if (!requireFeature('menu-custom-internal-urls')) return
+                    setShowCustomField(true)
+                  }}
+                >
                   <ListItemText primary='+ Add new domain' />
                 </MenuItem>
               ) : null}
@@ -316,11 +345,7 @@ export function InternalLinkFields({ sites, custom, onSites, onCustom, siteOptio
           />
           <FormControlLabel
             control={
-              <Checkbox
-                size='small'
-                checked={saveForLater}
-                onChange={event => setSaveForLater(event.target.checked)}
-              />
+              <Checkbox size='small' checked={saveForLater} onChange={event => setSaveForLater(event.target.checked)} />
             }
             label='Save these sites for future use'
           />
