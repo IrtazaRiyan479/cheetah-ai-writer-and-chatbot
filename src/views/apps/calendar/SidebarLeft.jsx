@@ -20,10 +20,15 @@ const SidebarLeft = props => {
     calendarApi,
     dispatch,
     handleLeftSidebarToggle,
-    handleAddEventSidebarToggle
+    handleAddEventSidebarToggle,
+    siteOptions = [],
+    selectedSites,
+    onToggleSite,
+    onToggleAllSites
   } = props
 
   const colorsArr = calendarsColor ? Object.entries(calendarsColor) : []
+  const allSitesChecked = Boolean(siteOptions.length) && (selectedSites == null || selectedSites.length === siteOptions.length)
 
   const renderFilters = colorsArr.length
     ? colorsArr.map(([key, value]) => {
@@ -116,6 +121,41 @@ const SidebarLeft = props => {
           }
         />
         {renderFilters}
+      </div>
+      <Divider className='is-full' />
+      <div className='flex flex-col p-5 is-full'>
+        <Typography variant='h5' className='mbe-4'>
+          Websites
+        </Typography>
+        {siteOptions.length ? (
+          <>
+            <FormControlLabel
+              className='mbe-1'
+              label='View All'
+              control={
+                <Checkbox color='secondary' checked={allSitesChecked} onChange={e => onToggleAllSites?.(e.target.checked)} />
+              }
+            />
+            {siteOptions.map(site => (
+              <FormControlLabel
+                className='mbe-1'
+                key={site.value}
+                label={site.label}
+                control={
+                  <Checkbox
+                    color='secondary'
+                    checked={selectedSites == null || selectedSites.includes(site.value)}
+                    onChange={() => onToggleSite?.(site.value)}
+                  />
+                }
+              />
+            ))}
+          </>
+        ) : (
+          <Typography variant='body2' color='text.secondary'>
+            No WordPress sites yet.
+          </Typography>
+        )}
       </div>
     </Drawer>
   )

@@ -100,7 +100,7 @@ const AppFullCalendar = styled('div')(({ theme }) => ({
             marginLeft: 0
           }
         },
-        '.fc-dayGridMonth-button, .fc-timeGridWeek-button, .fc-timeGridDay-button, & .fc-listMonth-button': {
+        '.fc-dayGridMonth-button, .fc-timeGridWeek-button, .fc-timeGridDay-button, .fc-listDay-button, & .fc-listMonth-button': {
           padding: theme.spacing(2.2, 6),
           '&:last-of-type, &:first-of-type': {
             borderRadius: 'var(--mui-shape-customBorderRadius-lg)'
@@ -144,6 +144,20 @@ const AppFullCalendar = styled('div')(({ theme }) => ({
 
     // Event Colors
     '& .fc-event': {
+      maxWidth: '100%',
+      overflow: 'hidden',
+      '& .fc-event-main, & .fc-event-main-frame, & .fc-event-title-container': {
+        minWidth: 0,
+        maxWidth: '100%',
+        overflow: 'hidden'
+      },
+      '& .fc-event-title': {
+        display: 'block',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+        maxWidth: '100%'
+      },
       '& .fc-event-title-container, .fc-event-main-frame': {
         lineHeight: 1.077
       },
@@ -275,8 +289,10 @@ const AppFullCalendar = styled('div')(({ theme }) => ({
       borderBottom: 0
     },
     '& .fc-daygrid-event-harness': {
+      maxWidth: '100%',
       '& .fc-event': {
-        padding: theme.spacing(1, 2)
+        padding: theme.spacing(1, 2),
+        maxWidth: '100%'
       },
       '&:not(:last-of-type) .fc-event': {
         marginBottom: `${theme.spacing(2.5)} !important`
@@ -379,6 +395,8 @@ const AppFullCalendar = styled('div')(({ theme }) => ({
         display: 'none'
       },
       '& .fc-timegrid-event': {
+        maxWidth: '100%',
+        overflow: 'hidden',
         '& .fc-event-time': {
           ...theme.typography.caption,
           marginBlockEnd: 2
@@ -435,10 +453,42 @@ const AppFullCalendar = styled('div')(({ theme }) => ({
           borderColor: 'var(--mui-palette-divider)'
         }
       },
+      '& .fc-list-event-graphic, & .fc-list-event-time': {
+        display: 'none'
+      },
       '& .fc-list-event-title': {
         ...theme.typography.body1,
         color: 'var(--mui-palette-text-secondary) !important',
         padding: theme.spacing(2, 4, 2, 2)
+      },
+      '& .ag-cal-list': {
+        display: 'flex',
+        alignItems: 'center',
+        gap: theme.spacing(2),
+        minWidth: 0,
+        maxWidth: '100%'
+      },
+      '& .ag-cal-list-dot': {
+        width: 8,
+        height: 8,
+        borderRadius: '50%',
+        flex: 'none'
+      },
+      '& .ag-cal-list-dot-primary': { backgroundColor: 'var(--mui-palette-primary-main)' },
+      '& .ag-cal-list-dot-success': { backgroundColor: 'var(--mui-palette-success-main)' },
+      '& .ag-cal-list-dot-warning': { backgroundColor: 'var(--mui-palette-warning-main)' },
+      '& .ag-cal-list-dot-error': { backgroundColor: 'var(--mui-palette-error-main)' },
+      '& .ag-cal-list-dot-info': { backgroundColor: 'var(--mui-palette-info-main)' },
+      '& .ag-cal-list-title': {
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+        minWidth: 0,
+        flex: '1 1 auto'
+      },
+      '& .ag-cal-list-type, & .ag-cal-list-date': {
+        flex: 'none',
+        whiteSpace: 'nowrap'
       },
       '& .fc-list-event-time': {
         ...theme.typography.body1,

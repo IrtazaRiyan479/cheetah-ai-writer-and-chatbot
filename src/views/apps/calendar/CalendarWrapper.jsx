@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { useMediaQuery } from '@mui/material'
 import { toast } from 'react-toastify'
-import { useSession } from 'next-auth/react'
 
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -16,23 +15,10 @@ import { setEvents } from '@/redux-store/slices/calendar'
 
 import AppFullCalendar from '@/libs/styles/AppFullCalendar'
 
-const ADMIN_WP_SITES_EMAIL = 'abrarshovon@admin.com'
-
-const PREDEFINED_WP_SITE_OPTIONS = [
-  { value: 'cheekypetpark', label: 'Cheeky Pet Park' },
-  { value: 'webmarketics', label: 'Web Marketics' },
-  { value: 'specialfootgear', label: 'Special Foot Gear' },
-  { value: 'riderequips', label: 'Rider Equips' },
-  { value: 'handfultool', label: 'Handful Tool' },
-  { value: 'babiescarrier', label: 'Babies Carrier' }
-]
-
 const calendarsColor = {
-  Scheduled: 'primary',
-  Published: 'success',
   Draft: 'warning',
-  Revision: 'info',
-  Promotion: 'error'
+  Published: 'success',
+  Scheduled: 'primary'
 }
 
 async function persist(kind, payload) {
@@ -40,9 +26,9 @@ async function persist(kind, payload) {
     const res = await fetch(`/api/calendar?id=${encodeURIComponent(payload.id)}`, { method: 'DELETE' })
     const data = await res.json().catch(() => ({}))
 
-    if (!res.ok) throw new Error(data.error || 'Could not remove this publishing slot.')
+    if (!res.ok) throw new Error(data.error || 'Could not remove this article from the calendar.')
 
-    return {}
+    return { success: true }
   }
 
   const res = await fetch('/api/calendar', {
@@ -50,9 +36,9 @@ async function persist(kind, payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   })
-  const data = await res.json()
+  const data = await res.json().catch(() => ({}))
 
-  if (!res.ok) throw new Error(data.error || 'Could not save this publishing slot.')
+  if (!res.ok) throw new Error(data.error || 'Could not save this article.')
 
   return data.event
 }
@@ -62,19 +48,15 @@ const AppCalendar = () => {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
   const [addEventSidebarOpen, setAddEventSidebarOpen] = useState(false)
   const [siteOptions, setSiteOptions] = useState([])
+  const [selectedSites, setSelectedSites] = useState(null)
+  const [drafts, setDrafts] = useState([])
+  const [sitesLoaded, setSitesLoaded] = useState(false)
 
   const dispatch = useDispatch()
   const calendarStore = useSelector(state => state.calendarReducer)
-  const { data: session, status: sessionStatus } = useSession()
   const mdAbove = useMediaQuery(theme => theme.breakpoints.up('md'))
   const handleLeftSidebarToggle = () => setLeftSidebarOpen(!leftSidebarOpen)
   const handleAddEventSidebarToggle = () => setAddEventSidebarOpen(!addEventSidebarOpen)
-
-  const canUsePredefinedSites =
-    sessionStatus === 'authenticated' &&
-    String(session?.user?.email || '')
-      .trim()
-      .toLowerCase() === ADMIN_WP_SITES_EMAIL
 
   const loadEvents = useCallback(async () => {
     try {
@@ -83,15 +65,15 @@ const AppCalendar = () => {
 
       if (!res.ok || data.error) {
         toast.error(data.error || 'Could not load the publishing calendar.')
+
+        return
       }
 
       if (Array.isArray(data.events)) dispatch(setEvents(data.events))
 
-      if (Array.isArray(data.warnings)) {
-        data.warnings.forEach(message => {
-          if (message) toast.warning(String(message))
-        })
-      }
+      setDrafts(Array.isArray(data.drafts) ? data.drafts : [])
+      setSiteOptions(Array.isArray(data.sites) ? data.sites : [])
+      setSitesLoaded(true)
     } catch {
       toast.error('Could not load the publishing calendar.')
     }
@@ -102,46 +84,45 @@ const AppCalendar = () => {
   }, [loadEvents])
 
   useEffect(() => {
-    if (sessionStatus === 'loading') return
+    if (!sitesLoaded) return
 
-    let cancelled = false
+    const keys = siteOptions.map(site => site.value)
 
-    const loadSites = async () => {
-      const options = canUsePredefinedSites ? [...PREDEFINED_WP_SITE_OPTIONS] : []
+    setSelectedSites(prev => (prev == null ? keys : prev.filter(key => keys.includes(key))))
+  }, [siteOptions, sitesLoaded])
 
-      try {
-        const res = await fetch('/api/custom-wp-sites')
+  const toggleSite = key => {
+    setSelectedSites(prev => {
+      const base = prev == null ? siteOptions.map(site => site.value) : prev
 
-        if (res.ok) {
-          const data = await res.json()
-          const saved = Array.isArray(data.sites) ? data.sites : []
+      return base.includes(key) ? base.filter(item => item !== key) : [...base, key]
+    })
+  }
 
-          saved.forEach(site => {
-            if (!site?.id) return
+  const toggleAllSites = checked => {
+    setSelectedSites(checked ? siteOptions.map(site => site.value) : [])
+  }
 
-            options.push({
-              value: `db_${site.id}`,
-              label: site.name || site.url || `db_${site.id}`
-            })
-          })
-        }
-      } catch {
-        // Keep whatever sites were already resolved.
-      }
+  const siteKeySet = new Set(siteOptions.map(site => site.value))
+  const events = (calendarStore.events || []).filter(event => {
+    if (!siteOptions.length || selectedSites == null) return true
 
-      if (!cancelled) setSiteOptions(options)
-    }
+    const siteKey = String(event?.extendedProps?.siteKey || '').trim()
+    const match = siteOptions.find(site => site.value === siteKey || site.label === siteKey)
 
-    loadSites()
+    if (match) return selectedSites.includes(match.value)
 
-    return () => {
-      cancelled = true
-    }
-  }, [canUsePredefinedSites, sessionStatus])
+    // Articles with no saved website follow View All. A partial site selection hides them.
+    return selectedSites.length === siteOptions.length && selectedSites.every(key => siteKeySet.has(key))
+  })
 
   const onPersist = async (kind, payload) => {
     try {
-      return await persist(kind, payload)
+      const event = await persist(kind, payload)
+
+      await loadEvents()
+
+      return event
     } catch (error) {
       toast.error(error.message || 'Calendar save failed.')
 
@@ -160,6 +141,10 @@ const AppCalendar = () => {
         leftSidebarOpen={leftSidebarOpen}
         handleLeftSidebarToggle={handleLeftSidebarToggle}
         handleAddEventSidebarToggle={handleAddEventSidebarToggle}
+        siteOptions={siteOptions}
+        selectedSites={selectedSites}
+        onToggleSite={toggleSite}
+        onToggleAllSites={toggleAllSites}
       />
       <div className='p-5 pbe-0 grow overflow-visible bg-backgroundPaper rounded'>
         <Calendar
@@ -172,6 +157,7 @@ const AppCalendar = () => {
           handleAddEventSidebarToggle={handleAddEventSidebarToggle}
           onPersist={onPersist}
           onReload={loadEvents}
+          events={events}
         />
       </div>
       <AddEventSidebar
@@ -182,6 +168,7 @@ const AppCalendar = () => {
         handleAddEventSidebarToggle={handleAddEventSidebarToggle}
         onPersist={onPersist}
         siteOptions={siteOptions}
+        drafts={drafts}
       />
     </AppFullCalendar>
   )

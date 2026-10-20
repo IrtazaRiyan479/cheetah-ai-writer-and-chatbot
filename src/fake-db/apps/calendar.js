@@ -1,3 +1,3 @@
-export const PUBLISH_CALENDARS = ['Scheduled', 'Published', 'Draft', 'Revision', 'Promotion']
+export const PUBLISH_CALENDARS = ['Draft', 'Published', 'Scheduled']
 
 export const events = []

@@ -1,5 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Popover from '@mui/material/Popover'
+import Typography from '@mui/material/Typography'
 import { useTheme } from '@mui/material/styles'
 import 'bootstrap-icons/font/bootstrap-icons.css'
 import FullCalendar from '@fullcalendar/react'
@@ -26,16 +30,64 @@ const blankEvent = {
 export function serializeCalendarEvent(calendarEvent) {
   return {
     id: calendarEvent.id,
+    articleId: calendarEvent.extendedProps?.articleId || calendarEvent.id,
     title: calendarEvent.title,
     start: calendarEvent.start,
     end: calendarEvent.end || calendarEvent.start,
-    allDay: calendarEvent.allDay,
-    url: calendarEvent.url || '',
+    allDay: false,
+    url: '',
     calendar: calendarEvent.extendedProps?.calendar || 'Scheduled',
-    guests: calendarEvent.extendedProps?.guests || [],
+    guests: [],
     description: calendarEvent.extendedProps?.description || '',
     siteKey: calendarEvent.extendedProps?.siteKey || ''
   }
+}
+
+function clipTitle(title) {
+  const text = String(title || 'Untitled article')
+
+  if (text.length <= 100) return text
+
+  return `${text.slice(0, 97)}...`
+}
+
+function sameDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+}
+
+function asDate(value) {
+  const date = value instanceof Date ? value : new Date(value)
+
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function localDayFromMarker(value) {
+  const marker = value instanceof Date ? value : new Date(value)
+
+  if (Number.isNaN(marker.getTime())) return null
+
+  // Day-cell markers keep the calendar day in UTC fields (FullCalendar local timezone).
+  return new Date(marker.getUTCFullYear(), marker.getUTCMonth(), marker.getUTCDate())
+}
+
+function weekSlotStart(info) {
+  const hidden = info.hiddenSegs || []
+  const first = hidden[0]
+  const raw = first?.eventRange?.range?.start || first?.eventRange?.instance?.range?.start || first?.start
+  const fromSeg = raw ? asDate(raw) : null
+  const base = fromSeg || asDate(info.date) || new Date()
+
+  base.setMinutes(0, 0, 0)
+
+  return base
+}
+
+function formatWhen(value) {
+  const date = asDate(value)
+
+  if (!date) return ''
+
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 }
 
 const Calendar = props => {
@@ -48,11 +100,16 @@ const Calendar = props => {
     handleAddEventSidebarToggle,
     handleLeftSidebarToggle,
     onPersist,
-    onReload
+    onReload,
+    events = []
   } = props
 
   const calendarRef = useRef(null)
+  const eventsRef = useRef(events)
   const theme = useTheme()
+  const [more, setMore] = useState(null)
+
+  eventsRef.current = events
 
   useEffect(() => {
     if (calendarApi === null) {
@@ -61,24 +118,51 @@ const Calendar = props => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const openPlainEvent = event => {
+    dispatch(
+      selectedEvent({
+        id: event.id,
+        title: event.title,
+        start: event.start,
+        end: event.end || event.start,
+        allDay: false,
+        url: '',
+        extendedProps: event.extendedProps || {}
+      })
+    )
+    setMore(null)
+    handleAddEventSidebarToggle()
+  }
+
   const calendarOptions = {
-    events: calendarStore.events,
+    events,
     plugins: [interactionPlugin, dayGridPlugin, timeGridPlugin, listPlugin],
     initialView: 'dayGridMonth',
     headerToolbar: {
       start: 'sidebarToggle, prev, next, title',
-      end: 'dayGridMonth,timeGridWeek,timeGridDay,listMonth'
+      end: 'dayGridMonth,timeGridWeek,listDay'
     },
     views: {
-      week: {
+      dayGridMonth: {
+        dayMaxEvents: 2,
+        displayEventTime: false
+      },
+      timeGridWeek: {
+        eventMaxStack: 2,
+        slotDuration: '01:00:00',
+        slotEventOverlap: false,
         titleFormat: { year: 'numeric', month: 'short', day: 'numeric' }
+      },
+      listDay: {
+        buttonText: 'day',
+        displayEventTime: false
       }
     },
     editable: true,
     eventResizableFromStart: true,
     dragScroll: true,
-    dayMaxEvents: 2,
     navLinks: true,
+    navLinkDayClick: 'listDay',
     eventClassNames({ event: calendarEvent }) {
       const colorName = calendarsColor[calendarEvent._def.extendedProps.calendar]
 
@@ -88,8 +172,64 @@ const Calendar = props => {
       jsEvent.preventDefault()
       dispatch(selectedEvent(clickedEvent))
       handleAddEventSidebarToggle()
+    },
+    eventContent(arg) {
+      if (arg.view.type !== 'listDay') return
 
-      if (clickedEvent.url) window.open(clickedEvent.url, '_blank')
+      const when = formatWhen(arg.event.start)
+      const typeLabel = arg.event.extendedProps?.articleTypeLabel || 'Article'
+      const colorName = calendarsColor[arg.event.extendedProps?.calendar] || 'primary'
+
+      return (
+        <div className='ag-cal-list'>
+          <span className={`ag-cal-list-dot ag-cal-list-dot-${colorName}`} />
+          <span className='ag-cal-list-title' title={arg.event.title}>
+            {arg.event.title}
+          </span>
+          <span className='ag-cal-list-type'>{typeLabel}</span>
+          <span className='ag-cal-list-date'>{when}</span>
+        </div>
+      )
+    },
+    moreLinkClick(info) {
+      info.jsEvent?.preventDefault?.()
+
+      const viewType = info.view?.type
+      const source = eventsRef.current || []
+      let items = []
+      let date = new Date()
+
+      if (viewType === 'timeGridWeek') {
+        const slotStart = weekSlotStart(info)
+
+        date = slotStart
+        const slotEnd = slotStart.getTime() + 60 * 60 * 1000
+
+        items = source.filter(event => {
+          const time = asDate(event.start)
+
+          return time && time.getTime() >= slotStart.getTime() && time.getTime() < slotEnd
+        })
+      } else {
+        date = localDayFromMarker(info.date) || new Date()
+        items = source
+          .filter(event => {
+            const time = asDate(event.start)
+
+            return time && sameDay(time, date)
+          })
+          .sort((a, b) => new Date(a.start) - new Date(b.start))
+          .slice(0, 9)
+      }
+
+      setMore({
+        top: info.jsEvent?.clientY || 0,
+        left: info.jsEvent?.clientX || 0,
+        items,
+        date
+      })
+
+      return true
     },
     customButtons: {
       sidebarToggle: {
@@ -104,12 +244,12 @@ const Calendar = props => {
 
       ev.start = info.date
       ev.end = info.date
-      ev.allDay = true
+      ev.allDay = false
       dispatch(selectedEvent(ev))
       handleAddEventSidebarToggle()
     },
     async eventDrop(info) {
-      const saved = await onPersist?.('update', serializeCalendarEvent(info.event))
+      const saved = await onPersist?.('update', { ...serializeCalendarEvent(info.event), intent: 'move' })
 
       if (!saved) {
         info.revert()
@@ -122,7 +262,7 @@ const Calendar = props => {
       dispatch(filterEvents())
     },
     async eventResize(info) {
-      const saved = await onPersist?.('update', serializeCalendarEvent(info.event))
+      const saved = await onPersist?.('update', { ...serializeCalendarEvent(info.event), intent: 'move' })
 
       if (!saved) {
         info.revert()
@@ -138,7 +278,73 @@ const Calendar = props => {
     direction: theme.direction
   }
 
-  return <FullCalendar {...calendarOptions} />
+  return (
+    <>
+      <FullCalendar {...calendarOptions} />
+      <Popover
+        open={Boolean(more)}
+        onClose={() => setMore(null)}
+        anchorReference='anchorPosition'
+        anchorPosition={more ? { top: more.top, left: more.left } : undefined}
+        slotProps={{ paper: { sx: { width: 320, maxWidth: '90vw' } } }}
+      >
+        <Box className='flex flex-col' sx={{ py: 1 }}>
+          {(more?.items || []).map(event => {
+            const colorName = calendarsColor[event.extendedProps?.calendar] || 'primary'
+
+            return (
+              <Box
+                key={event.id}
+                component='button'
+                type='button'
+                onClick={() => openPlainEvent(event)}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1.5,
+                  width: '100%',
+                  textAlign: 'left',
+                  border: 0,
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  px: 2,
+                  py: 1,
+                  '&:hover': { backgroundColor: 'action.hover' }
+                }}
+              >
+                <Box
+                  component='span'
+                  sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    flex: 'none',
+                    bgcolor: `${colorName}.main`
+                  }}
+                />
+                <Typography variant='body2' title={event.title} sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {clipTitle(event.title)}
+                </Typography>
+              </Box>
+            )
+          })}
+          <Box sx={{ px: 2, pt: 1, pb: 0.5 }}>
+            <Button
+              fullWidth
+              size='small'
+              variant='text'
+              onClick={() => {
+                calendarApi?.changeView('listDay', more?.date)
+                setMore(null)
+              }}
+            >
+              View all
+            </Button>
+          </Box>
+        </Box>
+      </Popover>
+    </>
+  )
 }
 
 export default Calendar

@@ -1,9 +1,10 @@
 import { useState, useEffect, forwardRef, useCallback } from 'react'
 
+import { usePathname, useRouter } from 'next/navigation'
+
 import Box from '@mui/material/Box'
 import Drawer from '@mui/material/Drawer'
 import Select from '@mui/material/Select'
-import Switch from '@mui/material/Switch'
 import Button from '@mui/material/Button'
 import MenuItem from '@mui/material/MenuItem'
 import TextField from '@mui/material/TextField'
@@ -12,36 +13,61 @@ import InputLabel from '@mui/material/InputLabel'
 import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import FormControl from '@mui/material/FormControl'
-import FormControlLabel from '@mui/material/FormControlLabel'
 
-import { useForm, Controller } from 'react-hook-form'
 import PerfectScrollbar from 'react-perfect-scrollbar'
 
 import AppReactDatepicker from '@/libs/styles/AppReactDatepicker'
 
-import { addEvent, deleteEvent, updateEvent, selectedEvent, filterEvents } from '@/redux-store/slices/calendar'
+import { deleteEvent, selectedEvent, filterEvents } from '@/redux-store/slices/calendar'
 
-import { PUBLISH_CALENDARS } from '@/fake-db/apps/calendar'
-
+// eslint-disable-next-line no-unused-vars
 const SITE_OPTIONS = ['WordPress', 'Medium', 'LinkedIn', 'Newsletter', 'Facebook', 'Pinterest']
+const LOCALES = ['en', 'fr', 'ar']
+const ACTION_TYPES = ['Draft', 'Published', 'Scheduled']
 
 const defaultState = {
-  url: '',
-  title: '',
-  guests: [],
+  articleId: '',
   allDay: false,
   description: '',
-  endDate: new Date(),
   calendar: 'Scheduled',
-  startDate: new Date(),
+  publishDate: new Date(),
+  windowTime: new Date(),
   siteKey: ''
 }
 
+function localeFromPath(pathname) {
+  const segment = String(pathname || '')
+    .split('/')
+    .filter(Boolean)[0]
+
+  return LOCALES.includes(segment) ? segment : 'en'
+}
+
+function combineLocalDateTime(day, time) {
+  const date = new Date(day)
+  const clock = new Date(time)
+
+  if (Number.isNaN(date.getTime()) || Number.isNaN(clock.getTime())) return null
+
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), clock.getHours(), clock.getMinutes(), 0, 0)
+}
+
 const AddEventSidebar = props => {
-  const { calendarStore, dispatch, addEventSidebarOpen, handleAddEventSidebarToggle, onPersist, siteOptions = [] } =
-    props
+  const {
+    calendarStore,
+    dispatch,
+    addEventSidebarOpen,
+    handleAddEventSidebarToggle,
+    onPersist,
+    siteOptions = [],
+    drafts = []
+  } = props
   const [values, setValues] = useState(defaultState)
   const [siteError, setSiteError] = useState(false)
+  const [articleError, setArticleError] = useState(false)
+  const router = useRouter()
+  const pathname = usePathname()
+  const locale = localeFromPath(pathname)
 
   const PickersComponent = forwardRef(({ ...props }, ref) => {
     return (
@@ -57,50 +83,74 @@ const AddEventSidebar = props => {
   })
 
   const isBelowSmScreen = useMediaQuery(theme => theme.breakpoints.down('sm'))
+  const selected = calendarStore.selectedEvent
+  const articleOptions = drafts.map(draft => ({
+    id: draft.id,
+    title: draft.title || 'Untitled article'
+  }))
 
-  const {
-    control,
-    setValue,
-    clearErrors,
-    handleSubmit,
-    formState: { errors }
-  } = useForm({ defaultValues: { title: '' } })
+  if (selected?.id && !articleOptions.some(item => item.id === selected.id)) {
+    articleOptions.unshift({
+      id: selected.id,
+      title: selected.title || 'Untitled article'
+    })
+  }
+
+  const showGenerate = drafts.length === 0
+  const noSites = siteOptions.length === 0
+
+  const goWriter = () => {
+    router.push(`/${locale}/writer`)
+  }
 
   const resetToStoredValues = useCallback(() => {
     if (calendarStore.selectedEvent !== null) {
       const event = calendarStore.selectedEvent
+      const start = event.start ? new Date(event.start) : new Date()
+      const lane = ACTION_TYPES.includes(event.extendedProps?.calendar) ? event.extendedProps.calendar : 'Scheduled'
 
-      setValue('title', event.title || '')
       setValues({
-        url: event.url || '',
-        title: event.title || '',
-        allDay: event.allDay,
-        guests: event.extendedProps?.guests || [],
+        articleId: event.id || '',
+        allDay: false,
         description: event.extendedProps?.description || '',
-        calendar: event.extendedProps?.calendar || 'Scheduled',
-        endDate: event.end !== null ? new Date(event.end) : new Date(event.start),
-        startDate: event.start !== null ? new Date(event.start) : new Date(),
+        calendar: lane,
+        publishDate: start,
+        windowTime: start,
         siteKey: event.extendedProps?.siteKey || ''
       })
+      setSiteError(false)
+      setArticleError(false)
     }
-  }, [setValue, calendarStore.selectedEvent])
+  }, [calendarStore.selectedEvent])
 
   const resetToEmptyValues = useCallback(() => {
-    setValue('title', '')
-    setValues(defaultState)
+    const now = new Date()
+
+    setValues({ ...defaultState, publishDate: now, windowTime: now })
     setSiteError(false)
-  }, [setValue])
+    setArticleError(false)
+  }, [])
 
   const handleSidebarClose = () => {
     setValues(defaultState)
     setSiteError(false)
-    clearErrors()
+    setArticleError(false)
     dispatch(selectedEvent(null))
     handleAddEventSidebarToggle()
   }
 
-  const onSubmit = async data => {
+  const onSubmit = async event => {
+    event.preventDefault()
+
     const isNew = !calendarStore.selectedEvent?.id
+
+    if (noSites) return
+
+    if (!values.articleId || values.articleId === '__generate') {
+      setArticleError(true)
+
+      return
+    }
 
     if (!values.siteKey) {
       setSiteError(true)
@@ -108,23 +158,27 @@ const AddEventSidebar = props => {
       return
     }
 
-    const saved = await onPersist?.(isNew ? 'create' : 'update', {
-      id: isNew ? undefined : calendarStore.selectedEvent.id,
-      title: data.title,
-      start: values.startDate,
-      end: values.endDate,
-      allDay: values.allDay,
-      url: values.url,
+    const payload = {
+      intent: 'action',
+      articleId: values.articleId,
+      id: values.articleId,
       calendar: values.calendar,
-      guests: values.guests,
+      siteKey: values.siteKey,
       description: values.description,
-      siteKey: values.siteKey
-    })
+      allDay: false
+    }
 
-    if (!saved?.id) return
+    if (values.calendar === 'Scheduled') {
+      const start = combineLocalDateTime(values.publishDate, values.windowTime)
 
-    if (isNew) dispatch(addEvent(saved))
-    else dispatch(updateEvent(saved))
+      if (!start) return
+
+      payload.start = start
+    }
+
+    const saved = await onPersist?.(isNew ? 'create' : 'update', payload)
+
+    if (!saved?.id && !saved?.success) return
 
     dispatch(filterEvents())
     handleSidebarClose()
@@ -146,17 +200,13 @@ const AddEventSidebar = props => {
     handleSidebarClose()
   }
 
-  const handleStartDate = date => {
-    if (date && date > values.endDate) {
-      setValues({ ...values, startDate: new Date(date), endDate: new Date(date) })
-    }
-  }
-
   const RenderSidebarFooter = () => {
+    const disabled = noSites || !values.articleId
+
     if (!calendarStore.selectedEvent?.id) {
       return (
         <div className='flex gap-4'>
-          <Button type='submit' variant='contained'>
+          <Button type='submit' variant='contained' disabled={disabled}>
             Add
           </Button>
           <Button variant='outlined' color='secondary' onClick={resetToEmptyValues}>
@@ -168,7 +218,7 @@ const AddEventSidebar = props => {
 
     return (
       <div className='flex gap-4'>
-        <Button type='submit' variant='contained'>
+        <Button type='submit' variant='contained' disabled={disabled}>
           Update
         </Button>
         <Button variant='outlined' color='secondary' onClick={resetToStoredValues}>
@@ -218,29 +268,54 @@ const AddEventSidebar = props => {
           : { options: { wheelPropagation: false, suppressScrollX: true } })}
       >
         <Box className='sidebar-body p-5'>
-          <form onSubmit={handleSubmit(onSubmit)} autoComplete='off'>
-            <FormControl fullWidth className='mbe-5'>
-              <Controller
-                name='title'
-                control={control}
-                rules={{ required: true }}
-                render={({ field: { value, onChange } }) => (
-                  <TextField
-                    label='Article title'
-                    value={value}
-                    onChange={onChange}
-                    {...(errors.title && { error: true, helperText: 'This field is required' })}
-                  />
-                )}
-              />
+          <form onSubmit={onSubmit} autoComplete='off'>
+            <FormControl fullWidth className='mbe-5' error={articleError}>
+              <InputLabel id='event-article'>Article title</InputLabel>
+              <Select
+                label='Article title'
+                value={values.articleId}
+                labelId='event-article'
+                onChange={e => {
+                  if (e.target.value === '__generate') {
+                    goWriter()
+
+                    return
+                  }
+
+                  setArticleError(false)
+                  setValues({ ...values, articleId: e.target.value })
+                }}
+                renderValue={selectedId => {
+                  const item = articleOptions.find(article => article.id === selectedId)
+                  const title = item?.title || ''
+
+                  if (!title) return 'Select an article'
+
+                  return title.length > 80 ? `${title.slice(0, 80)}...` : title
+                }}
+              >
+                <MenuItem value='' disabled>
+                  Select an article
+                </MenuItem>
+                {articleOptions.map(article => (
+                  <MenuItem key={article.id} value={article.id} sx={{ whiteSpace: 'normal' }}>
+                    {article.title}
+                  </MenuItem>
+                ))}
+                {showGenerate ? <MenuItem value='__generate'>+ generate article</MenuItem> : null}
+              </Select>
+              {articleError ? (
+                <Typography variant='caption' color='error' className='mts-1'>
+                  Choose an article.
+                </Typography>
+              ) : null}
             </FormControl>
-            <FormControl fullWidth className='mbe-5' error={siteError}>
+            <FormControl fullWidth className='mbe-5' error={siteError || noSites}>
               <InputLabel id='event-wp-site'>WordPress site</InputLabel>
               <Select
                 label='WordPress site'
                 value={values.siteKey}
                 labelId='event-wp-site'
-                disabled={Boolean(calendarStore.selectedEvent?.extendedProps?.wpPostId)}
                 onChange={e => {
                   setSiteError(false)
                   setValues({ ...values, siteKey: e.target.value })
@@ -258,94 +333,96 @@ const AddEventSidebar = props => {
                   <MenuItem value={values.siteKey}>{values.siteKey}</MenuItem>
                 ) : null}
               </Select>
+              {noSites ? (
+                <Typography variant='caption' color='error' className='mts-1'>
+                  Add a WordPress site in the writer before scheduling.
+                </Typography>
+              ) : null}
               {siteError ? (
                 <Typography variant='caption' color='error' className='mts-1'>
-                  Choose the WordPress site this post belongs to.
+                  Choose the WordPress site this article belongs to.
                 </Typography>
+              ) : null}
+              {noSites ? (
+                <Button className='mts-2' variant='outlined' onClick={goWriter}>
+                  Add a WordPress site
+                </Button>
               ) : null}
             </FormControl>
             <FormControl fullWidth className='mbe-5'>
-              <InputLabel id='event-calendar'>Publishing lane</InputLabel>
+              <InputLabel id='event-calendar'>Action Type</InputLabel>
               <Select
-                label='Publishing lane'
+                label='Action Type'
                 value={values.calendar}
                 labelId='event-calendar'
                 onChange={e => setValues({ ...values, calendar: e.target.value })}
               >
-                {PUBLISH_CALENDARS.map(name => (
+                {ACTION_TYPES.map(name => (
                   <MenuItem key={name} value={name}>
                     {name}
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
-            <div className='mbe-5'>
-              <AppReactDatepicker
-                selectsStart
-                id='event-start-date'
-                endDate={values.endDate}
-                selected={values.startDate}
-                startDate={values.startDate}
-                showTimeSelect={!values.allDay}
-                dateFormat={!values.allDay ? 'yyyy-MM-dd hh:mm' : 'yyyy-MM-dd'}
-                customInput={<PickersComponent label='Publish at' registername='startDate' />}
-                onChange={date => date !== null && setValues({ ...values, startDate: new Date(date) })}
-                onSelect={handleStartDate}
+            {values.calendar === 'Scheduled' ? (
+              <>
+                <div className='mbe-5'>
+                  <AppReactDatepicker
+                    id='event-publish-date'
+                    selected={values.publishDate}
+                    dateFormat='yyyy-MM-dd'
+                    customInput={<PickersComponent label='Publish at' registername='publishDate' />}
+                    onChange={date => date !== null && setValues({ ...values, publishDate: new Date(date) })}
+                  />
+                </div>
+                <div className='mbe-5'>
+                  <AppReactDatepicker
+                    id='event-window-ends'
+                    selected={values.windowTime}
+                    showTimeSelect
+                    showTimeSelectOnly
+                    timeIntervals={15}
+                    timeCaption='Time'
+                    dateFormat='h:mm aa'
+                    customInput={<PickersComponent label='Window ends' registername='windowTime' />}
+                    onChange={date => date !== null && setValues({ ...values, windowTime: new Date(date) })}
+                  />
+                </div>
+              </>
+            ) : null}
+            {/*
+              <TextField
+                fullWidth
+                type='url'
+                id='event-url'
+                className='mbe-5'
+                label='Live or edit URL'
+                value={values.url || ''}
+                onChange={e => setValues({ ...values, url: e.target.value })}
               />
-            </div>
-            <div className='mbe-5'>
-              <AppReactDatepicker
-                selectsEnd
-                id='event-end-date'
-                endDate={values.endDate}
-                selected={values.endDate}
-                minDate={values.startDate}
-                startDate={values.startDate}
-                showTimeSelect={!values.allDay}
-                dateFormat={!values.allDay ? 'yyyy-MM-dd hh:mm' : 'yyyy-MM-dd'}
-                customInput={<PickersComponent label='Window ends' registername='endDate' />}
-                onChange={date => date !== null && setValues({ ...values, endDate: new Date(date) })}
-              />
-            </div>
-            <FormControl className='mbe-5'>
-              <FormControlLabel
-                label='All day'
-                control={
-                  <Switch checked={values.allDay} onChange={e => setValues({ ...values, allDay: e.target.checked })} />
-                }
-              />
-            </FormControl>
-            <TextField
-              fullWidth
-              type='url'
-              id='event-url'
-              className='mbe-5'
-              label='Live or edit URL'
-              value={values.url}
-              onChange={e => setValues({ ...values, url: e.target.value })}
-            />
-            <FormControl fullWidth className='mbe-5'>
-              <InputLabel id='event-guests'>Publish to</InputLabel>
-              <Select
-                multiple
-                label='Publish to'
-                value={values.guests}
-                labelId='event-guests'
-                id='event-guests-select'
-                onChange={e =>
-                  setValues({
-                    ...values,
-                    guests: typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value
-                  })
-                }
-              >
-                {SITE_OPTIONS.map(site => (
-                  <MenuItem key={site} value={site}>
-                    {site}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+              <FormControl fullWidth className='mbe-5'>
+                <InputLabel id='event-guests'>Publish to</InputLabel>
+                <Select
+                  multiple
+                  label='Publish to'
+                  value={values.guests || []}
+                  labelId='event-guests'
+                  id='event-guests-select'
+                  onChange={e =>
+                    setValues({
+                      ...values,
+                      guests: typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value
+                    })
+                  }
+                >
+                  {SITE_OPTIONS.map(site => (
+                    <MenuItem key={site} value={site}>
+                      {site}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            */}
             <TextField
               rows={4}
               multiline
