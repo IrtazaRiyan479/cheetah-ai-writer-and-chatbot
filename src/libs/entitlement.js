@@ -42,7 +42,8 @@ export const MODULE_FEATURES = [
   { key: 'module-images', label: 'AffiGenie Images', href: '/images' },
   { key: 'module-links', label: 'AffiGenie Links', href: '/links' },
   { key: 'module-magnets', label: 'AffiGenie Magnets', href: '/magnets' },
-  { key: 'module-drafts', label: 'AffiGenie Drafts', href: '/drafts' }
+  { key: 'module-drafts', label: 'AffiGenie Drafts', href: '/drafts' },
+  { key: 'module-calendar', label: 'Publishing Calendar', href: '/calendar' }
 ]
 
 export const WRITER_MENUS = [

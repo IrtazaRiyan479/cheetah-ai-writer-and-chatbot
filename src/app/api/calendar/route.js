@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client'
 import { getServerSession } from 'next-auth'
 
 import { authOptions } from '@/libs/auth'
-import { assertCanGenerate } from '@/libs/entitlement'
+import { assertCanGenerate, getFeatureModes } from '@/libs/entitlement'
 
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
@@ -293,11 +293,26 @@ async function loadOwnedArticle(userId, articleId) {
   return prisma.article.findFirst({ where: { id: String(articleId), userId } })
 }
 
+
+async function assertCalendarModuleOpen() {
+  const modes = await getFeatureModes()
+  const mode = modes['module-calendar'] || 'free'
+
+  if (mode === 'off') {
+    return NextResponse.json({ error: 'Publishing Calendar is turned off.' }, { status: 403 })
+  }
+
+  return null
+}
+
 export async function GET() {
   try {
     const { session, user } = await requireUser()
 
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const blocked = await assertCalendarModuleOpen()
+    if (blocked) return blocked
 
     const articles = await prisma.article.findMany({
       where: {
@@ -493,6 +508,9 @@ async function writeEvent(request) {
 
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    const blocked = await assertCalendarModuleOpen()
+    if (blocked) return blocked
+
     const body = await request.json()
     const intent = body.intent === 'move' ? 'move' : 'action'
 
@@ -519,6 +537,9 @@ export async function DELETE(request) {
     const { user } = await requireUser()
 
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const blocked = await assertCalendarModuleOpen()
+    if (blocked) return blocked
 
     const article = await loadOwnedArticle(user.id, new URL(request.url).searchParams.get('id'))
 
