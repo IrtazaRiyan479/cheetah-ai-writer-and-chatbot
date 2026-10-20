@@ -13,8 +13,6 @@ import AddEventSidebar from './AddEventSidebar'
 
 import { setEvents } from '@/redux-store/slices/calendar'
 
-import AppFullCalendar from '@/libs/styles/AppFullCalendar'
-
 const calendarsColor = {
   Draft: 'warning',
   Published: 'success',
@@ -131,7 +129,7 @@ const AppCalendar = () => {
   }
 
   return (
-    <AppFullCalendar className='app-calendar'>
+    <>
       <SidebarLeft
         mdAbove={mdAbove}
         dispatch={dispatch}
@@ -170,7 +168,7 @@ const AppCalendar = () => {
         siteOptions={siteOptions}
         drafts={drafts}
       />
-    </AppFullCalendar>
+    </>
   )
 }
 

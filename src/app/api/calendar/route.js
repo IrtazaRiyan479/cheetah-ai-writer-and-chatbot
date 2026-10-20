@@ -317,6 +317,16 @@ export async function GET() {
     })
   } catch (error) {
     console.error(error?.message || 'Calendar load failed')
+    const message = String(error?.message || '')
+    if (/scheduledAt|does not exist in the current database/i.test(message)) {
+      return NextResponse.json(
+        {
+          error:
+            'Database is missing Article.scheduledAt (and possibly other calendar columns). Run the migration 20261020123000_article_calendar_fields or apply src/prisma/add_article_calendar_columns.sql, then restart the server.'
+        },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({ error: readableError(error) || 'Failed to load the calendar.' }, { status: 500 })
   }

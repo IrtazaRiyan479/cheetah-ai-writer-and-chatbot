@@ -154,8 +154,7 @@ const Calendar = props => {
         titleFormat: { year: 'numeric', month: 'short', day: 'numeric' }
       },
       listDay: {
-        buttonText: 'day',
-        displayEventTime: false
+        buttonText: 'day'
       }
     },
     editable: true,
@@ -178,11 +177,10 @@ const Calendar = props => {
 
       const when = formatWhen(arg.event.start)
       const typeLabel = arg.event.extendedProps?.articleTypeLabel || 'Article'
-      const colorName = calendarsColor[arg.event.extendedProps?.calendar] || 'primary'
 
+      // Title cell only. Theme list row keeps time + .fc-list-event-dot (event-bg-* colors).
       return (
         <div className='ag-cal-list'>
-          <span className={`ag-cal-list-dot ag-cal-list-dot-${colorName}`} />
           <span className='ag-cal-list-title' title={arg.event.title}>
             {arg.event.title}
           </span>

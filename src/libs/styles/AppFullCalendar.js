@@ -453,14 +453,12 @@ const AppFullCalendar = styled('div')(({ theme }) => ({
           borderColor: 'var(--mui-palette-divider)'
         }
       },
-      '& .fc-list-event-graphic, & .fc-list-event-time': {
-        display: 'none'
-      },
       '& .fc-list-event-title': {
         ...theme.typography.body1,
         color: 'var(--mui-palette-text-secondary) !important',
         padding: theme.spacing(2, 4, 2, 2)
       },
+      // Layout helpers for publishing list content inside the theme title cell only.
       '& .ag-cal-list': {
         display: 'flex',
         alignItems: 'center',
@@ -468,17 +466,6 @@ const AppFullCalendar = styled('div')(({ theme }) => ({
         minWidth: 0,
         maxWidth: '100%'
       },
-      '& .ag-cal-list-dot': {
-        width: 8,
-        height: 8,
-        borderRadius: '50%',
-        flex: 'none'
-      },
-      '& .ag-cal-list-dot-primary': { backgroundColor: 'var(--mui-palette-primary-main)' },
-      '& .ag-cal-list-dot-success': { backgroundColor: 'var(--mui-palette-success-main)' },
-      '& .ag-cal-list-dot-warning': { backgroundColor: 'var(--mui-palette-warning-main)' },
-      '& .ag-cal-list-dot-error': { backgroundColor: 'var(--mui-palette-error-main)' },
-      '& .ag-cal-list-dot-info': { backgroundColor: 'var(--mui-palette-info-main)' },
       '& .ag-cal-list-title': {
         overflow: 'hidden',
         textOverflow: 'ellipsis',
