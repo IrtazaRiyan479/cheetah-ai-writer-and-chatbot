@@ -151,17 +151,13 @@ const Calendar = props => {
         eventMaxStack: 2,
         slotDuration: '01:00:00',
         slotEventOverlap: false,
-        eventMinHeight: 26,
-        displayEventTime: false,
         titleFormat: { year: 'numeric', month: 'short', day: 'numeric' }
       },
       timeGridDay: {
         buttonText: 'day',
         slotDuration: '01:00:00',
-        allDaySlot: false,
-        displayEventTime: false,
-        eventMaxStack: 2,
-        eventMinHeight: 26
+        allDaySlot: true,
+        eventMaxStack: 2
       },
       listMonth: {
         buttonText: 'list'
@@ -182,19 +178,22 @@ const Calendar = props => {
       dispatch(selectedEvent(clickedEvent))
       handleAddEventSidebarToggle()
     },
-    eventContent(arg) {
-      if (String(arg.view?.type || '').startsWith('list')) return undefined
+    eventDidMount(info) {
+      if (String(info.view?.type || '').startsWith('list')) return
 
-      const color = arg.event.extendedProps?.siteColor || '#7367F0'
+      const color = info.event.extendedProps?.siteColor
 
-      return (
-        <div className='ag-cal-title'>
-          <span className='ag-cal-site-dot' style={{ backgroundColor: color }} />
-          <span className='ag-cal-title-text' title={arg.event.title}>
-            {arg.event.title}
-          </span>
-        </div>
-      )
+      if (!color) return
+
+      const title = info.el.querySelector('.fc-event-title')
+
+      if (!title || title.querySelector('.ag-cal-site-dot')) return
+
+      const dot = document.createElement('span')
+
+      dot.className = 'ag-cal-site-dot'
+      dot.style.backgroundColor = color
+      title.prepend(dot)
     },
     moreLinkClick(info) {
       info.jsEvent?.preventDefault?.()
@@ -295,7 +294,7 @@ const Calendar = props => {
       >
         <Box className='flex flex-col' sx={{ py: 1 }}>
           {(more?.items || []).map(event => {
-            const color = event.extendedProps?.siteColor || '#7367F0'
+            const colorName = calendarsColor[event.extendedProps?.calendar] || 'primary'
 
             return (
               <Box
@@ -324,7 +323,7 @@ const Calendar = props => {
                     height: 8,
                     borderRadius: '50%',
                     flex: 'none',
-                    backgroundColor: color
+                    bgcolor: `${colorName}.main`
                   }}
                 />
                 <Typography variant='body2' title={event.title} sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>

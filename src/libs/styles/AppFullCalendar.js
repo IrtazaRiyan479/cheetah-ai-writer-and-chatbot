@@ -158,28 +158,14 @@ const AppFullCalendar = styled('div')(({ theme }) => ({
         whiteSpace: 'nowrap',
         maxWidth: '100%'
       },
-      '& .ag-cal-title': {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        minWidth: 0,
-        maxWidth: '100%',
-        overflow: 'hidden'
-      },
       '& .ag-cal-site-dot': {
+        display: 'inline-block',
         width: 8,
         height: 8,
+        marginInlineEnd: 4,
         borderRadius: '50%',
+        verticalAlign: 'middle',
         flex: 'none'
-      },
-      '& .ag-cal-title-text': {
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-        minWidth: 0,
-        fontSize: '0.8125rem',
-        fontWeight: 500,
-        lineHeight: 1.35
       },
       '& .fc-event-title-container, .fc-event-main-frame': {
         lineHeight: 1.077
@@ -420,19 +406,19 @@ const AppFullCalendar = styled('div')(({ theme }) => ({
       '& .fc-timegrid-event': {
         maxWidth: '100%',
         overflow: 'hidden',
-        minHeight: 26,
         '& .fc-event-time': {
-          display: 'none'
+          ...theme.typography.caption,
+          marginBlockEnd: 2
         },
         '& .fc-event-title': {
-          lineHeight: 1.3
+          lineHeight: 1.5385
         },
         boxShadow: 'none'
       },
       '.fc-timegrid-col-events': {
         margin: 0,
         '& .fc-event-main': {
-          padding: '2px 6px'
+          padding: theme.spacing(2)
         }
       }
     },
