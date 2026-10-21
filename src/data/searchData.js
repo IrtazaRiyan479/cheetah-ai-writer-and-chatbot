@@ -82,13 +82,6 @@ const data = [
     url: '/register',
     icon: 'ri-user-add-line',
     section: 'Authentication'
-  },
-  {
-    id: '13',
-    name: 'Logout',
-    url: '/logout',
-    icon: 'ri-logout-box-r-line',
-    section: 'Authentication'
   }
 ]
 

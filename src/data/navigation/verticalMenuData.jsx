@@ -16,7 +16,6 @@ const verticalMenuData = (session) => {
       ...coreMenu,
       ...(session?.user?.role === 'admin' ? [{ label: 'Admin', href: '/admin', icon: 'ri-shield-user-fill' }] : []),
       { label: 'Account', href: '/account', icon: 'ri-user-settings-fill' },
-      { label: 'Logout', href: '/logout', icon: 'ri-logout-box-r-line' },
       { label: 'Drafts', href: '/drafts', icon: 'ri-draft-fill' }
     ]
   }

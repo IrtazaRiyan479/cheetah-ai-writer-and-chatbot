@@ -43,7 +43,10 @@ export const MODULE_FEATURES = [
   { key: 'module-links', label: 'AffiGenie Links', href: '/links' },
   { key: 'module-magnets', label: 'AffiGenie Magnets', href: '/magnets' },
   { key: 'module-drafts', label: 'AffiGenie Drafts', href: '/drafts' },
-  { key: 'module-calendar', label: 'Publishing Calendar', href: '/calendar' }
+  { key: 'module-calendar', label: 'Publishing Calendar', href: '/calendar' },
+  { key: 'module-home', label: 'Home', href: '/home' },
+  { key: 'module-pricing', label: 'Pricing', href: '/pricing' },
+  { key: 'module-contact', label: 'Contact', href: '/contact' }
 ]
 
 export const WRITER_MENUS = [

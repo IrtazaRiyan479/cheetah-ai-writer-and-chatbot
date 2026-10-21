@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 
 import { usePathname } from 'next/navigation'
 
-import { useSession } from 'next-auth/react'
+import { useSession, signOut } from 'next-auth/react'
 import { toast } from 'react-toastify'
 
 import Typography from '@mui/material/Typography'
@@ -23,9 +23,9 @@ import DialogActions from '@mui/material/DialogActions'
 import TextField from '@mui/material/TextField'
 import CircularProgress from '@mui/material/CircularProgress'
 import Alert from '@mui/material/Alert'
+import Avatar from '@mui/material/Avatar'
 
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 
 import { serializeError } from '@/utils/serializeError'
 import { passwordIssue } from '@/utils/credentials'
@@ -156,6 +156,22 @@ const AccountSettings = () => {
     }
   }
 
+  const handleLogout = () => {
+    signOut({ callbackUrl: '/login' })
+  }
+
+  const initials = String(userData.name || 'A')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0].toUpperCase())
+    .join('')
+
+  const planLabel =
+    userData.plan === 'admin' ? 'Admin' : userData.plan === 'pro' ? 'Pro' : userData.plan === 'max' ? 'Max' : 'Free'
+
+  const wordPercent = userData.wordsLimit ? Math.min(100, (Number(userData.wordsUsed) / Number(userData.wordsLimit)) * 100) : 0
+
   if (isLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 10 }}>
@@ -165,272 +181,230 @@ const AccountSettings = () => {
   }
 
   return (
-    <Box sx={{ maxWidth: '900px', p: { xs: 2, md: 4 } }}>
-      <Typography variant='h4' component='h2' sx={{ fontWeight: 'bold', mb: 5 }}>
-        Account Settings
-      </Typography>
-
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {/* Profile Section */}
+    <Box sx={{ maxWidth: 1080, mx: 'auto', p: { xs: 2, md: 4 } }}>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: { xs: 'flex-start', sm: 'center' },
+          gap: 2,
+          mb: 3,
+          flexWrap: 'wrap'
+        }}
+      >
         <Box>
-          <Typography variant='h6' component='h3' sx={{ fontWeight: 600, mb: 2 }}>
-            Profile
+          <Typography variant='overline' color='primary' sx={{ fontWeight: 700, letterSpacing: '0.08em' }}>
+            Account
           </Typography>
-          <Paper variant='outlined' sx={{ borderRadius: 3, overflow: 'hidden' }}>
-            {/* Name Row */}
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: { xs: 'column', sm: 'row' },
-                justifyContent: 'space-between',
-                alignItems: { xs: 'flex-start', sm: 'center' },
-                p: 3,
-                gap: 2
-              }}
-            >
-              <Box>
-                <Typography variant='body2' color='text.secondary' fontWeight={500} mb={0.5}>
-                  Name
-                </Typography>
-                <Typography variant='body1' fontWeight={600}>
-                  {userData.name}
-                </Typography>
-              </Box>
-            </Box>
-
-            {/* Email Row */}
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: { xs: 'column', sm: 'row' },
-                justifyContent: 'space-between',
-                alignItems: { xs: 'flex-start', sm: 'center' },
-                p: 3,
-                gap: 2
-              }}
-            >
-              <Box>
-                <Typography variant='body2' color='text.secondary' fontWeight={500} mb={0.5}>
-                  Email Address
-                </Typography>
-                <Typography variant='body1' fontWeight={600}>
-                  {userData.email}
-                </Typography>
-              </Box>
-              <Button
-                variant='contained'
-                disableElevation
-                onClick={() => {
-                  setUpdateError('')
-                  setPasswordDialogOpen(true)
-                }}
-                sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
-              >
-                Change Password
-              </Button>
-              <Button
-                variant='contained'
-                disableElevation
-                onClick={() => {
-                  setUpdateError('')
-                  setIsDialogOpen(true)
-                }}
-                sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
-              >
-                Update Email
-              </Button>
-            </Box>
-
-            <Divider />
-
-            {/* User ID Row */}
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: { xs: 'column', sm: 'row' },
-                justifyContent: 'space-between',
-                alignItems: { xs: 'flex-start', sm: 'center' },
-                p: 3,
-                gap: 2
-              }}
-            >
-              <Box>
-                <Typography variant='body2' color='text.secondary' fontWeight={500} mb={0.5}>
-                  User ID
-                </Typography>
-                <Typography
-                  variant='body1'
-                  sx={{
-                    fontFamily: 'monospace',
-                    fontWeight: 500,
-                    bgcolor: 'action.hover',
-                    px: 1,
-                    py: 0.5,
-                    borderRadius: 1
-                  }}
-                >
-                  {userData.userId}
-                </Typography>
-              </Box>
-              <Tooltip title={tooltipText} placement='top'>
-                <IconButton color='primary' onClick={handleCopyId} sx={{ bgcolor: 'primary.50' }}>
-                  <ContentCopyIcon fontSize='small' />
-                </IconButton>
-              </Tooltip>
-            </Box>
-
-            <Divider />
-
-            {/* Support PIN Row */}
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: { xs: 'column', sm: 'row' },
-                justifyContent: 'space-between',
-                alignItems: { xs: 'flex-start', sm: 'center' },
-                p: 3,
-                gap: 2
-              }}
-            >
-              <Box>
-                <Typography variant='body2' color='text.secondary' fontWeight={500} mb={0.5}>
-                  Support PIN
-                </Typography>
-                <Typography variant='body1' fontWeight={600}>
-                  {userData.supportPin}
-                </Typography>
-              </Box>
-            </Box>
-          </Paper>
+          <Typography variant='h4' sx={{ fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.15 }}>
+            Your workspace
+          </Typography>
+          <Typography variant='body2' color='text.secondary' sx={{ mt: 0.75, maxWidth: 520 }}>
+            Profile, sign-in, and word balance for this AffiGenie account.
+          </Typography>
         </Box>
+        <Button
+          variant='outlined'
+          color='error'
+          onClick={handleLogout}
+          startIcon={<i className='ri-logout-box-r-line' />}
+          sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, px: 2.5 }}
+        >
+          Log out
+        </Button>
+      </Box>
 
-        {/* Beta Features Section (Unchanged) */}
-        <Box>
-          <Typography variant='h6' component='h3' sx={{ fontWeight: 600, mb: 2 }}>
-            Beta Features
-          </Typography>
-          <Paper
-            variant='outlined'
+      <Paper
+        elevation={0}
+        sx={{
+          borderRadius: 3,
+          p: { xs: 2.5, md: 3.5 },
+          mb: 3,
+          border: '1px solid',
+          borderColor: 'divider',
+          background: theme =>
+            theme.palette.mode === 'dark'
+              ? 'linear-gradient(135deg, rgba(115,103,240,0.18), rgba(255,255,255,0.03) 55%)'
+              : 'linear-gradient(135deg, rgba(115,103,240,0.12), rgba(255,255,255,0.9) 48%)'
+        }}
+      >
+        <Box sx={{ display: 'flex', gap: 2.5, alignItems: { xs: 'flex-start', md: 'center' }, flexWrap: 'wrap' }}>
+          <Avatar
             sx={{
-              borderRadius: 3,
-              p: 3,
-              display: 'flex',
-              flexDirection: { xs: 'column', sm: 'row' },
-              justifyContent: 'space-between',
-              alignItems: { xs: 'flex-start', sm: 'center' },
-              gap: 2
+              width: 72,
+              height: 72,
+              fontSize: 26,
+              fontWeight: 800,
+              bgcolor: 'primary.main',
+              color: 'primary.contrastText'
             }}
           >
-            <Box>
-              <Typography variant='body2' color='text.secondary' fontWeight={500} mb={1}>
-                Program Status
-              </Typography>
-              <Chip label='Disabled' size='small' sx={{ fontWeight: 600, borderRadius: 1.5 }} />
-            </Box>
-            <Button variant='outlined' sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}>
-              Manage Features
-            </Button>
-          </Paper>
-        </Box>
-
-        {/* Word balance */}
-        <Box>
-          <Typography variant='h6' component='h3' sx={{ fontWeight: 600, mb: 2 }}>
-            Word balance
-          </Typography>
-          <Paper
-            variant='outlined'
-            sx={{
-              borderRadius: 3,
-              p: 3,
-              display: 'flex',
-              flexDirection: { xs: 'column', sm: 'row' },
-              justifyContent: 'space-between',
-              alignItems: { xs: 'flex-start', sm: 'center' },
-              gap: 2
-            }}
-          >
-            <Box>
-              <Typography variant='body2' color='text.secondary' fontWeight={500} mb={1}>
-                Current plan
+            {initials}
+          </Avatar>
+          <Box sx={{ flex: '1 1 240px', minWidth: 0 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Typography variant='h5' sx={{ fontWeight: 800 }}>
+                {userData.name}
               </Typography>
               <Chip
-                label={
-                  userData.plan === 'admin'
-                    ? 'Admin'
-                    : userData.plan === 'pro'
-                      ? 'Pro · words never expire'
-                      : 'Free · 5,000-word trial'
-                }
                 size='small'
-                color={userData.plan === 'pro' || userData.plan === 'admin' ? 'success' : 'default'}
-                sx={{ fontWeight: 600, borderRadius: 1.5 }}
+                label={planLabel}
+                color={userData.plan === 'free' ? 'default' : 'success'}
+                sx={{ fontWeight: 700 }}
               />
+            </Box>
+            <Typography variant='body2' color='text.secondary' sx={{ mt: 0.5 }}>
+              {userData.email}
+            </Typography>
+            <Typography variant='caption' color='text.secondary' sx={{ display: 'block', mt: 0.75 }}>
+              {userData.plan === 'pro'
+                ? 'Pro words do not expire.'
+                : userData.plan === 'admin'
+                  ? 'Admin access is active on this account.'
+                  : 'Free trial includes 5,000 words.'}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button
+              variant='contained'
+              disableElevation
+              onClick={() => {
+                setUpdateError('')
+                setPasswordDialogOpen(true)
+              }}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
+            >
+              Change password
+            </Button>
+            <Button
+              variant='outlined'
+              onClick={() => {
+                setUpdateError('')
+                setIsDialogOpen(true)
+              }}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
+            >
+              Update email
+            </Button>
+          </Box>
+        </Box>
+      </Paper>
+
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '1.15fr 0.85fr' },
+          gap: 3,
+          alignItems: 'start'
+        }}
+      >
+        <Paper variant='outlined' sx={{ borderRadius: 3, overflow: 'hidden' }}>
+          <Box sx={{ px: 3, py: 2.25, borderBottom: 1, borderColor: 'divider' }}>
+            <Typography variant='subtitle1' sx={{ fontWeight: 800 }}>
+              Account details
+            </Typography>
+          </Box>
+          <Box sx={{ px: 3, py: 2.5, display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center' }}>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant='caption' color='text.secondary' sx={{ fontWeight: 700, letterSpacing: '0.04em' }}>
+                USER ID
+              </Typography>
+              <Typography
+                variant='body2'
+                sx={{ fontFamily: 'monospace', mt: 0.5, wordBreak: 'break-all', fontWeight: 600 }}
+              >
+                {userData.userId}
+              </Typography>
+            </Box>
+            <Tooltip title={tooltipText}>
+              <IconButton onClick={handleCopyId} aria-label='Copy user ID' sx={{ bgcolor: 'action.hover' }}>
+                <ContentCopyIcon fontSize='small' />
+              </IconButton>
+            </Tooltip>
+          </Box>
+          <Divider />
+          <Box sx={{ px: 3, py: 2.5 }}>
+            <Typography variant='caption' color='text.secondary' sx={{ fontWeight: 700, letterSpacing: '0.04em' }}>
+              SUPPORT PIN
+            </Typography>
+            <Typography variant='h6' sx={{ fontWeight: 800, letterSpacing: '0.12em', mt: 0.5 }}>
+              {userData.supportPin}
+            </Typography>
+            <Typography variant='caption' color='text.secondary'>
+              Share this pin when you contact support.
+            </Typography>
+          </Box>
+        </Paper>
+
+        <Paper variant='outlined' sx={{ borderRadius: 3, p: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, mb: 2 }}>
+            <Box>
+              <Typography variant='subtitle1' sx={{ fontWeight: 800 }}>
+                Word balance
+              </Typography>
+              <Typography variant='body2' color='text.secondary'>
+                {userData.plan === 'admin' ? 'Unlimited for this admin account.' : 'Words used on this account.'}
+              </Typography>
             </Box>
             <Button
               component='a'
               href={`/${locale}/pricing`}
               variant='contained'
-              color='primary'
               disableElevation
-              sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, flexShrink: 0 }}
             >
               Buy words
             </Button>
-            {updateError ? <Alert severity='error'>{updateError}</Alert> : null}
-          </Paper>
-        </Box>
-
-        {userData.plan === 'admin' ? null : (
-        <Box sx={{ mb: 4 }}>
-          <Typography variant='h6' component='h3' sx={{ fontWeight: 600, mb: 2 }}>
-            Current Usage
-          </Typography>
-          <Paper variant='outlined' sx={{ borderRadius: 3, p: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {/* Words Progress */}
+          </Box>
+          {userData.plan === 'admin' ? (
+            <Chip label='Admin plan' color='success' sx={{ fontWeight: 700 }} />
+          ) : (
             <Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                <Typography variant='subtitle2' fontWeight={600}>
-                  Words Generated
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant='body2' sx={{ fontWeight: 700 }}>
+                  {Number(userData.wordsUsed).toLocaleString()} used
                 </Typography>
-                <Typography variant='body2' color='text.secondary' fontWeight={500}>
-                  {`${Number(userData.wordsUsed).toLocaleString()} / ${Number(userData.wordsLimit).toLocaleString()} words`}
+                <Typography variant='body2' color='text.secondary'>
+                  {Number(userData.wordsLimit).toLocaleString()} limit
                 </Typography>
               </Box>
               <LinearProgress
                 variant='determinate'
-                value={userData.wordsLimit ? Math.min(100, (userData.wordsUsed / userData.wordsLimit) * 100) : 0}
-                color={userData.wordsUsed >= userData.wordsLimit ? 'error' : 'primary'}
-                sx={{ height: 8, borderRadius: 4, bgcolor: 'action.hover' }}
+                value={wordPercent}
+                color={wordPercent >= 100 ? 'error' : 'primary'}
+                sx={{ height: 10, borderRadius: 99, bgcolor: 'action.hover' }}
               />
             </Box>
-
-            {/* Chats Progress */}
-            <Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant='subtitle2' fontWeight={600}>
-                    Active Chats
-                  </Typography>
-                  <Tooltip title='Chat threads on this account'>
-                    <InfoOutlinedIcon sx={{ fontSize: 18, color: 'text.secondary', cursor: 'pointer' }} />
-                  </Tooltip>
-                </Box>
-                <Typography variant='body2' color='text.secondary' fontWeight={500}>
-                  {userData.chatsLimit}
-                </Typography>
-              </Box>
-              <LinearProgress
-                variant='determinate'
-                value={100}
-                color='error'
-                sx={{ height: 8, borderRadius: 4, bgcolor: 'action.hover' }}
-              />
-            </Box>
-          </Paper>
-        </Box>
-        )}
+          )}
+        </Paper>
       </Box>
+
+      <Paper
+        variant='outlined'
+        sx={{
+          borderRadius: 3,
+          p: 3,
+          mt: 3,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: { xs: 'flex-start', sm: 'center' },
+          gap: 2,
+          flexWrap: 'wrap'
+        }}
+      >
+        <Box>
+          <Typography variant='subtitle1' sx={{ fontWeight: 800 }}>
+            Beta features
+          </Typography>
+          <Typography variant='body2' color='text.secondary' sx={{ mt: 0.5 }}>
+            Early tools stay off until the program is enabled for this account.
+          </Typography>
+          <Chip label='Disabled' size='small' sx={{ mt: 1.25, fontWeight: 700 }} />
+        </Box>
+        <Button variant='outlined' sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}>
+          Manage features
+        </Button>
+      </Paper>
 
       {/* Change Password Dialog */}
       <Dialog

@@ -1,5 +1,6 @@
 // Component Imports
 import PricingWrapper from '@/views/apps/pricing'
+import ModuleGate from '@/components/access/ModuleGate'
 
 // Context Imports
 import { IntersectionProvider } from '@/contexts/intersectionContext'
@@ -29,9 +30,11 @@ const PricingPage = async () => {
   const data = await getPricingData()
 
   return (
-    <IntersectionProvider>
-      <PricingWrapper data={data} />
-    </IntersectionProvider>
+    <ModuleGate featureKey='module-pricing'>
+      <IntersectionProvider>
+        <PricingWrapper data={data} />
+      </IntersectionProvider>
+    </ModuleGate>
     )
 }
 
