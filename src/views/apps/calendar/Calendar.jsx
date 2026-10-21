@@ -51,8 +51,46 @@ function clipTitle(title) {
   return `${text.slice(0, 97)}...`
 }
 
+function startOfLocalDay(value) {
+  const date = value instanceof Date ? value : new Date(value)
+
+  if (Number.isNaN(date.getTime())) return null
+
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
 function sameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+}
+
+const LANE_DOT_COLOR = {
+  Draft: 'var(--mui-palette-warning-main)',
+  Published: 'var(--mui-palette-success-main)',
+  Scheduled: 'var(--mui-palette-primary-main)'
+}
+
+function siteTint(color) {
+  const value = String(color || '').trim()
+  const hex = value.match(/^#([\da-f]{3}|[\da-f]{6})$/i)
+
+  if (hex) {
+    let raw = hex[1]
+
+    if (raw.length === 3) raw = raw.split('').map(char => char + char).join('')
+
+    const int = Number.parseInt(raw, 16)
+    const r = (int >> 16) & 255
+    const g = (int >> 8) & 255
+    const b = int & 255
+
+    return `rgba(${r}, ${g}, ${b}, 0.16)`
+  }
+
+  const hsl = value.match(/^hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)$/i)
+
+  if (hsl) return `hsla(${hsl[1]}, ${hsl[2]}%, ${hsl[3]}%, 0.16)`
+
+  return ''
 }
 
 function asDate(value) {
@@ -178,10 +216,13 @@ const Calendar = props => {
     dragScroll: true,
     navLinks: true,
     navLinkDayClick: 'timeGridDay',
-    eventClassNames({ event: calendarEvent }) {
-      const colorName = calendarsColor[calendarEvent._def.extendedProps.calendar]
+    eventClassNames({ event: calendarEvent, view }) {
+      const colorName = calendarsColor[calendarEvent.extendedProps?.calendar] || 'primary'
+      const isList = String(view?.type || '').startsWith('list')
 
-      return [`event-bg-${colorName}`]
+      if (isList || !siteTint(calendarEvent.extendedProps?.siteColor)) return [`event-bg-${colorName}`]
+
+      return ['ag-cal-site-bg']
     },
     eventClick({ event: clickedEvent, jsEvent }) {
       jsEvent.preventDefault()
@@ -191,18 +232,29 @@ const Calendar = props => {
     eventDidMount(info) {
       if (String(info.view?.type || '').startsWith('list')) return
 
-      const color = info.event.extendedProps?.siteColor
+      const siteColor = info.event.extendedProps?.siteColor
+      const tint = siteTint(siteColor)
 
-      if (!color) return
+      if (!tint) return
+
+      info.el.style.setProperty('--fc-event-bg-color', tint)
+      info.el.style.setProperty('--fc-event-border-color', 'transparent')
+      info.el.style.setProperty('--fc-event-text-color', siteColor)
+      info.el.style.setProperty('background-color', tint, 'important')
+      info.el.style.setProperty('border-color', 'transparent', 'important')
+      info.el.style.setProperty('color', siteColor, 'important')
+      info.el.querySelectorAll('.fc-event-title, .fc-event-time').forEach(node => {
+        node.style.setProperty('color', siteColor, 'important')
+      })
 
       const title = info.el.querySelector('.fc-event-title')
 
-      if (!title || title.querySelector('.ag-cal-site-dot')) return
+      if (!title || title.querySelector('.ag-cal-type-dot')) return
 
       const dot = document.createElement('span')
 
-      dot.className = 'ag-cal-site-dot'
-      dot.style.backgroundColor = color
+      dot.className = 'ag-cal-type-dot'
+      dot.style.backgroundColor = LANE_DOT_COLOR[info.event.extendedProps?.calendar] || LANE_DOT_COLOR.Scheduled
       title.prepend(dot)
     },
     moreLinkClick(info) {
@@ -254,10 +306,15 @@ const Calendar = props => {
       }
     },
     dateClick(info) {
+      const clicked = info.date instanceof Date ? info.date : new Date(info.date)
+      const now = new Date()
+      const today = startOfLocalDay(now)
+      const clickedDay = startOfLocalDay(clicked)
+      const start = clickedDay && today && clickedDay < today ? now : clicked
       const ev = { ...blankEvent, extendedProps: { ...blankEvent.extendedProps } }
 
-      ev.start = info.date
-      ev.end = info.date
+      ev.start = start
+      ev.end = start
       ev.allDay = false
       dispatch(selectedEvent(ev))
       handleAddEventSidebarToggle()

@@ -3,9 +3,14 @@ import { useState, useEffect, forwardRef, useCallback } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 
 import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogContentText from '@mui/material/DialogContentText'
+import DialogTitle from '@mui/material/DialogTitle'
 import Drawer from '@mui/material/Drawer'
 import Select from '@mui/material/Select'
-import Button from '@mui/material/Button'
 import MenuItem from '@mui/material/MenuItem'
 import TextField from '@mui/material/TextField'
 import IconButton from '@mui/material/IconButton'
@@ -69,6 +74,8 @@ const AddEventSidebar = props => {
   const [siteError, setSiteError] = useState(false)
   const [articleError, setArticleError] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [articleContent, setArticleContent] = useState('')
   const [articleLoad, setArticleLoad] = useState('idle')
   const router = useRouter()
@@ -112,8 +119,18 @@ const AddEventSidebar = props => {
   const resetToStoredValues = useCallback(() => {
     if (calendarStore.selectedEvent !== null) {
       const event = calendarStore.selectedEvent
-      const start = event.start ? new Date(event.start) : new Date()
+      let start = event.start ? new Date(event.start) : new Date()
       const lane = ACTION_TYPES.includes(event.extendedProps?.calendar) ? event.extendedProps.calendar : 'Scheduled'
+
+      if (Number.isNaN(start.getTime())) start = new Date()
+
+      if (!event.id) {
+        const now = new Date()
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+
+        if (startDay < today) start = now
+      }
 
       setValues({
         articleId: event.id || '',
@@ -141,6 +158,7 @@ const AddEventSidebar = props => {
     setValues(defaultState)
     setSiteError(false)
     setArticleError(false)
+    setConfirmDelete(false)
     dispatch(selectedEvent(null))
     handleAddEventSidebarToggle()
   }
@@ -235,20 +253,36 @@ const AddEventSidebar = props => {
     }
   }
 
-  const handleDeleteButtonClick = async () => {
+  const handleDeleteButtonClick = () => {
     if (!calendarStore.selectedEvent?.id) {
       handleSidebarClose()
 
       return
     }
 
-    const removed = await onPersist?.('delete', { id: calendarStore.selectedEvent.id })
+    setConfirmDelete(true)
+  }
 
-    if (removed == null) return
+  const confirmDeleteArticle = async () => {
+    const id = calendarStore.selectedEvent?.extendedProps?.articleId || calendarStore.selectedEvent?.id
 
-    dispatch(deleteEvent(calendarStore.selectedEvent.id))
-    dispatch(filterEvents())
-    handleSidebarClose()
+    if (!id) return
+
+    setDeleting(true)
+
+    try {
+      const removed = await onPersist?.('delete', { id })
+
+      if (removed == null) return
+
+      dispatch(deleteEvent(id))
+      dispatch(deleteEvent(calendarStore.selectedEvent.id))
+      dispatch(filterEvents())
+      setConfirmDelete(false)
+      handleSidebarClose()
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const RenderSidebarFooter = () => {
@@ -325,6 +359,7 @@ const AddEventSidebar = props => {
   }, [addEventSidebarOpen, resetToStoredValues, resetToEmptyValues, calendarStore.selectedEvent])
 
   return (
+    <>
     <Drawer
       anchor='right'
       open={addEventSidebarOpen}
@@ -338,7 +373,7 @@ const AddEventSidebar = props => {
         </Typography>
         {calendarStore.selectedEvent?.id ? (
           <Box className='flex items-center' sx={{ gap: 1 }}>
-            <IconButton size='small' onClick={handleDeleteButtonClick}>
+            <IconButton size='small' onClick={handleDeleteButtonClick} disabled={deleting}>
               <i className='ri-delete-bin-7-line text-2xl' />
             </IconButton>
             <IconButton size='small' onClick={handleSidebarClose}>
@@ -552,6 +587,24 @@ const AddEventSidebar = props => {
         </Box>
       </ScrollWrapper>
     </Drawer>
+    <Dialog open={confirmDelete} onClose={() => !deleting && setConfirmDelete(false)}>
+      <DialogTitle>Delete this article forever?</DialogTitle>
+      <DialogContent>
+        <DialogContentText>
+          This article will be deleted from the live site forever. It will be permanently removed from WordPress and
+          cannot be restored.
+        </DialogContentText>
+      </DialogContent>
+      <DialogActions>
+        <Button color='secondary' onClick={() => setConfirmDelete(false)} disabled={deleting}>
+          Cancel
+        </Button>
+        <Button color='error' variant='contained' onClick={confirmDeleteArticle} disabled={deleting}>
+          {deleting ? 'Deleting...' : 'Delete forever'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   )
 }
 

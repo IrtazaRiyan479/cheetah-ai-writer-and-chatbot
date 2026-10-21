@@ -164,7 +164,7 @@ const AppFullCalendar = styled('div')(({ theme }) => ({
         whiteSpace: 'nowrap',
         maxWidth: '100%'
       },
-      '& .ag-cal-site-dot': {
+      '& .ag-cal-type-dot': {
         display: 'inline-block',
         width: 8,
         height: 8,
@@ -177,6 +177,14 @@ const AppFullCalendar = styled('div')(({ theme }) => ({
         lineHeight: 1.077
       },
       '&:not(.fc-list-event)': {
+        '&.ag-cal-site-bg': {
+          border: 0,
+          '& .fc-event-title, & .fc-event-time': {
+            fontSize: theme.typography.caption.fontSize,
+            fontWeight: 500,
+            padding: 0
+          }
+        },
         '&.event-bg-primary': {
           border: 0,
           color: 'var(--mui-palette-primary-main)',

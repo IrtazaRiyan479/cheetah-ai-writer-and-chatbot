@@ -141,21 +141,7 @@ const SidebarLeft = props => {
               <FormControlLabel
                 className='mbe-1'
                 key={site.value}
-                label={
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: '50%',
-                        background: site.color || '#2563EB',
-                        display: 'inline-block',
-                        flex: 'none'
-                      }}
-                    />
-                    {site.label}
-                  </span>
-                }
+                label={site.label}
                 control={
                   <Checkbox
                     checked={selectedSites == null || selectedSites.includes(site.value)}

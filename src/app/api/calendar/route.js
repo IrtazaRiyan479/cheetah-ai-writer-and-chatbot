@@ -943,11 +943,28 @@ export async function PUT(request) {
 
 export async function DELETE(request) {
   try {
-    const { user } = await requireUser()
+    const { session, user } = await requireUser()
 
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const article = await loadOwnedArticle(user.id, new URL(request.url).searchParams.get('id'))
+    const id = new URL(request.url).searchParams.get('id')
+    const ref = parseWpRef(id)
+
+    if (ref) {
+      const sites = await connectedSites(user, session)
+      const site = sites.find(item => item.siteKey === ref.siteKey)
+
+      if (!site) return NextResponse.json({ error: 'Article not found on a connected site.' }, { status: 404 })
+
+      await wpRequest(siteAuth(site), `/wp-json/wp/v2/posts/${ref.postId}?force=true`, {
+        method: 'DELETE',
+        timeoutMs: 30000
+      })
+
+      return NextResponse.json({ success: true })
+    }
+
+    const article = await loadOwnedArticle(user.id, id)
 
     if (!article) return NextResponse.json({ error: 'Article not found.' }, { status: 400 })
 
@@ -958,7 +975,7 @@ export async function DELETE(request) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error(error?.message || 'Calendar hide failed')
+    console.error(error?.message || 'Calendar delete failed')
 
     return NextResponse.json({ error: readableError(error) }, { status: 400 })
   }
