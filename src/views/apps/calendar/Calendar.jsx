@@ -140,7 +140,7 @@ const Calendar = props => {
     initialView: 'dayGridMonth',
     headerToolbar: {
       start: 'sidebarToggle, prev, next, title',
-      end: 'dayGridMonth,timeGridWeek,listDay'
+      end: 'dayGridMonth,timeGridWeek,timeGridDay,listMonth'
     },
     views: {
       dayGridMonth: {
@@ -151,17 +151,27 @@ const Calendar = props => {
         eventMaxStack: 2,
         slotDuration: '01:00:00',
         slotEventOverlap: false,
+        eventMinHeight: 26,
+        displayEventTime: false,
         titleFormat: { year: 'numeric', month: 'short', day: 'numeric' }
       },
-      listDay: {
-        buttonText: 'day'
+      timeGridDay: {
+        buttonText: 'day',
+        slotDuration: '01:00:00',
+        allDaySlot: false,
+        displayEventTime: false,
+        eventMaxStack: 2,
+        eventMinHeight: 26
+      },
+      listMonth: {
+        buttonText: 'list'
       }
     },
     editable: true,
     eventResizableFromStart: true,
     dragScroll: true,
     navLinks: true,
-    navLinkDayClick: 'listDay',
+    navLinkDayClick: 'timeGridDay',
     eventClassNames({ event: calendarEvent }) {
       const colorName = calendarsColor[calendarEvent._def.extendedProps.calendar]
 
@@ -173,19 +183,16 @@ const Calendar = props => {
       handleAddEventSidebarToggle()
     },
     eventContent(arg) {
-      if (arg.view.type !== 'listDay') return
+      if (String(arg.view?.type || '').startsWith('list')) return undefined
 
-      const when = formatWhen(arg.event.start)
-      const typeLabel = arg.event.extendedProps?.articleTypeLabel || 'Article'
+      const color = arg.event.extendedProps?.siteColor || '#7367F0'
 
-      // Title cell only. Theme list row keeps time + .fc-list-event-dot (event-bg-* colors).
       return (
-        <div className='ag-cal-list'>
-          <span className='ag-cal-list-title' title={arg.event.title}>
+        <div className='ag-cal-title'>
+          <span className='ag-cal-site-dot' style={{ backgroundColor: color }} />
+          <span className='ag-cal-title-text' title={arg.event.title}>
             {arg.event.title}
           </span>
-          <span className='ag-cal-list-type'>{typeLabel}</span>
-          <span className='ag-cal-list-date'>{when}</span>
         </div>
       )
     },
@@ -288,7 +295,7 @@ const Calendar = props => {
       >
         <Box className='flex flex-col' sx={{ py: 1 }}>
           {(more?.items || []).map(event => {
-            const colorName = calendarsColor[event.extendedProps?.calendar] || 'primary'
+            const color = event.extendedProps?.siteColor || '#7367F0'
 
             return (
               <Box
@@ -317,7 +324,7 @@ const Calendar = props => {
                     height: 8,
                     borderRadius: '50%',
                     flex: 'none',
-                    bgcolor: `${colorName}.main`
+                    backgroundColor: color
                   }}
                 />
                 <Typography variant='body2' title={event.title} sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -332,7 +339,7 @@ const Calendar = props => {
               size='small'
               variant='text'
               onClick={() => {
-                calendarApi?.changeView('listDay', more?.date)
+                calendarApi?.changeView('timeGridDay', more?.date)
                 setMore(null)
               }}
             >

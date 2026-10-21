@@ -138,7 +138,7 @@ const AppFullCalendar = styled('div')(({ theme }) => ({
         borderInline: 0
       }
     },
-    '& colgroup col': {
+    '& .fc-timegrid .fc-scrollgrid colgroup > col:first-child': {
       width: '60px !important'
     },
 
@@ -157,6 +157,29 @@ const AppFullCalendar = styled('div')(({ theme }) => ({
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
         maxWidth: '100%'
+      },
+      '& .ag-cal-title': {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
+        minWidth: 0,
+        maxWidth: '100%',
+        overflow: 'hidden'
+      },
+      '& .ag-cal-site-dot': {
+        width: 8,
+        height: 8,
+        borderRadius: '50%',
+        flex: 'none'
+      },
+      '& .ag-cal-title-text': {
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+        minWidth: 0,
+        fontSize: '0.8125rem',
+        fontWeight: 500,
+        lineHeight: 1.35
       },
       '& .fc-event-title-container, .fc-event-main-frame': {
         lineHeight: 1.077
@@ -397,19 +420,19 @@ const AppFullCalendar = styled('div')(({ theme }) => ({
       '& .fc-timegrid-event': {
         maxWidth: '100%',
         overflow: 'hidden',
+        minHeight: 26,
         '& .fc-event-time': {
-          ...theme.typography.caption,
-          marginBlockEnd: 2
+          display: 'none'
         },
         '& .fc-event-title': {
-          lineHeight: 1.5385
+          lineHeight: 1.3
         },
         boxShadow: 'none'
       },
       '.fc-timegrid-col-events': {
         margin: 0,
         '& .fc-event-main': {
-          padding: theme.spacing(2)
+          padding: '2px 6px'
         }
       }
     },

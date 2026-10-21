@@ -15,6 +15,7 @@ import useMediaQuery from '@mui/material/useMediaQuery'
 import FormControl from '@mui/material/FormControl'
 
 import PerfectScrollbar from 'react-perfect-scrollbar'
+import { toast } from 'react-toastify'
 
 import AppReactDatepicker from '@/libs/styles/AppReactDatepicker'
 
@@ -59,12 +60,17 @@ const AddEventSidebar = props => {
     addEventSidebarOpen,
     handleAddEventSidebarToggle,
     onPersist,
+    onReload,
+    calendarApi,
     siteOptions = [],
     drafts = []
   } = props
   const [values, setValues] = useState(defaultState)
   const [siteError, setSiteError] = useState(false)
   const [articleError, setArticleError] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [articleContent, setArticleContent] = useState('')
+  const [articleLoad, setArticleLoad] = useState('idle')
   const router = useRouter()
   const pathname = usePathname()
   const locale = localeFromPath(pathname)
@@ -165,23 +171,68 @@ const AddEventSidebar = props => {
       calendar: values.calendar,
       siteKey: values.siteKey,
       description: values.description,
+      content: articleContent,
       allDay: false
     }
+    let when = null
 
     if (values.calendar === 'Scheduled') {
       const start = combineLocalDateTime(values.publishDate, values.windowTime)
 
-      if (!start) return
+      if (!start || start.getTime() <= Date.now() + 60 * 1000) return
 
       payload.start = start
+      when = start
     }
 
-    const saved = await onPersist?.(isNew ? 'create' : 'update', payload)
+    if (articleLoad === 'loading') return
 
-    if (!saved?.id && !saved?.success) return
+    setSaving(true)
 
-    dispatch(filterEvents())
-    handleSidebarClose()
+    try {
+      const isWp = String(values.articleId).startsWith('wp_')
+
+      if (!isWp) {
+        const status = values.calendar === 'Published' ? 'publish' : values.calendar === 'Draft' ? 'draft' : 'future'
+        const picked = articleOptions.find(article => article.id === values.articleId)
+        const res = await fetch('/api/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: picked?.title || 'Untitled article',
+            content: articleContent,
+            status,
+            siteKey: values.siteKey,
+            scheduledAt: when ? when.toISOString() : '',
+            articleId: values.articleId
+          })
+        })
+        const result = await res.json().catch(() => ({}))
+
+        if (!res.ok || !result.success) {
+          toast.error(typeof result.error === 'string' ? result.error : 'Could not publish this article.')
+
+          return
+        }
+
+        calendarApi?.gotoDate(when || new Date())
+        await onReload?.()
+        dispatch(filterEvents())
+        handleSidebarClose()
+
+        return
+      }
+
+      const saved = await onPersist?.(isNew ? 'create' : 'update', payload)
+
+      if (!saved?.id && !saved?.success) return
+
+      calendarApi?.gotoDate(saved?.start || when || new Date())
+      dispatch(filterEvents())
+      handleSidebarClose()
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleDeleteButtonClick = async () => {
@@ -201,13 +252,16 @@ const AddEventSidebar = props => {
   }
 
   const RenderSidebarFooter = () => {
-    const disabled = noSites || !values.articleId
+    const scheduleStart =
+      values.calendar === 'Scheduled' ? combineLocalDateTime(values.publishDate, values.windowTime) : null
+    const scheduleBlocked = values.calendar === 'Scheduled' && (!scheduleStart || scheduleStart.getTime() <= Date.now() + 60 * 1000)
+    const disabled = saving || noSites || !values.articleId || articleLoad === 'loading' || scheduleBlocked
 
     if (!calendarStore.selectedEvent?.id) {
       return (
         <div className='flex gap-4'>
           <Button type='submit' variant='contained' disabled={disabled}>
-            Add
+            {saving ? 'Saving...' : 'Add'}
           </Button>
           <Button variant='outlined' color='secondary' onClick={resetToEmptyValues}>
             Reset
@@ -219,7 +273,7 @@ const AddEventSidebar = props => {
     return (
       <div className='flex gap-4'>
         <Button type='submit' variant='contained' disabled={disabled}>
-          Update
+          {saving ? 'Saving...' : 'Update'}
         </Button>
         <Button variant='outlined' color='secondary' onClick={resetToStoredValues}>
           Reset
@@ -229,6 +283,41 @@ const AddEventSidebar = props => {
   }
 
   const ScrollWrapper = isBelowSmScreen ? 'div' : PerfectScrollbar
+
+  useEffect(() => {
+    const articleId = String(values.articleId || '')
+
+    if (!articleId || articleId === '__generate') {
+      setArticleContent('')
+      setArticleLoad('idle')
+
+      return
+    }
+
+    let active = true
+
+    setArticleLoad('loading')
+    fetch(`/api/calendar?article=${encodeURIComponent(articleId)}`, { cache: 'no-store' })
+      .then(response => response.json().then(data => ({ ok: response.ok, data })))
+      .then(({ ok, data }) => {
+        if (!active) return
+
+        const content = data?.article?.content || ''
+
+        setArticleContent(content)
+        setArticleLoad(!ok || !data?.article ? 'error' : content ? 'ready' : 'empty')
+      })
+      .catch(() => {
+        if (!active) return
+
+        setArticleContent('')
+        setArticleLoad('error')
+      })
+
+    return () => {
+      active = false
+    }
+  }, [values.articleId])
 
   useEffect(() => {
     if (calendarStore.selectedEvent !== null) resetToStoredValues()
@@ -309,6 +398,21 @@ const AddEventSidebar = props => {
                   Choose an article.
                 </Typography>
               ) : null}
+              {values.articleId && articleLoad === 'loading' ? (
+                <Typography variant='caption' color='text.secondary' className='mts-1'>
+                  Loading the full article…
+                </Typography>
+              ) : null}
+              {values.articleId && articleLoad === 'ready' ? (
+                <Typography variant='caption' color='text.secondary' className='mts-1'>
+                  Full article loaded. The action below republishes this content.
+                </Typography>
+              ) : null}
+              {values.articleId && articleLoad === 'error' ? (
+                <Typography variant='caption' color='error' className='mts-1'>
+                  Could not load the article body. The saved copy will be used and the post will not be blanked.
+                </Typography>
+              ) : null}
             </FormControl>
             <FormControl fullWidth className='mbe-5' error={siteError || noSites}>
               <InputLabel id='event-wp-site'>WordPress site</InputLabel>
@@ -370,10 +474,18 @@ const AddEventSidebar = props => {
                   <AppReactDatepicker
                     id='event-publish-date'
                     selected={values.publishDate}
+                    minDate={new Date()}
                     dateFormat='yyyy-MM-dd'
                     customInput={<PickersComponent label='Publish at' registername='publishDate' />}
                     onChange={date => date !== null && setValues({ ...values, publishDate: new Date(date) })}
                   />
+                  {values.calendar === 'Scheduled' &&
+                  (!combineLocalDateTime(values.publishDate, values.windowTime) ||
+                    combineLocalDateTime(values.publishDate, values.windowTime).getTime() <= Date.now() + 60 * 1000) ? (
+                    <Typography variant='caption' color='error'>
+                      Choose a time at least one minute in the future.
+                    </Typography>
+                  ) : null}
                 </div>
                 <div className='mbe-5'>
                   <AppReactDatepicker

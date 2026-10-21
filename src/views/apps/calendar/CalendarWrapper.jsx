@@ -13,6 +13,8 @@ import AddEventSidebar from './AddEventSidebar'
 
 import { setEvents } from '@/redux-store/slices/calendar'
 
+import AppFullCalendar from '@/libs/styles/AppFullCalendar'
+
 const calendarsColor = {
   Draft: 'warning',
   Published: 'success',
@@ -68,6 +70,9 @@ const AppCalendar = () => {
       }
 
       if (Array.isArray(data.events)) dispatch(setEvents(data.events))
+      if (Array.isArray(data.warnings) && data.warnings.length) {
+        data.warnings.forEach(message => toast.error(message))
+      }
 
       setDrafts(Array.isArray(data.drafts) ? data.drafts : [])
       setSiteOptions(Array.isArray(data.sites) ? data.sites : [])
@@ -129,7 +134,7 @@ const AppCalendar = () => {
   }
 
   return (
-    <>
+    <AppFullCalendar className='app-calendar'>
       <SidebarLeft
         mdAbove={mdAbove}
         dispatch={dispatch}
@@ -165,10 +170,11 @@ const AppCalendar = () => {
         addEventSidebarOpen={addEventSidebarOpen}
         handleAddEventSidebarToggle={handleAddEventSidebarToggle}
         onPersist={onPersist}
+        onReload={loadEvents}
         siteOptions={siteOptions}
         drafts={drafts}
       />
-    </>
+    </AppFullCalendar>
   )
 }
 

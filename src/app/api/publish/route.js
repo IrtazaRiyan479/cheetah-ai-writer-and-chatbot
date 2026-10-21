@@ -641,7 +641,7 @@ export async function POST(request) {
 
     const body = await request.json()
 
-    const {
+    let {
       title,
       content,
       status,
@@ -657,6 +657,45 @@ export async function POST(request) {
       trimTitleAndHero,
       scheduledAt
     } = body
+
+    const owner = session?.user?.email
+      ? await prisma.user.findUnique({ where: { email: session.user.email } })
+      : null
+
+    if (!siteType && body.siteKey) {
+      const siteKey = String(body.siteKey)
+
+      if (siteKey.startsWith('db_')) {
+        if (!owner) throw new Error('Sign in to publish.')
+
+        const row = await prisma.customWPSite.findFirst({
+          where: { id: siteKey.slice(3), userId: owner.id }
+        })
+
+        if (!row) throw new Error('Choose a connected WordPress site.')
+
+        siteType = 'custom'
+        customSite = { id: row.id, url: row.url, username: row.username, password: row.password }
+      } else {
+        siteType = 'predefined'
+        siteId = siteKey
+      }
+    }
+
+    if (owner && body.articleId && !String(body.articleId).startsWith('wp_')) {
+      const article = await prisma.article.findFirst({
+        where: { id: String(body.articleId), userId: owner.id }
+      })
+
+      if (article) {
+        if (!title) title = article.title
+        if (!content) content = article.content
+      }
+    }
+
+    if (body.siteKey && !String(content || '').trim()) {
+      throw new Error('This article has no content to publish.')
+    }
 
     let siteUrl, wpUsername, wpPassword
 
