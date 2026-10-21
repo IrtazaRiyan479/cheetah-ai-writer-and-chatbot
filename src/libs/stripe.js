@@ -59,10 +59,7 @@ export async function syncStripeSubscription(subscription, customerId) {
     ? await prisma.user.findUnique({ where: { id: metadataUserId } })
     : await prisma.user.findFirst({
         where: {
-          OR: [
-            ...(customer ? [{ stripeCustomerId: customer }] : []),
-            { stripeSubscriptionId: subscription.id }
-          ]
+          OR: [...(customer ? [{ stripeCustomerId: customer }] : []), { stripeSubscriptionId: subscription.id }]
         }
       })
 
@@ -147,9 +144,11 @@ export async function creditWordPack({ userId, customerId, words, sessionId, pla
 }
 
 export function getAppUrl(request) {
-  const configuredUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL
+  const configuredUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL
 
-  if (configuredUrl) return configuredUrl.replace(/\/$/, '')
+  if (configuredUrl) {
+    return configuredUrl.replace(/\/$/, '').replace(/\/api\/auth\/?$/, '')
+  }
 
   return new URL(request.url).origin
 }

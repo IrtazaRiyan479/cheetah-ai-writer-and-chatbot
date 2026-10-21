@@ -14,14 +14,17 @@ export async function POST(request) {
     const user = await getDbUser({ userId: session?.user?.id, email: session?.user?.email })
 
     if (!user) return NextResponse.json({ success: false, error: 'Sign in required.' }, { status: 401 })
-    if (!user.email) return NextResponse.json({ success: false, error: 'An email address is required.' }, { status: 400 })
+    if (!user.email)
+      return NextResponse.json({ success: false, error: 'An email address is required.' }, { status: 400 })
 
     const body = await request.json().catch(() => ({}))
     const requested = body.plan === 'enterprise' || body.plan === 'max' ? 'enterprise' : 'pro'
+
     const packDefaults = {
       pro: { amount: 7.5, words: 50000, name: 'Pro' },
       enterprise: { amount: 16, words: 200000, name: 'Max' }
     }
+
     const { PrismaClient } = await import('@prisma/client')
     const prisma = global.prisma || new PrismaClient()
 
@@ -36,6 +39,11 @@ export async function POST(request) {
     const words = Math.max(1, Math.round(Number(planCopy?.words) || fallback.words))
     const plan = requested === 'enterprise' ? 'max' : 'pro'
 
+    const currency =
+      String(planCopy?.currency || process.env.STRIPE_CURRENCY || 'usd')
+        .toLowerCase()
+        .trim() || 'usd'
+
     let customerId = user.stripeCustomerId
 
     if (!customerId) {
@@ -49,16 +57,18 @@ export async function POST(request) {
     }
 
     const pricingUrl = getLocalizedAppUrl(request, 'pricing')
+
     const checkout = await stripeRequest('checkout/sessions', {
       method: 'POST',
       params: {
         mode: 'payment',
         customer: customerId,
         'line_items[0][quantity]': '1',
-        'line_items[0][price_data][currency]': 'usd',
+        'line_items[0][price_data][currency]': currency,
         'line_items[0][price_data][unit_amount]': String(Math.round(amount * 100)),
         'line_items[0][price_data][product_data][name]': `${planCopy?.name || fallback.name} word pack`,
         'line_items[0][price_data][product_data][description]': `${words.toLocaleString()} words. They never expire.`,
+        'managed_payments[enabled]': 'false',
         success_url: `${pricingUrl}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${pricingUrl}?checkout=cancelled`,
         client_reference_id: user.id,
