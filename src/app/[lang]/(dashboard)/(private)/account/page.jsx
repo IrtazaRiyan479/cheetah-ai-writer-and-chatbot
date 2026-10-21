@@ -170,7 +170,9 @@ const AccountSettings = () => {
   const planLabel =
     userData.plan === 'admin' ? 'Admin' : userData.plan === 'pro' ? 'Pro' : userData.plan === 'max' ? 'Max' : 'Free'
 
-  const wordPercent = userData.wordsLimit ? Math.min(100, (Number(userData.wordsUsed) / Number(userData.wordsLimit)) * 100) : 0
+  const wordPercent = userData.wordsLimit
+    ? Math.min(100, (Number(userData.wordsUsed) / Number(userData.wordsLimit)) * 100)
+    : 0
 
   if (isLoading) {
     return (
@@ -204,7 +206,7 @@ const AccountSettings = () => {
           </Typography>
         </Box>
         <Button
-          variant='outlined'
+          variant='contained'
           color='error'
           onClick={handleLogout}
           startIcon={<i className='ri-logout-box-r-line' />}
@@ -379,7 +381,7 @@ const AccountSettings = () => {
         </Paper>
       </Box>
 
-      <Paper
+      {/* <Paper
         variant='outlined'
         sx={{
           borderRadius: 3,
@@ -404,7 +406,7 @@ const AccountSettings = () => {
         <Button variant='outlined' sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}>
           Manage features
         </Button>
-      </Paper>
+      </Paper> */}
 
       {/* Change Password Dialog */}
       <Dialog
