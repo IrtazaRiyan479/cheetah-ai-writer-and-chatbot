@@ -63,6 +63,97 @@ function shortProductName(name, index) {
   return label || `Product ${index + 1}`
 }
 
+function displayProductName(name, index) {
+  let text = String(name || '')
+    .replace(/[™®©]/g, ' ')
+    .replace(/[…]/g, ' ')
+    .replace(/\.{2,}/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!text) return `Product ${index + 1}`
+
+  const pipe = text.split(/\s*\|\s*/)[0].trim()
+  if (pipe.split(/\s+/).length >= 2) text = pipe
+
+  text = text
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const dashed = text.split(/\s+[–—]\s+|\s+-\s+/)
+  if (dashed.length > 1 && dashed[0].trim().split(/\s+/).length >= 3) text = dashed[0].trim()
+
+  const comma = text.split(',')
+  if (comma.length > 1 && comma[0].trim().split(/\s+/).length >= 3) text = comma[0].trim()
+
+  const clause = text.match(/^(.*?)\s+\b(?:with|featuring|including|plus|bundled with|comes with)\b/i)
+  if (clause && clause[1].trim().split(/\s+/).length >= 3) text = clause[1].trim()
+
+  let words = text.replace(/\s+/g, ' ').trim().split(/\s+/).filter(Boolean)
+  if (words.length > 7) words = words.slice(0, 7)
+
+  while (words.length > 3 && words.join(' ').length > 58) words.pop()
+
+  const label = titleCaseWords(words.join(' ')).replace(/[,:;.\-–—|]+$/g, '').trim()
+
+  return label || `Product ${index + 1}`
+}
+
+function shortFeature(value) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (!text) return ''
+  const first = text.split(/[.;|]/)[0].trim()
+  const base = first.length >= 18 ? first : text
+  if (base.length <= 88) return base
+  const clipped = base.slice(0, 85).replace(/\s+\S*$/, '').trim()
+  return clipped || base.slice(0, 85).trim()
+}
+
+function labelOf(product, index) {
+  const saved = String(product?.displayName || '').trim()
+  if (saved) return saved
+  return displayProductName(product?.productName, index)
+}
+
+function listedFeatures(product, limit = 4) {
+  return (Array.isArray(product?.features) ? product.features : []).map(shortFeature).filter(Boolean).slice(0, limit)
+}
+
+function countWords(value) {
+  return String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length
+}
+
+function asParagraphs(value) {
+  const source = Array.isArray(value) ? value : String(value || '').split(/\n\s*\n/)
+
+  return source.map(item => String(item || '').replace(/\s+/g, ' ').trim()).filter(Boolean)
+}
+
+function ensureProse(text, fallback, minWords) {
+  const body = asParagraphs(text).join('\n\n')
+  const extra = asParagraphs(fallback).join('\n\n')
+  if (countWords(body) >= minWords) return body
+  if (!body) return extra
+  if (!extra) return body
+  return `${body}\n\n${extra}`
+}
+
+function featureSentences(product, index) {
+  const name = labelOf(product, index)
+  const features = listedFeatures(product, 5)
+  if (!features.length) {
+    return `${name} did not come back with a feature list. Missing details stay unknown. They are not treated as a flaw.`
+  }
+
+  return features.map(feature => `${name} lists this detail: ${feature}.`).join(' ')
+}
+
 function cleanImage(url) {
   return String(url || '').replace(/\._[A-Za-z0-9_]+_\./, '.')
 }
@@ -101,6 +192,7 @@ function mapAmazonItem(item, fallbackUrl, domain, settings, index) {
   return {
     productName,
     shortName: shortProductName(productName, index),
+    displayName: displayProductName(productName, index),
     asin,
     amazonUrl: resolveAffiliateUrl({
       url: item?.detailPageURL || fallbackUrl,
@@ -289,12 +381,12 @@ export async function generateProductComparisonOutline(body) {
   const products = await loadComparisonProducts(validation.urls, settings)
   const keyword =
     String(body.targetKeyword || settings.targetKeyword || '').trim() || products.map(product => product.shortName).join(' vs ')
-  const names = products.map(product => product.productName).join(', ')
+  const names = products.map(product => product.displayName).join(', ')
 
   const [metaResponse, stock] = await Promise.all([
     callLLM({
       system: 'Create concise SEO metadata for a product comparison. Return JSON only and do not invent product facts.',
-      prompt: `Create title, metaTitle, metaDescription for a comparison of ${names}. Topic: ${keyword}. Return JSON.`,
+      prompt: `Create title, metaTitle, metaDescription for a comparison of ${names}. Topic: ${keyword}. Use these short product names, not long marketplace titles. Do not mention prices. Return JSON.`,
       json: true,
       maxTokens: 400,
       model: settings.model
@@ -322,20 +414,21 @@ export async function generateProductComparisonOutline(body) {
 
   const productHeadings = products.map((product, index) => ({
     type: 'h2',
-    text: `${index + 1}. ${product.productName}: Features, Pros, Cons and Amazon Customer Feedback`,
+    text: `${index + 1}. ${product.displayName}`,
     sectionType: 'product',
     productIndex: index
   }))
   const comparisonData = { products, images: extraImages }
   const outline = [
     { type: 'h2', text: `Introduction to ${keyword}`, sectionType: 'intro' },
-    ...productHeadings,
     {
       type: 'h2',
-      text: `${products.map(product => product.shortName).join(' vs ')}: Comparison`,
+      text: 'Quick Look',
       sectionType: 'comparison',
       comparisonData
     },
+    ...productHeadings,
+    { type: 'h2', text: 'How They Compare', sectionType: 'analysis' },
     { type: 'h2', text: `Frequently Asked Questions About ${keyword}`, sectionType: 'faq' },
     { type: 'h2', text: `Final Verdict: ${keyword}`, sectionType: 'verdict' }
   ]
@@ -344,7 +437,9 @@ export async function generateProductComparisonOutline(body) {
     success: true,
     title,
     metaTitle: metadata.metaTitle || title.slice(0, 60),
-    metaDescription: metadata.metaDescription || `Compare ${names} using listed features, price, pros, cons, and available Amazon feedback.`,
+    metaDescription:
+      metadata.metaDescription ||
+      `Compare ${names} using listed features, pros, cons, and available Amazon feedback.`.slice(0, 160),
     outline,
     heroImage,
     heroImageId: null,
@@ -378,6 +473,12 @@ function plain(value) {
   return escapeHtml(String(value || '').replace(/\s+/g, ' ').trim())
 }
 
+function proseBlocks(value) {
+  return asParagraphs(value)
+    .map(part => `<div>${plain(part)}</div>`)
+    .join('\n\n')
+}
+
 function productFigure(url, alt) {
   if (!url) return ''
   return `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" style="width:100%;max-width:480px;height:auto;object-fit:contain;border-radius:12px;margin:18px auto;display:block;background:#ffffff;" />`
@@ -404,13 +505,31 @@ function readProducts(body, outline) {
   )
 }
 
-function readExtras(body, outline) {
-  return (
-    body.shared?.images ||
-    body.settings?.comparisonShared?.images ||
-    outline.find(item => item?.comparisonData?.images)?.comparisonData?.images ||
-    []
-  )
+function comparisonFacts(products) {
+  return products.map((product, index) => ({
+    name: labelOf(product, index),
+    features: listedFeatures(product, 6),
+    rating: product.rating || null,
+    ratingCount: product.ratingCount || null
+  }))
+}
+
+function snapshotTable(products) {
+  const headers = ['Photo', 'Product', 'Key Features']
+  const rows = products.map((product, index) => {
+    const name = labelOf(product, index)
+    const image = product.imageUrl
+      ? `<img src="${escapeHtml(product.imageUrl)}" alt="${escapeHtml(name)}" style="width:140px;max-width:160px;height:auto;object-fit:contain;display:block;margin:0 auto;background:#ffffff;border-radius:8px;" />`
+      : '<div>No photo returned</div>'
+    const features = listedFeatures(product, 3)
+    const featureHtml = features.length
+      ? `<ul>${features.map(item => `<li>${plain(item)}</li>`).join('')}</ul>`
+      : '<div>No features were returned for this listing.</div>'
+
+    return [image, `<strong>${escapeHtml(name)}</strong>`, featureHtml]
+  })
+
+  return renderResponsiveTable({ headers, rows })
 }
 
 export async function generateProductComparisonSection(body) {
@@ -421,46 +540,68 @@ export async function generateProductComparisonSection(body) {
   if (products.length < 2 || products.length > 3) throw new Error('Product comparison data must contain two or three products.')
 
   const keyword = body.targetKeyword || settings.targetKeyword || products.map(product => product.shortName).join(' vs ')
-  const extras = readExtras(body, outline)
-  const introImage = extras.length > 1 ? extras[0] : null
-  const comparisonImage = extras.length > 1 ? extras[1] : extras[0] || null
-  const facts = products.map(product => ({
-    name: product.productName,
-    price: product.price,
-    features: product.features,
-    rating: product.rating,
-    ratingCount: product.ratingCount
-  }))
+  const facts = comparisonFacts(products)
+  const names = facts.map(item => item.name)
+  const perProductWords = products.length > 2 ? 160 : 210
+  const featureNotes = facts.map(item => `${item.name}: ${item.features.join('; ') || 'none returned'}`).join('\n')
 
   if (section.sectionType === 'intro' || (!section.sectionType && /introduction/i.test(body.heading || ''))) {
-    let text = `This comparison looks at ${products.map(product => product.productName).join(', ')} using the details returned for each Amazon listing.`
+    const fallback = [
+      `This comparison looks at ${names.join(' and ')} for ${keyword}. The short names below stand in for the long marketplace titles.`,
+      `A photo and a few listed features come first. After that, each product gets a closer description, then a written comparison, common questions, and a final verdict. The article stays with the details Amazon returned.`
+    ].join('\n\n')
+    let text = ''
+
     try {
       const response = await generateWithOneRetry(
-        `Write a concise introduction for ${keyword}. Products: ${products.map(product => product.productName).join(', ')}. Mention that each product is reviewed on features, pros, cons, and available Amazon feedback before the comparison, FAQ, and final verdict. Do not invent prices, ratings, or features.`,
+        `Write two plain-text paragraphs separated by a blank line, about 150 words total, introducing a comparison of ${names.join(', ')}. Topic: ${keyword}.
+Tell the reader that a short photo-and-features table comes next, followed by a closer look at each product, a descriptive comparison, FAQs, and a final verdict.
+Use only these short product names. Do not use long marketplace titles. Do not mention prices. Do not invent features, ratings, or review quotes.
+Known features:
+${featureNotes}
+No heading. No table. No bullet list.`,
         'Write only the article introduction as plain text.',
         false,
-        500,
+        700,
         settings.model
       )
-      if (response?.text?.trim()) text = response.text.trim()
+      text = response?.text?.trim() || ''
     } catch {
-      text = `This comparison looks at ${products.map(product => product.productName).join(', ')}. Each section covers listed features, pros, cons, and available Amazon customer feedback, followed by a side-by-side comparison, FAQs, and a final verdict.`
+      text = ''
     }
-    return { success: true, text: `${introImage ? productFigure(introImage.url, introImage.alt || keyword) : ''}<div>${plain(text)}</div>` }
+
+    return { success: true, text: proseBlocks(ensureProse(text, fallback, 110)) }
   }
 
   if (section.sectionType === 'product') {
-    const index = Number.isInteger(section.productIndex) ? section.productIndex : products.findIndex(product => body.heading?.includes(product.productName))
+    const index = Number.isInteger(section.productIndex)
+      ? section.productIndex
+      : products.findIndex((product, productIndex) => {
+          const name = labelOf(product, productIndex)
+          return body.heading?.includes(product.productName) || (name && body.heading?.includes(name))
+        })
     const product = products[index]
     if (!product) throw new Error('This comparison section is missing its product.')
 
+    const name = labelOf(product, index)
+    const features = listedFeatures(product, 5)
     let data = {}
+
     try {
       const response = await generateWithOneRetry(
-        `Evaluate ${product.productName}. Price: ${product.price}. Listed features: ${product.features.join(' | ') || 'none returned'}. ${feedbackFacts(product)} Return JSON with pros[], cons[], customerFeedback, shortVerdict. Pros and cons must come only from those listed features, the price, and the rating fields. customerFeedback must not invent quotes.`,
+        `Write a detailed section about ${name} for a comparison on "${keyword}".
+Return JSON only:
+{"overview":["paragraph 1","paragraph 2"],"pros":["..."],"cons":["..."],"customerFeedback":"..."}
+overview must be two paragraphs and about ${perProductWords - 40} words combined. Explain who the product suits and what the listed features mean in normal language.
+pros: up to 3 short points, each tied to a listed feature.
+cons: up to 2 short points, only when a listed feature shows a real limit. Return [] if you cannot support a con.
+customerFeedback: two sentences using only the rating note below. Do not invent quotes.
+Do not mention prices. Do not invent specifications. Use the short name "${name}" and never the long marketplace title.
+Listed features: ${features.join(' | ') || 'none returned'}.
+${feedbackFacts(product)}`,
         'Return factual product evaluation JSON only.',
         true,
-        850,
+        1200,
         settings.model
       )
       data = parseJsonSafe(response.text) || {}
@@ -468,87 +609,83 @@ export async function generateProductComparisonSection(body) {
       data = {}
     }
 
-    const pros = Array.isArray(data.pros) && data.pros.length ? data.pros : []
-    const cons = Array.isArray(data.cons) && data.cons.length ? data.cons : []
-    const feedback = data.customerFeedback || (product.rating ? `Amazon lists this product at ${product.rating}${product.ratingCount ? ` from ${product.ratingCount} ratings` : ''}. Individual review text was not available.` : 'Amazon customer feedback was not available for this listing.')
-    const verdict = data.shortVerdict || 'Compare the listed features and price with the other products in this article.'
-    const rating = product.rating ? `<div><strong>Rating:</strong> ${plain(product.rating)}${product.ratingCount ? ` (${plain(product.ratingCount)} ratings)` : ''}</div>` : ''
+    const overview = ensureProse(
+      data.overview,
+      [
+        `${name} is included in this ${keyword} comparison because it is one of the submitted listings. The description stays with the details Amazon returned.`,
+        featureSentences(product, index)
+      ],
+      Math.min(120, perProductWords - 40)
+    )
+    const pros = Array.isArray(data.pros) ? data.pros.map(item => String(item || '').trim()).filter(Boolean).slice(0, 3) : []
+    const cons = Array.isArray(data.cons) ? data.cons.map(item => String(item || '').trim()).filter(Boolean).slice(0, 2) : []
+    const feedback =
+      data.customerFeedback ||
+      (product.rating
+        ? `Amazon lists ${name} at ${product.rating}${product.ratingCount ? ` from ${product.ratingCount} ratings` : ''}. Individual review text was not available, so this article does not quote shoppers.`
+        : `Amazon customer feedback was not available for ${name}. This article does not guess a rating or invent review quotes.`)
 
     return {
       success: true,
       text: [
-        productFigure(product.imageUrl, product.productName),
-        `<div><strong>Price:</strong> ${plain(product.price)}</div>`,
-        rating,
-        '<h4>Features</h4>',
-        bulletList(product.features.slice(0, 6)),
-        '<h4>Pros</h4>',
-        pros.length ? bulletList(pros) : '<div>Pros could not be derived from the listed product data.</div>',
-        '<h4>Cons</h4>',
-        cons.length ? bulletList(cons) : '<div>Cons could not be derived from the listed product data.</div>',
-        '<h4>Amazon Customer Feedback</h4>',
-        `<div>${plain(feedback)}</div>`,
-        `<div>${plain(verdict)}</div>`,
+        productFigure(product.imageUrl, name),
+        proseBlocks(overview),
+        `<div><h4>Listed Features</h4>${features.length ? bulletList(features) : '<div>Feature details were not returned for this listing.</div>'}</div>`,
+        `<div><h4>Pros</h4>${pros.length ? bulletList(pros) : '<div>Pros could not be derived from the listed product data.</div>'}</div>`,
+        `<div><h4>Limits</h4>${cons.length ? bulletList(cons) : '<div>The listing did not state a clear limitation.</div>'}</div>`,
+        `<div><h4>Amazon Customer Feedback</h4><div>${plain(feedback)}</div></div>`,
         `<div>${cta(product, settings)}</div>`
-      ].join('')
+      ].join('\n\n')
     }
   }
 
-  if (section.sectionType === 'comparison') {
-    let rows = products.map(product => [
-      escapeHtml(product.productName),
-      plain(product.price),
-      plain(product.features.slice(0, 3).join('; ') || 'Not listed'),
-      plain(product.rating || 'Not listed'),
-      cta(product, settings)
-    ])
+  if (section.sectionType === 'comparison' || (!section.sectionType && /quick look/i.test(body.heading || ''))) {
+    return {
+      success: true,
+      text: [
+        '<div>Start with the photo, the short name, and a few features Amazon lists for each product. The closer comparison comes after these snapshots.</div>',
+        snapshotTable(products)
+      ].join('\n\n')
+    }
+  }
+
+  if (section.sectionType === 'analysis' || (!section.sectionType && /how they compare/i.test(body.heading || ''))) {
+    const fallback = [
+      `Read next to each other, ${names.join(' and ')} are easier to separate by the features in the table than by their long marketplace titles.`,
+      facts
+        .map(item => `${item.name} is defined here by ${item.features.length ? item.features.slice(0, 3).join(', ') : 'the absence of a returned feature list'}.`)
+        .join(' '),
+      `Choose by the feature that matters for ${keyword}. The listing that names that feature clearly is the practical fit. A missing detail is unknown, not a hidden advantage.`
+    ].join('\n\n')
+    let text = ''
+
     try {
       const response = await generateWithOneRetry(
-        `Compare these products using only the supplied facts. Return JSON {rows:[{strengths,tradeoffs}]} with one row per product in the same order. ${JSON.stringify(facts)}`,
-        'Return factual comparison JSON only.',
-        true,
+        `Write three plain-text paragraphs separated by blank lines, about 220 words total, comparing ${names.join(', ')} for "${keyword}".
+Use only these facts: ${JSON.stringify(facts)}
+Explain how the listed features differ and who each product suits. Do not write a table. Do not mention prices. Do not invent specifications, ratings, or review quotes. Use the short names only. No heading and no bullet list.`,
+        'Write a factual descriptive comparison as plain text.',
+        false,
         900,
         settings.model
       )
-      const result = parseJsonSafe(response.text) || {}
-      rows = products.map((product, index) => {
-        const row = result.rows?.[index] || {}
-        return [
-          escapeHtml(product.productName),
-          plain(product.price),
-          plain(product.features.slice(0, 3).join('; ') || 'Not listed'),
-          plain(row.strengths || product.rating || 'Not listed'),
-          plain(row.tradeoffs || 'See listed features'),
-          cta(product, settings)
-        ]
-      })
+      text = response?.text?.trim() || ''
     } catch {
-      rows = products.map(product => [
-        escapeHtml(product.productName),
-        plain(product.price),
-        plain(product.features.slice(0, 3).join('; ') || 'Not listed'),
-        plain(product.rating || 'Not listed'),
-        'See the product section for listed features.',
-        cta(product, settings)
-      ])
+      text = ''
     }
 
-    const headers = rows[0]?.length === 6 ? ['Product', 'Price', 'Key Features', 'Strengths', 'Tradeoffs', 'Check Price'] : ['Product', 'Price', 'Key Features', 'Rating', 'Check Price']
-
-    return {
-      success: true,
-      text: `${comparisonImage ? productFigure(comparisonImage.url, comparisonImage.alt || keyword) : ''}<div>This table uses only the product details returned for each listing.</div>${renderResponsiveTable({ headers, rows })}`
-    }
+    return { success: true, text: proseBlocks(ensureProse(text, fallback, 160)) }
   }
 
   if (section.sectionType === 'faq') {
     let faqs = []
+
     try {
       const response = await generateWithOneRetry(
-        `Write exactly four FAQs about ${products.map(product => product.productName).join(', ')}. Use only these facts and say when a fact was not returned: ${JSON.stringify(facts)}. Return JSON {faqs:[{question,answer}]}.`,
+        `Write exactly four FAQs about ${names.join(', ')} for "${keyword}". Use only these facts and say when a fact was not returned: ${JSON.stringify(facts)}. Each answer should be two or three sentences. Do not mention prices. Do not invent features, ratings, or quotes. Return JSON {faqs:[{question,answer}]}.`,
         'Return factual FAQ JSON only. Do not invent prices, ratings, or features.',
         true,
-        900,
+        1000,
         settings.model
       )
       const parsed = parseJsonSafe(response.text) || {}
@@ -558,27 +695,38 @@ export async function generateProductComparisonSection(body) {
     }
 
     if (!faqs.length) {
-      faqs = products.slice(0, 2).map(product => ({
-        question: `What is listed for ${product.productName}?`,
-        answer: product.features[0] ? `${product.productName} lists: ${product.features.slice(0, 3).join('; ')}.` : `Feature details were not returned for ${product.productName}.`
-      }))
+      faqs = products.slice(0, 2).map((product, index) => {
+        const name = labelOf(product, index)
+        const features = listedFeatures(product, 3)
+
+        return {
+          question: `What is listed for ${name}?`,
+          answer: features.length
+            ? `${name} lists ${features.join('; ')}. Those are the details returned for this listing.`
+            : `Feature details were not returned for ${name}.`
+        }
+      })
     }
 
     const html = faqs
-      .map(faq => `<h4>${plain(faq.question || 'Question')}</h4><div>${plain(faq.answer || 'That detail was not returned for these listings.')}</div>`)
-      .join('')
+      .map(
+        faq =>
+          `<div><h4>${plain(faq.question || 'Question')}</h4><div>${plain(faq.answer || 'That detail was not returned for these listings.')}</div></div>`
+      )
+      .join('\n\n')
 
     return { success: true, text: html }
   }
 
   if (section.sectionType === 'verdict') {
     let verdict = {}
+
     try {
       const response = await generateWithOneRetry(
-        `Return JSON {winnerIndex,verdict,bestFor[]} for these products, based only on the supplied facts. winnerIndex is the zero-based index of the stronger listed option, or 0 if the facts do not support a winner. bestFor must have one entry per product. ${JSON.stringify(facts)}`,
+        `Return JSON {winnerIndex,verdict,bestFor[]} for these products, based only on the supplied facts. winnerIndex is the zero-based index of the stronger listed option, or 0 if the facts do not support a clear winner. bestFor must have one entry per product, each about 25 words. verdict should be two sentences and about 70 words. Do not mention prices. Do not invent specifications or review quotes. ${JSON.stringify(facts)}`,
         'Return factual final verdict JSON only. Do not invent reviews or specifications.',
         true,
-        700,
+        800,
         settings.model
       )
       verdict = parseJsonSafe(response.text) || {}
@@ -587,19 +735,24 @@ export async function generateProductComparisonSection(body) {
     }
 
     const winnerIndex = Math.max(0, Math.min(products.length - 1, Number(verdict.winnerIndex) || 0))
-    const summary = verdict.verdict || 'Choose the product whose listed features and price match what you need. Missing review text should not be treated as a verdict.'
+    const summary =
+      verdict.verdict ||
+      `Choose the listing whose returned features match what you need from ${keyword}. A missing detail is unknown, not a reason to prefer one product.`
     const lines = products
-      .map((product, index) => `<li><strong>${escapeHtml(product.productName)}:</strong> ${plain(verdict.bestFor?.[index] || 'Review the listed features and price.')}</li>`)
+      .map(
+        (product, index) =>
+          `<li><strong>${escapeHtml(labelOf(product, index))}:</strong> ${plain(verdict.bestFor?.[index] || 'Match the listed features against the job you need this product to do.')}</li>`
+      )
       .join('')
 
     return {
       success: true,
-      text: `<div>${plain(summary)}</div><ul>${lines}</ul><div>${cta(products[winnerIndex], settings)}</div>`
+      text: [proseBlocks(ensureProse(summary, '', 40)), `<ul>${lines}</ul>`, `<div>${cta(products[winnerIndex], settings)}</div>`].join('\n\n')
     }
   }
 
   return {
     success: true,
-    text: `<div>This section sits outside the comparison structure. The article still covers each product, a comparison table, FAQs, and a final verdict for ${escapeHtml(keyword)}.</div>`
+    text: `<div>This section sits outside the comparison structure. The article still opens with an introduction, a short photo-and-features table, a closer look at each product, a descriptive comparison, FAQs, and a final verdict for ${escapeHtml(keyword)}.</div>`
   }
 }
