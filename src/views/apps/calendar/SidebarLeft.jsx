@@ -23,6 +23,7 @@ const SidebarLeft = props => {
     handleAddEventSidebarToggle,
     siteOptions = [],
     selectedSites,
+    sitesLoading = false,
     onToggleSite,
     onToggleAllSites
   } = props
@@ -147,7 +148,7 @@ const SidebarLeft = props => {
                         width: 8,
                         height: 8,
                         borderRadius: '50%',
-                        background: site.color || '#7367F0',
+                        background: site.color || '#2563EB',
                         display: 'inline-block',
                         flex: 'none'
                       }}
@@ -160,14 +161,18 @@ const SidebarLeft = props => {
                     checked={selectedSites == null || selectedSites.includes(site.value)}
                     onChange={() => onToggleSite?.(site.value)}
                     sx={{
-                      color: site.color || '#7367F0',
-                      '&.Mui-checked': { color: site.color || '#7367F0' }
+                      color: site.color || '#2563EB',
+                      '&.Mui-checked': { color: site.color || '#2563EB' }
                     }}
                   />
                 }
               />
             ))}
           </>
+        ) : sitesLoading ? (
+          <Typography variant='body2' color='text.secondary'>
+            Loading websites…
+          </Typography>
         ) : (
           <Typography variant='body2' color='text.secondary'>
             No WordPress sites yet.

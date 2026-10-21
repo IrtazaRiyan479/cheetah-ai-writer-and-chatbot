@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
+import Box from '@mui/material/Box'
+import CircularProgress from '@mui/material/CircularProgress'
+import LinearProgress from '@mui/material/LinearProgress'
+import Typography from '@mui/material/Typography'
 import { useMediaQuery } from '@mui/material'
 import { toast } from 'react-toastify'
 
@@ -19,6 +23,21 @@ const calendarsColor = {
   Draft: 'warning',
   Published: 'success',
   Scheduled: 'primary'
+}
+
+const recentWarnings = new Map()
+
+function toastWarningOnce(message) {
+  const text = String(message || '').trim()
+
+  if (!text) return
+
+  const now = Date.now()
+
+  if (now - (recentWarnings.get(text) || 0) < 8000) return
+
+  recentWarnings.set(text, now)
+  toast.error(text)
 }
 
 async function persist(kind, payload) {
@@ -51,6 +70,7 @@ const AppCalendar = () => {
   const [selectedSites, setSelectedSites] = useState(null)
   const [drafts, setDrafts] = useState([])
   const [sitesLoaded, setSitesLoaded] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   const dispatch = useDispatch()
   const calendarStore = useSelector(state => state.calendarReducer)
@@ -59,6 +79,8 @@ const AppCalendar = () => {
   const handleAddEventSidebarToggle = () => setAddEventSidebarOpen(!addEventSidebarOpen)
 
   const loadEvents = useCallback(async () => {
+    setLoading(true)
+
     try {
       const res = await fetch('/api/calendar', { cache: 'no-store' })
       const data = await res.json().catch(() => ({}))
@@ -71,20 +93,47 @@ const AppCalendar = () => {
 
       if (Array.isArray(data.events)) dispatch(setEvents(data.events))
       if (Array.isArray(data.warnings) && data.warnings.length) {
-        data.warnings.forEach(message => toast.error(message))
+        data.warnings.forEach(message => toastWarningOnce(message))
       }
 
       setDrafts(Array.isArray(data.drafts) ? data.drafts : [])
       setSiteOptions(Array.isArray(data.sites) ? data.sites : [])
-      setSitesLoaded(true)
     } catch {
       toast.error('Could not load the publishing calendar.')
+    } finally {
+      setSitesLoaded(true)
+      setLoading(false)
     }
   }, [dispatch])
 
   useEffect(() => {
     loadEvents()
   }, [loadEvents])
+
+  useEffect(() => {
+    const main = document.querySelector('main.ts-vertical-layout-content')
+
+    if (!main) return undefined
+
+    const previous = {
+      maxInlineSize: main.style.maxInlineSize,
+      marginInline: main.style.marginInline,
+      width: main.style.width
+    }
+
+    main.style.maxInlineSize = 'none'
+    main.style.marginInline = '0'
+    main.style.width = '100%'
+
+    const frame = window.requestAnimationFrame(() => calendarApi?.updateSize())
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      main.style.maxInlineSize = previous.maxInlineSize
+      main.style.marginInline = previous.marginInline
+      main.style.width = previous.width
+    }
+  }, [calendarApi])
 
   useEffect(() => {
     if (!sitesLoaded) return
@@ -146,10 +195,34 @@ const AppCalendar = () => {
         handleAddEventSidebarToggle={handleAddEventSidebarToggle}
         siteOptions={siteOptions}
         selectedSites={selectedSites}
+        sitesLoading={!sitesLoaded}
         onToggleSite={toggleSite}
         onToggleAllSites={toggleAllSites}
       />
-      <div className='p-5 pbe-0 grow overflow-visible bg-backgroundPaper rounded'>
+      <div className='p-5 pbe-0 grow overflow-visible bg-backgroundPaper rounded is-full min-is-0' style={{ position: 'relative' }}>
+        {loading && !sitesLoaded ? (
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 5,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 2,
+              borderRadius: 1,
+              bgcolor: theme => (theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.82)')
+            }}
+          >
+            <CircularProgress size={28} />
+            <Typography variant='body2' color='text.secondary'>
+              Loading articles and websites…
+            </Typography>
+          </Box>
+        ) : null}
+        {loading && sitesLoaded ? (
+          <LinearProgress sx={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5 }} />
+        ) : null}
         <Calendar
           dispatch={dispatch}
           calendarApi={calendarApi}

@@ -7,10 +7,16 @@ import { styled } from '@mui/material/styles'
 const AppFullCalendar = styled('div')(({ theme }) => ({
   display: 'flex',
   position: 'relative',
+  width: '100%',
+  maxWidth: 'none',
+  minWidth: 0,
+  flex: '1 1 auto',
+  alignSelf: 'stretch',
   borderRadius: 'var(--mui-shape-borderRadius)',
   '& .fc': {
     zIndex: 1,
-    '.fc-col-header, .fc-daygrid-body, .fc-scrollgrid-sync-table, .fc-timegrid-body, .fc-timegrid-body table': {
+    width: '100%',
+    '.fc-col-header, .fc-daygrid-body, .fc-scrollgrid-sync-table, .fc-timegrid-body, .fc-timegrid-body table, .fc-scrollgrid, .fc-scrollgrid table': {
       width: '100% !important'
     },
 
@@ -279,6 +285,7 @@ const AppFullCalendar = styled('div')(({ theme }) => ({
     },
     '& .fc-view-harness': {
       minHeight: '650px',
+      width: '100%',
       margin: theme.spacing(0, -5.25)
     },
 

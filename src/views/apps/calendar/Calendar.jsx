@@ -118,6 +118,16 @@ const Calendar = props => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    const api = calendarRef.current?.getApi()
+
+    if (!api) return undefined
+
+    const frame = window.requestAnimationFrame(() => api.updateSize())
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [events])
+
   const openPlainEvent = event => {
     dispatch(
       selectedEvent({

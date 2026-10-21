@@ -114,20 +114,49 @@ async function connectedSites(user, session) {
   return sites
 }
 
-function siteColor(key) {
-  const text = String(key || 'site')
-  let hash = 0
+const SITE_PALETTE = [
+  '#2563EB',
+  '#DC2626',
+  '#059669',
+  '#D97706',
+  '#7C3AED',
+  '#DB2777',
+  '#0891B2',
+  '#EA580C',
+  '#4F46E5',
+  '#0F766E',
+  '#BE123C',
+  '#65A30D',
+  '#0369A1',
+  '#A21CAF',
+  '#B45309',
+  '#4338CA'
+]
 
-  for (let index = 0; index < text.length; index += 1) hash = (hash * 31 + text.charCodeAt(index)) >>> 0
+function assignSiteColors(sites) {
+  const colors = new Map()
+  const ranked = [...sites].sort((a, b) => String(a.siteKey).localeCompare(String(b.siteKey)))
 
-  return `hsl(${hash % 360} 65% 42%)`
+  ranked.forEach((site, index) => {
+    if (index < SITE_PALETTE.length) {
+      colors.set(site.siteKey, SITE_PALETTE[index])
+
+      return
+    }
+
+    const hue = Math.round((index * 137.508 + 17) % 360)
+
+    colors.set(site.siteKey, `hsl(${hue} 74% 36%)`)
+  })
+
+  return colors
 }
 
-function publicSites(sites) {
+function publicSites(sites, colors) {
   return sites.map(site => ({
     value: site.siteKey,
     label: site.label || site.siteKey,
-    color: siteColor(site.siteKey)
+    color: colors?.get(site.siteKey) || SITE_PALETTE[0]
   }))
 }
 
@@ -340,7 +369,7 @@ function laneForWpStatus(status) {
   return 'Draft'
 }
 
-function wpPostToEvent(site, post) {
+function wpPostToEvent(site, post, color) {
   const start = wpPostStart(post)
   const end = new Date(start.getTime() + 60 * 60 * 1000)
   const lane = laneForWpStatus(post?.status)
@@ -364,11 +393,24 @@ function wpPostToEvent(site, post) {
       articleTypeLabel: 'Article',
       siteKey: site.siteKey,
       siteLabel: site.label || site.siteKey,
-      siteColor: siteColor(site.siteKey),
+      siteColor: color || SITE_PALETTE[0],
       wpPostId: Number(post.id) || null,
       wpStatus: post?.status || ''
     }
   }
+}
+
+function postsPath(page, status) {
+  const params = new URLSearchParams()
+
+  params.set('per_page', '100')
+  params.set('page', String(page))
+  params.set('orderby', 'date')
+  params.set('order', 'desc')
+  params.set('_fields', 'id,title,status,date,date_gmt,link')
+  if (status) params.set('status', status)
+
+  return `/wp-json/wp/v2/posts?${params.toString()}`
 }
 
 async function fetchWpPosts(authed, status) {
@@ -377,11 +419,7 @@ async function fetchWpPosts(authed, status) {
   const maxPages = 5
 
   while (page <= maxPages) {
-    const { data, response } = await wpRequest(
-      authed,
-      `/wp-json/wp/v2/posts?status=${encodeURIComponent(status)}&per_page=100&page=${page}&orderby=date&order=desc&_fields=id,title,status,date,date_gmt,link`,
-      { timeoutMs: 20000 }
-    )
+    const { data, response } = await wpRequest(authed, postsPath(page, status), { timeoutMs: 20000 })
     const posts = Array.isArray(data) ? data : []
 
     posts.forEach(post => {
@@ -398,6 +436,52 @@ async function fetchWpPosts(authed, status) {
   return events
 }
 
+function rememberPosts(byId, posts) {
+  posts.forEach(post => {
+    if (post?.id) byId.set(post.id, post)
+  })
+}
+
+async function loadSitePosts(authed) {
+  const byId = new Map()
+
+  try {
+    rememberPosts(byId, await fetchWpPosts(authed, 'publish,future,draft,pending'))
+
+    return { byId, failures: [] }
+  } catch (error) {
+    const status = Number(error?.status || 0)
+
+    if (status === 401 || status === 403) {
+      return { byId, failures: [{ statusName: 'combined', error }], authStatus: status }
+    }
+
+    if (status !== 400) return { byId, failures: [{ statusName: 'combined', error }], fatal: true }
+  }
+
+  const failures = []
+
+  await Promise.all(
+    ['publish', 'future', 'draft', 'pending'].map(async statusName => {
+      try {
+        rememberPosts(byId, await fetchWpPosts(authed, statusName))
+      } catch (error) {
+        failures.push({ statusName, error })
+      }
+    })
+  )
+
+  if (!byId.size) {
+    try {
+      rememberPosts(byId, await fetchWpPosts(authed, ''))
+    } catch (error) {
+      failures.push({ statusName: '', error })
+    }
+  }
+
+  return { byId, failures }
+}
+
 function authHint(label, status) {
   if (status === 401) {
     return `${label}: WordPress returned 401 for this login. Published posts are still shown. Connect the site with the WordPress username and an Application Password (Users → Profile → Application Passwords). The normal account password and a display name such as Administrator do not authenticate.`
@@ -406,7 +490,7 @@ function authHint(label, status) {
   return `${label}: this login cannot read drafts or scheduled posts (HTTP ${status}). Published posts are still shown.`
 }
 
-async function eventsFromWordPress(sites) {
+async function eventsFromWordPress(sites, colors) {
   const events = []
   const warnings = []
 
@@ -414,50 +498,46 @@ async function eventsFromWordPress(sites) {
     sites.map(async site => {
       const authed = siteAuth(site)
       const label = site.label || site.siteKey
-      const byId = new Map()
-      let listed = false
+      const color = colors?.get(site.siteKey)
+      const loaded = await loadSitePosts(authed)
+      const byId = loaded.byId
 
-      try {
-        const posts = await fetchWpPosts(authed, 'publish,future,draft,pending')
-
-        posts.forEach(post => byId.set(post.id, post))
-        listed = true
-      } catch (error) {
-        const status = Number(error?.status || 0)
-
-        if (status !== 401 && status !== 403) {
-          warnings.push(`${label}: ${readableError(error)}`)
-
-          return
-        }
-
-        try {
-          const published = await fetchWpPosts({ ...authed, authorization: '' }, 'publish')
-
-          published.forEach(post => byId.set(post.id, post))
-          warnings.push(authHint(label, status))
-        } catch {
-          warnings.push(`${label}: ${readableError(error)}`)
-
-          return
-        }
-      }
-
-      if (listed) {
-        byId.forEach(post => events.push(wpPostToEvent(site, post)))
+      if (loaded.fatal) {
+        warnings.push(`${label}: ${readableError(loaded.failures[0]?.error)}`)
 
         return
       }
 
-      try {
-        const editable = await fetchWpPosts(authed, 'future,draft,pending')
+      if (!byId.size && loaded.authStatus) {
+        try {
+          rememberPosts(byId, await fetchWpPosts({ ...authed, authorization: '' }, 'publish'))
+          warnings.push(authHint(label, loaded.authStatus))
+        } catch {
+          try {
+            rememberPosts(byId, await fetchWpPosts({ ...authed, authorization: '' }, ''))
+            warnings.push(authHint(label, loaded.authStatus))
+          } catch {
+            warnings.push(`${label}: ${readableError(loaded.failures[0]?.error)}`)
 
-        editable.forEach(post => byId.set(post.id, post))
-      } catch {
-        // Published posts stay on the calendar when drafts need a login WordPress will not accept.
+            return
+          }
+        }
+      } else if (!byId.size && loaded.failures.length) {
+        warnings.push(`${label}: ${readableError(loaded.failures[0].error)}`)
+
+        return
+      } else if (byId.size) {
+        const denied = loaded.failures.find(item => {
+          const code = Number(item.error?.status || 0)
+
+          return item.statusName && item.statusName !== 'publish' && (code === 401 || code === 403)
+        })
+
+        if (denied) warnings.push(authHint(label, Number(denied.error.status)))
+        else if (loaded.authStatus) warnings.push(authHint(label, loaded.authStatus))
       }
 
-      byId.forEach(post => events.push(wpPostToEvent(site, post)))
+      byId.forEach(post => events.push(wpPostToEvent(site, post, color)))
     })
   )
 
@@ -516,6 +596,7 @@ export async function GET(request) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const sites = await connectedSites(user, session)
+    const colors = assignSiteColors(sites)
     const articleRef = new URL(request.url).searchParams.get('article')
 
     if (articleRef) {
@@ -558,7 +639,7 @@ export async function GET(request) {
       })
     }
 
-    const { events, warnings } = await eventsFromWordPress(sites)
+    const { events, warnings } = await eventsFromWordPress(sites, colors)
     const articles = await prisma.article.findMany({
       where: {
         userId: user.id,
@@ -572,7 +653,7 @@ export async function GET(request) {
     return NextResponse.json({
       events,
       drafts,
-      sites: publicSites(sites),
+      sites: publicSites(sites, colors),
       warnings
     })
   } catch (error) {
@@ -594,6 +675,7 @@ async function saveWpPost(user, session, body) {
   }
 
   const sites = await connectedSites(user, session)
+  const colors = assignSiteColors(sites)
   const site = sites.find(item => item.siteKey === String(body.siteKey || ref.siteKey))
 
   if (!site) return NextResponse.json({ error: 'Choose a connected WordPress site.' }, { status: 400 })
@@ -628,7 +710,7 @@ async function saveWpPost(user, session, body) {
   })
 
   return NextResponse.json({
-    event: wpPostToEvent(site, { ...existing, ...data, content: html ? { rendered: html } : existing?.content, status: data?.status || wpStatus })
+    event: wpPostToEvent(site, { ...existing, ...data, content: html ? { rendered: html } : existing?.content, status: data?.status || wpStatus }, colors.get(site.siteKey))
   })
 }
 
@@ -758,6 +840,7 @@ async function moveEvent(user, session, body) {
     }
 
     const sites = await connectedSites(user, session)
+    const colors = assignSiteColors(sites)
     const site = sites.find(item => item.siteKey === String(body.siteKey || ref.siteKey))
 
     if (!site) return NextResponse.json({ error: 'Choose a connected WordPress site.' }, { status: 400 })
@@ -779,7 +862,7 @@ async function moveEvent(user, session, body) {
     })
 
     return NextResponse.json({
-      event: wpPostToEvent(site, { ...existing, ...data, status: data?.status || 'future' })
+      event: wpPostToEvent(site, { ...existing, ...data, status: data?.status || 'future' }, colors.get(site.siteKey))
     })
   }
 
