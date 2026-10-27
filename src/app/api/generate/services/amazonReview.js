@@ -10,7 +10,7 @@ import {
   getToneInstruction,
   getBaseSystemInstruction,
   fetchPeopleAlsoSearchFor,
-  pickRelevantImages
+  buildAmazonReviewImages
 } from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
@@ -26,24 +26,62 @@ function extractASIN(url) {
   return match ? match[1] : null
 }
 
-async function fetchInternalAmazonData(keyword, settings) {
+function amazonImageUrls(item) {
+  const urls = []
+
+  const push = value => {
+    const url = String(value || '').trim()
+
+    if (url && !urls.includes(url)) urls.push(url)
+  }
+
+  push(item?.images?.primary?.large?.url)
+  push(item?.images?.primary?.medium?.url)
+
+  const variants = item?.images?.variants
+
+  if (Array.isArray(variants)) {
+    variants.forEach(variant => {
+      push(variant?.large?.url)
+      push(variant?.medium?.url)
+    })
+  }
+
+  return urls
+}
+
+async function fetchInternalAmazonData(keyword, settings, asin) {
   const baseUrl =
     process.env.NEXT_PUBLIC_APP_URL ||
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
 
-  const response = await fetch(`${baseUrl}/api/amazon`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      keyword: keyword,
-      domain: settings.amazonDomain || 'www.amazon.com',
-      partnerTag: settings.partnerTag || 'babiescarrier-20'
+  const post = async payload => {
+    const response = await fetch(`${baseUrl}/api/amazon`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     })
-  })
 
-  if (!response.ok) throw new Error(`Failed to fetch Amazon data. Status: ${response.status}`)
+    if (!response.ok) throw new Error(`Failed to fetch Amazon data. Status: ${response.status}`)
 
-  return await response.json()
+    return await response.json()
+  }
+
+  const domain = settings.amazonDomain || 'www.amazon.com'
+  const partnerTag = settings.partnerTag || 'babiescarrier-20'
+
+  if (asin) {
+    try {
+      const byAsin = await post({ keyword, asins: [asin], domain, partnerTag })
+      const items = byAsin?.data?.searchResult?.items || []
+
+      if (items.length) return byAsin
+    } catch (error) {
+      console.warn('[amazon-review] ASIN lookup failed:', error?.message || error)
+    }
+  }
+
+  return post({ keyword, domain, partnerTag })
 }
 
 function formatAmazonProducts(apiData, settings) {
@@ -57,6 +95,8 @@ function formatAmazonProducts(apiData, settings) {
   return rawData.map(item => {
     const asin = item.asin || ''
 
+    const imageUrls = amazonImageUrls(item)
+
     return {
       productName: item.itemInfo?.title?.displayValue || 'Amazon Product',
       asin,
@@ -67,7 +107,8 @@ function formatAmazonProducts(apiData, settings) {
         partnerTag,
         forceTag: settings.amazonTrackingId || ''
       }),
-      imageUrl: item.images?.primary?.large?.url || '',
+      imageUrl: imageUrls[0] || '',
+      imageUrls,
       price: item.offersV2?.listings?.[0]?.price?.displayAmount || 'Check Amazon',
       features: item.itemInfo?.features?.displayValues || []
     }
@@ -105,7 +146,7 @@ export async function generateAmazonReviewOutline(body, genAI) {
 
   try {
     const searchStr = preferredAsin || targetKeyword || prefetched?.productName || 'amazon product'
-    const apiData = await fetchInternalAmazonData(searchStr, settings)
+    const apiData = await fetchInternalAmazonData(searchStr, settings, preferredAsin)
     const formattedProducts = formatAmazonProducts(apiData, settings)
     const matched = preferredAsin
       ? formattedProducts.find(item => String(item.asin || '').toUpperCase() === String(preferredAsin).toUpperCase())
@@ -131,6 +172,7 @@ export async function generateAmazonReviewOutline(body, genAI) {
       asin: preferredAsin || '',
       amazonUrl: amazonProductUrl || '',
       imageUrl: '',
+      imageUrls: [],
       price: '',
       features: []
     }
@@ -142,6 +184,7 @@ export async function generateAmazonReviewOutline(body, genAI) {
       productName: product.productName || prefetched.productName || targetKeyword || '',
       amazonUrl: product.amazonUrl || prefetched.amazonUrl || amazonProductUrl || '',
       imageUrl: product.imageUrl || prefetched.imageUrl || '',
+      imageUrls: product.imageUrls?.length ? product.imageUrls : prefetched.imageUrls || [],
       price: product.price || prefetched.price || '',
       features: product.features?.length ? product.features : prefetched.features || []
     }
@@ -302,39 +345,17 @@ export async function generateAmazonReviewOutline(body, genAI) {
     parsedData.outline[0].productData = product
   }
 
-  let heroImage = ''
-  let heroImageId = null
-  let heroImageSource = null
+  const gallery = await buildAmazonReviewImages({
+    title: product.productName || activeKeyword,
+    settings,
+    imageUrls: product.imageUrls?.length ? product.imageUrls : [product.imageUrl].filter(Boolean)
+  }).catch(error => {
+    console.warn('[amazon-review] product image failed:', error?.message || error)
 
-  if (isRewriteMode) {
-    const banned = Array.isArray(body.excludedHeroUrls) ? body.excludedHeroUrls.map(String) : []
-    const photos = await pickRelevantImages(activeKeyword, targetKeyword || activeKeyword, 6).catch(() => [])
-    const fresh = (photos || []).filter(item => {
-      const candidate = String(item?.url || '')
+    return []
+  })
 
-      if (!candidate || /amazon|media-amazon/i.test(candidate)) return false
-
-      return !banned.some(url => {
-        const blocked = String(url || '')
-
-        if (!blocked) return false
-        if (candidate === blocked || blocked.includes(candidate) || candidate.includes(blocked)) return true
-
-        const pexelsId = candidate.match(/pexels\.com\/photos\/(\d+)/i)?.[1]
-        const unsplashId = candidate.match(/images\.unsplash\.com\/(?:photo-)?([^/?]+)/i)?.[1]
-        const id = pexelsId || unsplashId
-
-        return Boolean(id && id.length > 3 && blocked.includes(id))
-      })
-    })
-    const heroPick = fresh[1] || fresh[0] || null
-
-    if (heroPick?.url) {
-      heroImage = heroPick.url
-      heroImageId = heroPick.id ?? null
-      heroImageSource = heroPick.source || 'pexels'
-    }
-  }
+  const hero = gallery[0] || null
 
   return {
     success: true,
@@ -342,12 +363,56 @@ export async function generateAmazonReviewOutline(body, genAI) {
     outline: parsedData.outline,
     metaTitle: parsedData.metaTitle,
     metaDescription: parsedData.metaDescription,
-    heroImage,
-    heroImageId,
-    heroImageSource,
+    heroImage: hero?.url || '',
+    heroImageId: null,
+    heroImageSource: hero ? 'amazon-product' : null,
+    productImageUrl: product.imageUrl || '',
     externalLinks: fetchedExternalLinks,
-    productImages: []
+    productImages: gallery
   }
+}
+
+function reviewImagePlan(outlineContext, imageCount, totalSections) {
+  const groups = []
+  let current = null
+
+  for (const item of Array.isArray(outlineContext) ? outlineContext : []) {
+    if (item?.type === 'h2') {
+      current = item
+      groups.push(item)
+    } else if (!current) {
+      current = item
+      groups.push(item)
+    }
+  }
+
+  const size = Math.max(1, Number(totalSections) || 0, groups.length || 0)
+  const count = Math.min(3, Math.max(0, imageCount))
+  const safety = groups.findIndex(
+    (item, index) => index > 1 && /safety|care tip|usage|how to|set-?up|maintain/i.test(String(item?.text || ''))
+  )
+  const preferred = [
+    0,
+    Math.min(1, size - 1),
+    safety > 1 ? Math.min(safety, size - 1) : Math.min(size - 1, Math.max(2, Math.round(size * 0.62)))
+  ]
+  const plan = Array.from({ length: size }, () => [])
+  const used = new Set()
+  const extras = []
+
+  for (let i = 0; i < count; i++) {
+    const slot = Math.max(0, Math.min(size - 1, preferred[i]))
+
+    if (used.has(slot)) extras.push(i)
+    else {
+      used.add(slot)
+      plan[slot].push(i)
+    }
+  }
+
+  extras.forEach(i => plan[0].push(i))
+
+  return plan
 }
 
 export async function generateAmazonReviewSection(sectionData, genAI) {
@@ -524,20 +589,15 @@ ${sourceArticleText.substring(0, 80000)}`
     partnerTag: settings.amazonTrackingId || settings.partnerTag || process.env.AMAZON_PARTNER_TAG || 'babiescarrier-20'
   })
 
-  const productImageHtml = product?.imageUrl
-    ? `<div align="center" style="margin:20px 0;"><img src="${product.imageUrl}" alt="${String(product.productName || targetKeyword || 'Product').replace(/"/g, '')}" style="max-width:420px;width:100%;height:auto;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.08);" /></div>`
-    : ''
-
   if (activeSectionType === 'intro' && priceButton) {
     sectionPrompt += `
       TASK: Write a highly engaging introduction for this single-product review.
       CRITICAL: Do NOT repeat the article H1/H2 heading in the body.
+      CRITICAL: Do NOT insert any image tags. Product photos are added separately.
 
       STRICT LAYOUT REQUIREMENT:
       1. Write 2-3 intro paragraphs.
-      2. Then insert this product image HTML exactly (if present):
-      ${productImageHtml || '[no product image]'}
-      3. Then insert this EXACT CTA HTML (do not change the link or label):
+      2. Then insert this EXACT CTA HTML (do not change the link or label):
       <div class="affigenie-cta" style="display:block;width:100%;max-width:100%;text-align:center;margin:25px 0;">
         ${priceButton}
       </div>
@@ -546,7 +606,7 @@ ${sourceArticleText.substring(0, 80000)}`
     sectionPrompt += `
       TASK: Write a highly engaging introduction for this single-product review.
       CRITICAL: Do NOT repeat the article heading in the body.
-      ${productImageHtml ? `After the intro paragraphs, insert this product image HTML exactly:\n${productImageHtml}` : ''}
+      CRITICAL: Do NOT insert any image tags. Product photos are added separately.
     `
   } else if (activeSectionType === 'pros_cons') {
     sectionPrompt += `
@@ -624,26 +684,30 @@ ${sourceArticleText.substring(0, 80000)}`
 
   let text = result.response.text()
 
-  const insertAfterFirstBlock = (body, snippet) => {
-    if (!snippet || body.includes(snippet.slice(0, 80))) return body
+  const insertAfterFirstBlock = (body, snippet, marker) => {
+    if (!snippet || (marker && body.includes(marker))) return body
     const parts = String(body || '').split(/\n\n+/)
     if (parts.length > 1) return [parts[0], snippet, ...parts.slice(1)].join('\n\n')
     return `${body}\n\n${snippet}`
   }
 
-  if (activeSectionType === 'intro' && productImageHtml) {
-    text = insertAfterFirstBlock(text, productImageHtml)
-  }
+  const gallery = (Array.isArray(settings.productImages) ? settings.productImages : []).filter(img => img?.url)
+  const bodyGallery = gallery.length > 1 ? gallery.slice(1) : []
+  const slotNumber = Number(sectionIndex)
+  const plan = reviewImagePlan(outlineContext, bodyGallery.length, sectionData.totalSections)
+  const imageIndexes = Number.isFinite(slotNumber) ? plan[slotNumber] || [] : activeSectionType === 'intro' ? plan[0] || [] : []
 
-  const slot = Number(sectionIndex)
-  if ((slot === 2 || slot === 3) && activeSectionType !== 'intro') {
-    const extras = await pickRelevantImages(heading || articleTitle || targetKeyword, targetKeyword || product?.productName || heading, 4)
-    const chosen = (extras || []).find(image => image?.url && image.url !== product?.imageUrl)
-    if (chosen?.url) {
-      const alt = String(chosen.alt || heading || 'Product').replace(/"/g, '')
-      const figure = `<div align="center" style="margin:20px 0;"><img src="${chosen.url}" alt="${alt}" style="max-width:420px;width:100%;height:auto;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.08);" /></div>`
-      text = `${text}\n\n${figure}`
-    }
+  for (const imageIndex of imageIndexes) {
+    const img = bodyGallery[imageIndex]
+    const marker = img?.url ? img.url.slice(-80) : ''
+
+    if (!img?.url || text.includes(marker)) continue
+
+    const alt = String(img.alt || product?.productName || heading || 'Product').replace(/"/g, '')
+    const figure = `<div align="center" style="margin:20px 0;"><img src="${img.url}" alt="${alt}" style="max-width:640px;width:100%;height:auto;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.08);" /></div>`
+
+    if (activeSectionType === 'intro' || slotNumber === 0) text = insertAfterFirstBlock(text, figure, marker)
+    else text = `${text}\n\n${figure}`
   }
 
   if (priceButton && (activeSectionType === 'intro' || activeSectionType === 'conclusion')) {

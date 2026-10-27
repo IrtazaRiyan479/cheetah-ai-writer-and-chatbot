@@ -609,7 +609,8 @@ async function fetchHeroPhoto(url) {
         signal: AbortSignal.timeout(12000),
         headers: {
           Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-          'User-Agent': 'Mozilla/5.0 (compatible; AffiGenie/1.0; +https://affigenie.com)'
+          'User-Agent': 'Mozilla/5.0 (compatible; AffiGenie/1.0; +https://affigenie.com)',
+          ...(/amazon|media-amazon/i.test(candidate) ? { Referer: 'https://www.amazon.com/' } : {})
         }
       })
 
@@ -672,6 +673,109 @@ export async function buildBrandedHero({ title, siteName, backgroundUrl, backgro
   return `data:image/png;base64,${png.toString('base64')}`
 }
 
+const REVIEW_TINTS = [
+  { name: 'blue', rgb: [37, 99, 235] },
+  { name: 'pink', rgb: [219, 39, 119] },
+  { name: 'yellow', rgb: [202, 138, 4] },
+  { name: 'teal', rgb: [13, 148, 136] }
+]
+
+function xmlText(value) {
+  return String(value || '')
+    .replace(/&/g, '\u0026amp;')
+    .replace(/</g, '\u0026lt;')
+    .replace(/>/g, '\u0026gt;')
+    .replace(/"/g, '\u0026quot;')
+}
+
+function wrapCaption(value, maxChars, maxLines) {
+  const words = String(value || 'Product')
+    .split(/\s+/)
+    .filter(Boolean)
+  const lines = []
+  let line = ''
+
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word
+
+    if (next.length > maxChars && line) {
+      lines.push(line)
+      line = word
+      if (lines.length === maxLines) break
+    } else {
+      line = next
+    }
+  }
+
+  if (line && lines.length < maxLines) lines.push(line)
+
+  return lines.length ? lines.slice(0, maxLines) : ['Product']
+}
+
+function productCaptionSvg(title, siteName, rgb, width, height) {
+  const [r, g, b] = rgb
+  const lines = wrapCaption(title, 42, 2)
+  const barH = 132
+  const barY = height - barH
+  const text = lines
+    .map((line, index) => `<tspan x="48" dy="${index === 0 ? 0 : 36}">${xmlText(line)}</tspan>`)
+    .join('')
+
+  return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="${width}" height="${barY}" fill="rgb(${r},${g},${b})" fill-opacity="0.14"/>
+    <rect y="${barY}" width="${width}" height="${barH}" fill="rgb(${r},${g},${b})"/>
+    <text x="48" y="${barY + 48}" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="700">${text}</text>
+    <text x="48" y="${height - 28}" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="22">${xmlText(siteName)}</text>
+  </svg>`
+}
+
+export async function buildAmazonReviewImages({ title, settings, imageUrls } = {}) {
+  const urls = []
+
+  for (const url of imageUrls || []) {
+    const value = String(url || '').trim()
+
+    if (value && !urls.includes(value)) urls.push(value)
+  }
+
+  let photoBuffer = null
+
+  for (const url of urls) {
+    photoBuffer = await fetchHeroPhoto(url)
+    if (photoBuffer) break
+  }
+
+  if (!photoBuffer) return []
+
+  const siteName = siteLabel(settings || {})
+  const caption = String(title || 'Product').trim() || 'Product'
+  const sharp = (await import('sharp')).default
+  const width = 1200
+  const height = 675
+  const photo = await sharp(photoBuffer).resize(1040, 510, { fit: 'contain', background: '#f8fafc' }).png().toBuffer()
+  const gallery = []
+
+  for (const tint of REVIEW_TINTS) {
+    const svg = Buffer.from(productCaptionSvg(caption, siteName, tint.rgb, width, height))
+    const png = await sharp({ create: { width, height, channels: 3, background: '#f8fafc' } })
+      .composite([
+        { input: photo, top: 12, left: 80 },
+        { input: svg, top: 0, left: 0 }
+      ])
+      .png({ compressionLevel: 9 })
+      .toBuffer()
+
+    gallery.push({
+      url: `data:image/png;base64,${png.toString('base64')}`,
+      alt: caption,
+      source: 'amazon-product',
+      tint: tint.name
+    })
+  }
+
+  return gallery
+}
+
 function urlsSharePhoto(candidateUrl, bannedUrl) {
   const a = String(candidateUrl || '')
   const b = String(bannedUrl || '')
@@ -685,6 +789,67 @@ function urlsSharePhoto(candidateUrl, bannedUrl) {
 
 export async function attachBrandedHero(result, settings = {}) {
   if (!result?.success) return result
+
+  if (settings.type === 'amazon-review' || result.heroImageSource === 'amazon-product') {
+    let gallery = Array.isArray(result.productImages) ? result.productImages.filter(img => img?.url) : []
+
+    if (!gallery.length) {
+      const imageUrls = []
+
+      const push = url => {
+        const value = String(url || '').trim()
+
+        if (value && !imageUrls.includes(value)) imageUrls.push(value)
+      }
+
+      push(result.productImageUrl)
+
+      for (const item of Array.isArray(result.outline) ? result.outline : []) {
+        push(item?.productData?.imageUrl)
+
+        for (const url of item?.productData?.imageUrls || []) push(url)
+      }
+
+      const productName =
+        (Array.isArray(result.outline) ? result.outline : []).find(item => item?.productData?.productName)?.productData
+          ?.productName || ''
+
+      gallery = await buildAmazonReviewImages({
+        title: productName || settings.targetKeyword || result.title || 'Product',
+        settings,
+        imageUrls
+      }).catch(() => [])
+    }
+
+    if (gallery[0]?.url) {
+      return {
+        ...result,
+        heroImage: gallery[0].url,
+        heroImageId: null,
+        heroImageSource: 'amazon-product',
+        productImages: gallery
+      }
+    }
+
+    let heroImage = ''
+
+    try {
+      heroImage = await buildBrandedHero({
+        title: result.title || settings.targetKeyword || 'Product',
+        siteName: siteLabel(settings)
+      })
+    } catch (error) {
+      console.error('[hero] product review raster failed', error?.message || error)
+    }
+
+    return {
+      ...result,
+      heroImage: heroImage || '',
+      heroImageId: null,
+      heroImageSource: heroImage ? 'branded-gradient' : null,
+      productImages: []
+    }
+  }
 
   const title = result.title || settings.targetKeyword || 'Article'
   const rewriteStock = settings.type === 'amazon-roundup-rewrite' || settings.type === 'amazon-review-rewrite'
