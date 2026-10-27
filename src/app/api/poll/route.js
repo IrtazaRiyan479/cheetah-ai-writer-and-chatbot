@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { GoogleGenAI } from '@google/genai'
 
 import { interactionUsesPaidKeys, withGeminiKey } from '@/app/api/generate/utils/geminiKeys'
+import { finalizeSectionLinks, takeSectionLinkPool } from '@/app/api/generate/utils/helpers'
 import { runWithPaidKeys } from '@/app/api/generate/utils/providerKeys'
 import { paidKeysEnabledFor } from '@/libs/entitlement'
 
@@ -23,7 +24,10 @@ export async function GET(request) {
     })
 
     if (interaction.status === 'completed') {
-      return NextResponse.json({ status: 'completed', text: interaction.output_text })
+      const saved = takeSectionLinkPool(id)
+      const text = finalizeSectionLinks(interaction.output_text, saved)
+
+      return NextResponse.json({ status: 'completed', text })
     } else if (interaction.status === 'failed') {
       return NextResponse.json({ status: 'failed', error: 'Deep search failed.' })
     }

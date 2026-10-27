@@ -16,7 +16,7 @@ import { generateProductComparisonOutline, generateProductComparisonSection, val
 import { getBaseSystemInstruction } from './utils/helpers'
 import { callLLM, createProviderGenAI } from './utils/llm'
 import { runWithPaidKeys } from './utils/providerKeys'
-import { attachBrandedHero, fetchSerperOutlineData, pickRelevantImages } from './utils/helpers'
+import { attachBrandedHero, fetchSerperOutlineData, pickRelevantImages, prepareExternalLinks, finalizeSectionLinks, rememberSectionLinkPool } from './utils/helpers'
 
 export const maxDuration = 60
 
@@ -158,6 +158,19 @@ export async function POST(request) {
         )
       }
 
+      const topic = settings.targetKeyword || body.targetKeyword || settings.generatedTitle || settings.articleTitle || body.articleTitle || ''
+      const heading = body.heading || body.text || body.section?.text || body.section?.heading || ''
+      const linkPool = settings.automaticExternalLinks
+        ? await prepareExternalLinks({
+            automaticExternalLinks: true,
+            externalLinks: body.externalLinks,
+            topic,
+            heading
+          })
+        : []
+
+      body.externalLinks = linkPool
+
       let result
 
       switch (type) {
@@ -190,6 +203,16 @@ export async function POST(request) {
       }
 
       logStage('section', started, type)
+
+      const preserve = [result?.internalLinkUrl, ...(Array.isArray(result?.preserveLinks) ? result.preserveLinks : [])].filter(Boolean)
+
+      if (typeof result?.text === 'string') {
+        result.text = finalizeSectionLinks(result.text, { linkPool, preserve })
+      }
+
+      if (result?.isDeepSearch && result?.interactionId) {
+        rememberSectionLinkPool(result.interactionId, { linkPool, preserve })
+      }
 
       const sectionText = result?.text || result?.content || result?.html || ''
       if (gate.user?.id) await settleReservedWords(gate.user.id, reserved, sectionText)

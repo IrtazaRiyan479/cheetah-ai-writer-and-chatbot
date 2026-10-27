@@ -1409,6 +1409,211 @@ export async function fetchRawArticleHtml(url) {
   }
 }
 
+const LINK_STOP_WORDS = new Set([
+  'the',
+  'and',
+  'for',
+  'with',
+  'from',
+  'your',
+  'this',
+  'that',
+  'review',
+  'reviews',
+  'best',
+  'guide',
+  'what',
+  'how',
+  'why',
+  'when',
+  'into',
+  'about',
+  'over',
+  'under',
+  'after',
+  'before',
+  'using',
+  'used',
+  'than',
+  'then',
+  'have',
+  'has',
+  'are',
+  'was',
+  'were',
+  'will',
+  'just',
+  'more',
+  'most',
+  'very',
+  'into'
+])
+
+function linkTokens(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(word => word.length > 3 && !LINK_STOP_WORDS.has(word))
+}
+
+function isSpecificArticleUrl(raw) {
+  let url
+
+  try {
+    url = new URL(String(raw || ''))
+  } catch {
+    return false
+  }
+
+  if (!/^https?:$/i.test(url.protocol)) return false
+
+  const host = url.hostname.replace(/^www\./, '').toLowerCase()
+  if (/(^|\.)google\.[a-z.]+$/.test(host) || host.includes('scholar.google')) return false
+  if (/(^|\.)microsoft\.[a-z.]+$/.test(host) || /(^|\.)office\.com$/.test(host) || host.endsWith('.office.net')) return false
+  if (/(^|\.)live\.com$/.test(host) || /(^|\.)bing\.com$/.test(host)) return false
+
+  const blocked = [
+    'google.com',
+    'scholar.google.com',
+    'bing.com',
+    'microsoft.com',
+    'learn.microsoft.com',
+    'docs.microsoft.com',
+    'support.microsoft.com',
+    'office.com',
+    'amazon.com',
+    'amzn.to',
+    'pinterest.com',
+    'facebook.com',
+    'instagram.com',
+    'youtube.com',
+    'youtu.be',
+    'reddit.com',
+    'quora.com',
+    'tiktok.com',
+    'ebay.com',
+    'walmart.com',
+    'twitter.com',
+    'x.com'
+  ]
+
+  if (blocked.some(item => host === item || host.endsWith(`.${item}`))) return false
+  if (/amazon\.|amzn\./i.test(host)) return false
+
+  const params = [...url.searchParams.keys()].map(key => key.toLowerCase())
+
+  if (params.some(key => ['q', 'query', 'search', 'keyword'].includes(key))) return false
+  if (/\/(search|scholar)(\/|$)/i.test(url.pathname)) return false
+
+  const parts = url.pathname.split('/').filter(Boolean)
+
+  if (!parts.length) return false
+  if (parts.length === 1 && /^[a-z]{2}(-[a-z]{2})?$/i.test(parts[0])) return false
+
+  const shallow = new Set([
+    'about',
+    'news',
+    'research',
+    'home',
+    'index',
+    'search',
+    'topics',
+    'blog',
+    'en',
+    'en-us',
+    'health',
+    'health-information',
+    'publications',
+    'articles',
+    'article',
+    'resources',
+    'learn',
+    'docs',
+    'documentation',
+    'support',
+    'help',
+    'products',
+    'solutions'
+  ])
+
+  if (parts.length === 1 && shallow.has(parts[0].toLowerCase())) return false
+
+  const last = parts[parts.length - 1].toLowerCase()
+
+  if (['index.html', 'index.php', 'default.aspx'].includes(last) && parts.length < 3) return false
+  if (/^(19|20)\d{2}$/.test(last) && parts.length < 3) return false
+
+  return true
+}
+
+function authorityBonus(link) {
+  try {
+    const host = new URL(link).hostname.replace(/^www\./, '').toLowerCase()
+
+    if (/\.(gov|edu)$/i.test(host) || /(^|\.)who\.int$/.test(host)) return 2
+    if (/\.org$/i.test(host) || /pubmed|ncbi|doi\.org|nih\.gov/.test(host)) return 1.5
+  } catch {
+    return 0
+  }
+
+  return 0
+}
+
+async function keepLiveSpecificLinks(items) {
+  const checks = await Promise.all(
+    items.slice(0, 4).map(async item => {
+      const link = String(item?.link || '')
+
+      if (!isSpecificArticleUrl(link)) return ''
+
+      try {
+        const res = await fetch(link, {
+          method: 'GET',
+          redirect: 'follow',
+          signal: AbortSignal.timeout(7000),
+          headers: {
+            Accept: 'text/html,application/pdf',
+            'User-Agent': 'Mozilla/5.0 (compatible; AffiGenie/1.0; +https://affigenie.com)'
+          }
+        })
+
+        if (res.status === 404 || res.status === 410 || res.status >= 500) return ''
+        if (res.status >= 400 && ![401, 403, 405, 429].includes(res.status)) return ''
+
+        let sample = ''
+
+        try {
+          const reader = res.body?.getReader?.()
+
+          if (reader) {
+            const { value } = await reader.read()
+
+            sample = new TextDecoder().decode(value || new Uint8Array()).slice(0, 12000)
+            await reader.cancel().catch(() => {})
+          }
+        } catch {
+          sample = ''
+        }
+
+        const title = (sample.match(/<title[^>]*>([\s\S]{0,180})<\/title>/i) || [])[1] || ''
+
+        if (/page not found|\b404\b|not found|doesn.?t exist|no longer available|temporarily unavailable/i.test(title)) {
+          return ''
+        }
+
+        const finalUrl = res.url || link
+
+        return isSpecificArticleUrl(finalUrl) ? finalUrl : ''
+      } catch {
+        return ''
+      }
+    })
+  )
+
+  return [...new Set(checks.filter(Boolean))].slice(0, 3)
+}
+
 export async function fetchSerperOutlineData(query) {
   if (!process.env.SERPER_API_KEY) return { organic: [], faqs: [], related: [], authorityLinks: [] }
 
@@ -1427,22 +1632,29 @@ export async function fetchSerperOutlineData(query) {
       return { organic: [], faqs: [], related: [], authorityLinks: [] }
     }
 
-    const allLinks = data.organic ? data.organic.map(item => item.link) : []
+    const organic = Array.isArray(data.organic) ? data.organic : []
+    const queryWords = linkTokens(query)
+    const minOverlap = queryWords.length >= 2 ? 2 : 1
+    const ranked = organic
+      .filter(item => item?.link && isSpecificArticleUrl(item.link))
+      .map(item => {
+        const titleHits = linkTokens(item.title || '').filter(token => queryWords.includes(token)).length
+        const extraHits = linkTokens(`${item.snippet || ''} ${item.link || ''}`).filter(token =>
+          queryWords.includes(token)
+        ).length
+        const overlap = titleHits + extraHits
 
-    let authorityLinks = allLinks.filter(
-      link => link.includes('.gov') || link.includes('.org') || link.includes('.edu')
-    )
-
-    // if (authorityLinks.length === 0 && allLinks.length > 0) {
-    //   console.log(`[ExtLinks] No .gov/.org/.edu links found for "${query}". Falling back to standard organic results.`);
-    //   authorityLinks = allLinks;
-    // }
+        return { ...item, overlap, titleHits, score: overlap + titleHits + authorityBonus(item.link) }
+      })
+      .filter(item => item.overlap >= minOverlap && (item.titleHits > 0 || item.overlap >= minOverlap + 1))
+      .sort((a, b) => b.score - a.score)
+    const authorityLinks = await keepLiveSpecificLinks(ranked)
 
     return {
-      organic: data.organic ? data.organic.slice(0, 4) : [],
+      organic: organic.slice(0, 4),
       faqs: data.peopleAlsoAsk ? data.peopleAlsoAsk.map(item => item.question) : [],
       related: data.relatedSearches ? data.relatedSearches.map(item => item.query) : [],
-      authorityLinks: authorityLinks
+      authorityLinks
     }
   } catch (e) {
     console.error('Serper Outline Error:', e)
@@ -1815,22 +2027,179 @@ export async function getRealTimeInstruction(
   return realTimeInstruction
 }
 
+export function normalizeExternalLink(url) {
+  try {
+    const parsed = new URL(String(url || ''))
+
+    parsed.hash = ''
+    ;['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id'].forEach(key =>
+      parsed.searchParams.delete(key)
+    )
+
+    const path = parsed.pathname.replace(/\/+$/, '') || '/'
+
+    return `${parsed.hostname.replace(/^www\./, '').toLowerCase()}${path}${parsed.search}`
+  } catch {
+    return String(url || '')
+      .trim()
+      .toLowerCase()
+  }
+}
+
+function isKeptResourceHost(host, url) {
+  if (/(^|\.)amazon\.[a-z.]+$/.test(host) || /(^|\.)amzn\.(to|com)$/.test(host)) return true
+  if (host === 'media-amazon.com' || host.endsWith('.media-amazon.com')) return true
+  if (host === 'maps.google.com' || host === 'maps.app.goo.gl') return true
+  if ((host === 'google.com' || host.endsWith('.google.com')) && url.pathname.startsWith('/maps')) return true
+  if (
+    host === 'youtube.com' ||
+    host.endsWith('.youtube.com') ||
+    host === 'youtu.be' ||
+    host === 'youtube-nocookie.com' ||
+    host.endsWith('.youtube-nocookie.com') ||
+    host === 'ytimg.com' ||
+    host.endsWith('.ytimg.com')
+  ) {
+    return true
+  }
+  if (host === 'static-maps.yandex.ru' || host.endsWith('.static-maps.yandex.ru')) return true
+
+  return false
+}
+
+function externalHrefAllowed(href, allowed) {
+  const raw = String(href || '')
+    .trim()
+    .replace(/&/gi, '&')
+
+  if (!raw || raw.startsWith('#') || raw.startsWith('/') || /^mailto:/i.test(raw) || /^tel:/i.test(raw)) return true
+
+  let url
+
+  try {
+    url = new URL(raw)
+  } catch {
+    return false
+  }
+
+  if (!/^https?:$/i.test(url.protocol)) return false
+
+  const host = url.hostname.replace(/^www\./, '').toLowerCase()
+
+  if (isKeptResourceHost(host, url)) return true
+
+  return allowed.has(normalizeExternalLink(raw))
+}
+
+export function removeUnapprovedExternalLinks(text, allowedLinks = []) {
+  const allowed = new Set((allowedLinks || []).map(normalizeExternalLink))
+  let output = String(text || '')
+
+  output = output.replace(/(^|[^!])\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (match, lead, label, url) =>
+    externalHrefAllowed(url, allowed) ? match : `${lead}${label}`
+  )
+
+  output = output.replace(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi, (match, attrs, inner) => {
+    const href = String(attrs || '').match(/href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i)
+    const url = href ? href[1] || href[2] || href[3] || '' : ''
+
+    return externalHrefAllowed(url, allowed) ? match : inner
+  })
+
+  output = output.replace(/(^|[\s>])(https?:\/\/[^\s)<]+)(?=$|[\s<])/g, (match, lead, url) =>
+    externalHrefAllowed(url, allowed) ? match : lead
+  )
+
+  return output
+}
+
 export function getExternalLinkInstruction(externalLinks, usedExternalLinks = []) {
-  let extLinkInstruction = ''
+  const used = new Set((usedExternalLinks || []).map(link => String(link || '')))
+  const availableLinks = (externalLinks || []).filter(link => link && !used.has(link) && isSpecificArticleUrl(link))
 
-  let availableLinks = (externalLinks || []).filter(link => !usedExternalLinks.includes(link))
-
-  if (availableLinks.length === 0 && externalLinks && externalLinks.length > 0) {
-    availableLinks = externalLinks
+  if (!availableLinks.length) {
+    return '\nEXTERNAL LINKS: Do NOT add any external URL. Do not invent links. Do not link to homepages, search pages, Google Scholar, Microsoft Docs, or any page that was not provided.'
   }
 
-  if (availableLinks && availableLinks.length > 0) {
-    extLinkInstruction = `\nCRITICAL EXTERNAL LINKING: Naturally weave exactly 2 to 3 high-authority external URLs into the text. \nRULES:\n1. You MUST ONLY link to informative sources, Government sites (.gov), NGOs (.org), or research papers (e.g., Google Scholar).\n2. Do NOT link to advertising, entertainment, or competitor sites.\n3. URLs you can use: ${availableLinks.join(', ')}. Do not force them if they don't fit perfectly.`
-  } else {
-    extLinkInstruction = `\nCRITICAL EXTERNAL LINKING: Naturally weave exactly 2 to 3 high-authority external URLs into the text using Markdown formatting. \nRULES:\n1. You MUST ONLY link to informative sources, Government sites (.gov), NGOs (.org), or research papers (e.g., Google Scholar).\n2. Do NOT link to advertising, entertainment, or competitor sites.`
+  return `\nEXTERNAL LINKS: Add at most ONE markdown link in this section, and only when the sentence is about that exact page.\nALLOWED URLS (use one of these exact URLs, or use none):\n${availableLinks
+    .slice(0, 3)
+    .map(link => `- ${link}`)
+    .join(
+      '\n'
+    )}\nRULES:\n- Never invent, shorten, or rewrite a URL.\n- Never link a domain homepage, a search page, scholar.google.com, google.com, or any Microsoft Docs page.\n- Never link a page that does not match the sentence topic.\n- If none of the allowed URLs fit, add zero links.`
+}
+
+export function externalTopicQuery(topic, heading) {
+  const subject = String(topic || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const headingText = String(heading || '')
+    .replace(/^\s*\d+[\).\-\s]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (
+    !headingText ||
+    /^(introduction|intro|conclusion|final verdict|faq|frequently asked|key takeaways|buying guide|overview)\b/i.test(
+      headingText
+    )
+  ) {
+    return subject.slice(0, 180)
   }
 
-  return extLinkInstruction
+  return `${subject} ${headingText}`.trim().slice(0, 180)
+}
+
+export async function prepareExternalLinks({ automaticExternalLinks, externalLinks, topic, heading } = {}) {
+  if (!automaticExternalLinks) return []
+
+  const fallback = (externalLinks || []).filter(link => isSpecificArticleUrl(link)).slice(0, 4)
+
+  try {
+    const fresh = await fetchSerperOutlineData(externalTopicQuery(topic, heading))
+
+    if (fresh?.authorityLinks?.length) return fresh.authorityLinks
+  } catch {
+    /* use the outline pool */
+  }
+
+  if (!fallback.length) return []
+
+  return keepLiveSpecificLinks(fallback.map(link => ({ link })))
+}
+
+export function finalizeSectionLinks(text, { linkPool = [], preserve = [] } = {}) {
+  const allowed = [...(linkPool || []), ...(preserve || [])].filter(Boolean)
+
+  return removeUnapprovedExternalLinks(text, allowed)
+}
+
+const sectionLinkPools = globalThis.__affigenieSectionLinkPools || (globalThis.__affigenieSectionLinkPools = new Map())
+
+export function rememberSectionLinkPool(id, payload) {
+  const key = String(id || '')
+
+  if (!key) return
+
+  sectionLinkPools.set(key, {
+    linkPool: Array.isArray(payload?.linkPool) ? payload.linkPool : [],
+    preserve: Array.isArray(payload?.preserve) ? payload.preserve : [],
+    at: Date.now()
+  })
+
+  if (sectionLinkPools.size > 200) {
+    const oldest = [...sectionLinkPools.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, 50)
+
+    oldest.forEach(([poolId]) => sectionLinkPools.delete(poolId))
+  }
+}
+
+export function takeSectionLinkPool(id) {
+  const row = sectionLinkPools.get(String(id || ''))
+
+  if (!row) return { linkPool: [], preserve: [] }
+
+  return { linkPool: row.linkPool || [], preserve: row.preserve || [] }
 }
 
 const sitemapCache = new Map()

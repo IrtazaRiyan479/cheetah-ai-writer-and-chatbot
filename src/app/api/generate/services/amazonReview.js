@@ -10,7 +10,8 @@ import {
   getToneInstruction,
   getBaseSystemInstruction,
   fetchPeopleAlsoSearchFor,
-  buildAmazonReviewImages
+  buildAmazonReviewImages,
+  removeUnapprovedExternalLinks
 } from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
@@ -465,8 +466,10 @@ REWRITE RULE: Current writer settings override the source article. Do not reuse 
     heading,
     targetKeyword
   )
+  let linkPool = (Array.isArray(externalLinks) ? externalLinks : []).filter(Boolean)
+
   let extLinkInstruction = settings.automaticExternalLinks
-    ? getExternalLinkInstruction(externalLinks, usedExternalLinks)
+    ? getExternalLinkInstruction(linkPool, usedExternalLinks)
     : '\nCRITICAL FORMATTING: Do NOT include or generate any external URLs or links in this section under any circumstances.'
   let { instruction: linkInstruction, selectedUrl: internalLinkUrl } = await getLinkInstruction(
     internalLinks,
@@ -719,6 +722,11 @@ ${sourceArticleText.substring(0, 80000)}`
       partnerTag: settings.amazonTrackingId || settings.partnerTag || process.env.AMAZON_PARTNER_TAG || 'babiescarrier-20'
     })
   }
+
+  text = removeUnapprovedExternalLinks(
+    text,
+    [...(settings.automaticExternalLinks ? linkPool : []), internalLinkUrl].filter(Boolean)
+  )
 
   return {
     success: true,

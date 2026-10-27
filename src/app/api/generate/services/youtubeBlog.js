@@ -5,6 +5,7 @@ import {
   getPovInstruction,
   getToneInstruction,
   getBaseSystemInstruction,
+  getExternalLinkInstruction,
   fetchPeopleAlsoSearchFor
 } from '../utils/helpers'
 import { languages } from '@/configs/languages'
@@ -266,6 +267,7 @@ export async function generateYoutubeBlogSection(body, genAI) {
     externalLinks,
     internalLinks,
     usedInternalLinks = [],
+    usedExternalLinks = [],
     sectionIndex = 0,
     totalSections = 0
   } = body
@@ -339,6 +341,9 @@ export async function generateYoutubeBlogSection(body, genAI) {
     genAI,
     usedInternalLinks
   )
+  const extLinkInstruction = settings.automaticExternalLinks
+    ? getExternalLinkInstruction(externalLinks, usedExternalLinks)
+    : '\nEXTERNAL LINKS: Do NOT add any external URL. Do not invent links. Do not link to homepages, search pages, Google Scholar, Microsoft Docs, or any page that was not provided.'
   let seoInstruction = await getSeoInstruction(seoOptimization, manualKeywords, targetKeyword)
 
   let toneInstruction = getToneInstruction(toneOfVoice, customToneOfVoice)
@@ -390,6 +395,7 @@ export async function generateYoutubeBlogSection(body, genAI) {
         ${keywordSEOInstructions}
         ${sectionStructureRequirements}
         ${linkInstruction}
+        ${extLinkInstruction}
         ${seoInstruction}
         ${toneInstruction}
         ${povInstruction}

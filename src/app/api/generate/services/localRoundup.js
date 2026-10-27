@@ -1452,6 +1452,7 @@ export async function generateLocalRoundupSection(body, genAI) {
     mediaHtml: assignedMediaElement,
     mapHtml,
     mediaUrl: mediaUrl,
-    internalLinkUrl: internalLinkUrl
+    internalLinkUrl: internalLinkUrl,
+    preserveLinks: [placeWebsite, mapLink].filter(Boolean)
   }
 }
