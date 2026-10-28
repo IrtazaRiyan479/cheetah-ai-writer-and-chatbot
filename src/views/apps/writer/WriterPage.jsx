@@ -167,7 +167,7 @@ const WriterPage = ({ settings, updateSetting, setStep, setOutline }) => {
       return
     }
 
-    if (settings.type === 'amazon-roundup-rewrite' || settings.type === 'amazon-review-rewrite') {
+    if (isRewriteType) {
       if (!settings.sourceArticleType) {
         toast.error('Wait for the article URL to finish validating.')
 

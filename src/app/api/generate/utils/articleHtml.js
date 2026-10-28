@@ -421,9 +421,14 @@ export function buildArticleIdentityMarker(type, settings) {
   return `<div data-affigenie-marker="1" data-affigenie-type="${articleType}" data-affigenie-writer-type="${writerType}" data-affigenie-settings="${encoded}" style="display:none!important;height:0;width:0;overflow:hidden;font-size:0;line-height:0;mso-hide:all;" aria-hidden="true"><!-- affigenie-article-type:${articleType} affigenie-writer-type:${writerType} affigenie-article-settings:${encoded} -->affigenie-article-type:${articleType}</div>`
 }
 
+const BLOG_REWRITE_TYPES = new Set(['', 'unknown', 'blog'])
+
 export function rewriteAcceptsSource(writerType, detectedType) {
-  if (writerType === 'amazon-roundup-rewrite') return canonicalArticleType(detectedType) === 'amazon-roundup'
-  if (writerType === 'amazon-review-rewrite') return canonicalArticleType(detectedType) === 'amazon-review'
+  const source = canonicalArticleType(detectedType)
+
+  if (writerType === 'amazon-roundup-rewrite') return source === 'amazon-roundup'
+  if (writerType === 'amazon-review-rewrite') return source === 'amazon-review'
+  if (writerType === 'rewrite') return BLOG_REWRITE_TYPES.has(source)
 
   return true
 }
@@ -435,6 +440,10 @@ export function rewriteSourceError(writerType) {
 
   if (writerType === 'amazon-review-rewrite') {
     return 'This URL is not an Amazon single-product review. This rewrite only accepts Amazon single-product review articles.'
+  }
+
+  if (writerType === 'rewrite') {
+    return 'This URL is not a blog article. Rewrite Blog only accepts blog articles, not Amazon single-product reviews or other article types.'
   }
 
   return ''
