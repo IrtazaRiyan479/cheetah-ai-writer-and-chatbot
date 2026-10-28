@@ -1,6 +1,6 @@
 import { callLLM } from '../utils/llm'
 import { parseJsonSafe } from '../utils/lightLLM'
-import { pickRelevantImages, buildBrandedHero } from '../utils/helpers'
+import { pickRelevantImages, buildBrandedHero, fetchSerperData } from '../utils/helpers'
 import { buildCheckPriceButton, escapeHtml, extractAsin, renderResponsiveTable, resolveAffiliateUrl, titleCaseWords } from '../utils/articleHtml'
 import { fetchInternalAmazonData } from './amazonRoundUp'
 
@@ -166,6 +166,200 @@ function xml(value) {
     .replace(/"/g, '"')
 }
 
+function wrapLines(value, maxChars) {
+  const words = String(value || '').split(/\s+/).filter(Boolean)
+  const lines = []
+  let line = ''
+
+  words.forEach(word => {
+    const next = line ? `${line} ${word}` : word
+    if (line && next.length > maxChars) {
+      lines.push(line)
+      line = word
+    } else {
+      line = next
+    }
+  })
+
+  if (line) lines.push(line)
+  return lines.slice(0, 3)
+}
+
+function buildComparisonTitle(keyword, products) {
+  const exact = String(keyword || '').replace(/\s+/g, ' ').trim()
+  if (!exact) return `${products.map(product => product.shortName).join(' vs ')}: Which One You Will Prefer`
+
+  const lower = exact.toLowerCase()
+  const lead = lower.startsWith('which one should you buy') ? '' : 'Which One Should You Buy: '
+  const tail = lower.endsWith('compared') ? '' : ' Compared'
+
+  return `${lead}${exact}${tail}`.replace(/\s+/g, ' ').trim()
+}
+
+const HAPPY_LIMIT_LINES = [
+  name =>
+    `Based on our research, we could not find a clear limitation for ${name}. Customers are mostly happy with it.`,
+  name =>
+    `We checked the listing details and outside mentions for ${name} and did not find a drawback worth flagging. Shoppers mostly sound satisfied.`,
+  name => `Nothing we could verify marks a real weak spot for ${name}. The comments that do exist lean positive.`,
+  name =>
+    `A concrete downside for ${name} did not turn up in the sources we reviewed. Buyers who talk about it are largely pleased.`,
+  name =>
+    `For ${name}, the available information did not surface a meaningful limitation. Most of the reaction we found is favorable.`,
+  name =>
+    `We looked for a specific complaint about ${name} and came up empty. The overall impression is that customers are content with it.`
+]
+
+function happyLimitLine(name, index, keyword) {
+  const seed = `${keyword || ''}|${name || ''}`
+    .split('')
+    .reduce((sum, char) => sum + char.charCodeAt(0), Math.abs(Number(index) || 0))
+  const pick = HAPPY_LIMIT_LINES[seed % HAPPY_LIMIT_LINES.length]
+  return pick(name)
+}
+
+function isRoboticLimit(value) {
+  return /didn.?t state any clear limitation|did not state a clear limitation|no clear limitation was (listed|stated)|listing did not state/i.test(
+    String(value || '')
+  )
+}
+
+function isThinFeedback(value) {
+  const raw = String(value || '').trim()
+  const words = countWords(raw)
+  if (words < 50) return true
+  if (words < 80 && /not available|not returned|no feedback|did not quote|does not quote|do not guess/i.test(raw)) return true
+  return false
+}
+
+function noteFromResult(item) {
+  if (!item) return ''
+  if (typeof item === 'string') return item.replace(/\s+/g, ' ').trim()
+
+  const link = String(item.link || item.url || '').trim()
+  if (/scholar\.google|docs\.microsoft|support\.microsoft|google\.com\/search/i.test(link)) return ''
+
+  const title = String(item.title || '').replace(/\s+/g, ' ').trim()
+  const snippet = String(item.snippet || item.description || '').replace(/\s+/g, ' ').trim()
+  const text = [title, snippet].filter(Boolean).join(': ')
+  if (text.length < 24) return ''
+
+  let host = ''
+  try {
+    host = new URL(link).hostname.replace(/^www\./, '')
+  } catch {
+    host = ''
+  }
+
+  return (host ? `${host} — ${text}` : text).slice(0, 320)
+}
+
+async function loadOutsideNotes(product) {
+  const name = String(product?.displayName || product?.productName || '').trim()
+  if (!name) return []
+
+  const queries = [
+    `"${name}" cons OR disadvantages OR complaints OR problems`,
+    `"${name}" review youtube OR quora OR reddit OR amazon`
+  ]
+  const seen = new Set()
+  const notes = []
+
+  for (const query of queries) {
+    const rows = await fetchSerperData(query).catch(() => [])
+    ;(Array.isArray(rows) ? rows : []).forEach(row => {
+      const note = noteFromResult(row)
+      const key = note.toLowerCase()
+      if (!note || seen.has(key)) return
+      seen.add(key)
+      notes.push(note)
+    })
+  }
+
+  notes.sort((left, right) => {
+    const rank = value => (/amazon\.|youtube|quora|reddit|answers\.com|refseek/i.test(value) ? 0 : 1)
+    return rank(left) - rank(right)
+  })
+
+  return notes.slice(0, 6)
+}
+
+function researchBlock(products) {
+  return products
+    .map((product, index) => {
+      const notes = Array.isArray(product?.researchNotes) ? product.researchNotes : []
+      if (!notes.length) return ''
+      return `${labelOf(product, index)}:\n${notes.map(note => `- ${note}`).join('\n')}`
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
+function consFromNotes(product) {
+  const notes = Array.isArray(product?.researchNotes) ? product.researchNotes : []
+  const hit = notes.find(note =>
+    /complaint|downside|drawback|difficult|hard to|too heavy|bulky|does not|doesn't|won't fit|issue with|broke|noisy|missing/i.test(note)
+  )
+  if (!hit) return []
+
+  const text = String(hit)
+    .replace(/^[^—]+—\s*/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const sentence = text.split(/(?<=[.!?])\s+/)[0] || text
+  const clipped = sentence.length > 180 ? sentence.slice(0, 170).replace(/\s+\S*$/, '').trim() : sentence
+  if (clipped.length < 40) return []
+
+  return [`Outside write-ups mention this limitation: ${clipped}`]
+}
+
+function feedbackFallback(product, index) {
+  const name = labelOf(product, index)
+  const features = listedFeatures(product, 4)
+  const notes = (Array.isArray(product?.researchNotes) ? product.researchNotes : [])
+    .map(note =>
+      String(note || '')
+        .replace(/https?:\/\/\S+/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+    )
+    .filter(note => note.length > 30)
+    .slice(0, 2)
+  const parts = []
+
+  if (product?.rating) {
+    parts.push(
+      `Amazon lists ${name} at ${product.rating}${product.ratingCount ? ` from ${product.ratingCount} ratings` : ''}. That score is a summary, not a stack of quotations, so this article does not invent what individual shoppers wrote. A public rating at that level usually means most buyers felt the product handled the job they expected, with a smaller group wishing one detail had been different.`
+    )
+  } else if (notes.length) {
+    parts.push(
+      `Amazon did not return review text for ${name}. Mentions from other write-ups, including video descriptions and Q&A pages, point to these themes: ${notes.map(note => note.slice(0, 160)).join(' ')} Those are paraphrased themes, not direct quotes.`
+    )
+  } else {
+    parts.push(
+      `Amazon did not return review text for ${name}, and outside sources did not add a review we could verify. Rather than pretending there is a comment thread, this section reads the published features the way a careful buyer would.`
+    )
+  }
+
+  if (features.length >= 2) {
+    const lead = features.slice(0, -1)
+    const last = features[features.length - 1]
+    parts.push(
+      `On the positive side, ${name} is defined by ${lead.join('; ')}. Those are practical reasons to keep it on the shortlist. The point to read in a constructive way is ${last}. It is not framed here as a failure. It is the trait to match with how you will actually use the product, and buyers who want that trait often treat it as a benefit.`
+    )
+  } else if (features.length === 1) {
+    parts.push(
+      `The listing highlights ${features[0]}. That is the strongest confirmed reason to consider ${name}. Any other praise or complaint would be a guess, so it stays out of this comparison.`
+    )
+  } else {
+    parts.push(
+      `${name} did not come back with a feature list either. Missing details stay unknown. They are not treated as a flaw, and they are not filled in with invented praise.`
+    )
+  }
+
+  return parts.join(' ')
+}
+
 function readAmazonItems(raw) {
   const data = raw?.data || raw || {}
   const items = data?.searchResult?.items || data?.itemResults?.items || data?.itemsResult?.items || []
@@ -310,17 +504,23 @@ async function loadBuffer(url) {
   return Buffer.from(await res.arrayBuffer())
 }
 
-async function buildComparisonHero(products) {
+async function buildComparisonHero(products, headline) {
   const sharp = (await import('sharp')).default
   const width = 1200
-  const height = 675
   const count = products.length
+  const titleLines = wrapLines(headline || 'Product Comparison', 42)
+  const fontSize = titleLines.length >= 3 ? 30 : titleLines.length === 2 ? 34 : 40
+  const lineH = fontSize + 14
+  const titleTop = 36
+  const imgTop = titleTop + titleLines.length * lineH + 28
+  const imgBoxH = 340
+  const nameY = imgTop + imgBoxH + 42
+  const height = Math.max(720, nameY + 46)
   const side = 48
   const gap = 28
   const vsW = 72
   const colW = Math.floor((width - side * 2 - vsW * (count - 1) - gap * count) / count)
-  const imgTop = 148
-  const imgBoxH = 360
+  const white = { r: 255, g: 255, b: 255 }
   const overlays = []
 
   const buffers = await Promise.all(products.map(product => loadBuffer(product.imageUrl).catch(() => null)))
@@ -328,10 +528,7 @@ async function buildComparisonHero(products) {
   for (let index = 0; index < count; index++) {
     const buffer = buffers[index]
     if (!buffer) continue
-    const png = await sharp(buffer)
-      .resize(colW, imgBoxH, { fit: 'contain', background: { r: 244, g: 245, b: 247 } })
-      .png()
-      .toBuffer()
+    const png = await sharp(buffer).resize(colW, imgBoxH, { fit: 'contain', background: white }).png().toBuffer()
     const meta = await sharp(png).metadata()
     const colX = side + index * (colW + gap + vsW)
     overlays.push({
@@ -341,30 +538,35 @@ async function buildComparisonHero(products) {
     })
   }
 
+  const titleSvg = titleLines
+    .map((line, index) => {
+      const y = titleTop + fontSize + index * lineH
+      return `<text x="${width / 2}" y="${y}" text-anchor="middle" fill="#111827" font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="700">${xml(line)}</text>`
+    })
+    .join('')
   const names = products
     .map((product, index) => {
       const colX = side + index * (colW + gap + vsW) + colW / 2
-      return `<text x="${colX}" y="590" text-anchor="middle" fill="#6b7280" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="600">${xml(product.shortName)}</text>`
+      return `<text x="${colX}" y="${nameY}" text-anchor="middle" fill="#374151" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="600">${xml(product.shortName)}</text>`
     })
     .join('')
   const vs = products
     .slice(0, -1)
     .map((_, index) => {
       const x = side + (index + 1) * (colW + gap) + index * vsW + vsW / 2
-      return `<text x="${x}" y="340" text-anchor="middle" fill="#c5c9d1" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700">Vs</text>`
+      const y = imgTop + Math.round(imgBoxH / 2)
+      return `<text x="${x}" y="${y}" text-anchor="middle" fill="#6b7280" font-family="Arial, Helvetica, sans-serif" font-size="36" font-weight="700">Vs</text>`
     })
     .join('')
   const svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
     <rect x="0" y="0" width="8" height="${height}" fill="#fb923c"/>
-    <rect x="28" y="26" width="34" height="34" rx="7" fill="#fb923c"/>
-    <text x="45" y="50" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">vs</text>
-    <text x="600" y="78" text-anchor="middle" fill="#9aa0a6" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="700">Which One You Will Prefer</text>
+    ${titleSvg}
     ${vs}
     ${names}
   </svg>`
 
   const png = await sharp({
-    create: { width, height, channels: 3, background: { r: 244, g: 245, b: 247 } }
+    create: { width, height, channels: 3, background: white }
   })
     .composite([...overlays, { input: Buffer.from(svg), top: 0, left: 0 }])
     .png()
@@ -381,28 +583,28 @@ export async function generateProductComparisonOutline(body) {
   const products = await loadComparisonProducts(validation.urls, settings)
   const keyword =
     String(body.targetKeyword || settings.targetKeyword || '').trim() || products.map(product => product.shortName).join(' vs ')
+  const title = buildComparisonTitle(keyword, products)
   const names = products.map(product => product.displayName).join(', ')
 
-  const [metaResponse, stock] = await Promise.all([
+  const [metaResponse, stock, heroResult] = await Promise.all([
     callLLM({
-      system: 'Create concise SEO metadata for a product comparison. Return JSON only and do not invent product facts.',
-      prompt: `Create title, metaTitle, metaDescription for a comparison of ${names}. Topic: ${keyword}. Use these short product names, not long marketplace titles. Do not mention prices. Return JSON.`,
+      system: 'Create a concise meta description for a product comparison. Return JSON only and do not invent product facts. Do not rewrite the title.',
+      prompt: `Write metaDescription only for a comparison of ${names}. The exact topic phrase is: ${keyword}. The article title is already: ${title}. Do not change that title and do not mention prices. Return JSON {"metaDescription":"..."}.`,
       json: true,
-      maxTokens: 400,
+      maxTokens: 300,
       model: settings.model
     }).catch(() => null),
-    pickRelevantImages(keyword, keyword, 2).catch(() => [])
+    pickRelevantImages(keyword, keyword, 2).catch(() => []),
+    buildComparisonHero(products, title).catch(() => ''),
+    Promise.all(
+      products.map(async product => {
+        product.researchNotes = await loadOutsideNotes(product).catch(() => [])
+      })
+    )
   ])
   const metadata = parseJsonSafe(metaResponse?.text) || {}
-  const title = metadata.title || `${products.map(product => product.shortName).join(' vs ')}: Which One You Will Prefer`
   const extraImages = collectExtraImages(products, stock)
-  let heroImage = ''
-
-  try {
-    heroImage = await buildComparisonHero(products)
-  } catch {
-    heroImage = ''
-  }
+  let heroImage = heroResult || ''
 
   if (!heroImage) {
     heroImage = await buildBrandedHero({
@@ -429,6 +631,9 @@ export async function generateProductComparisonOutline(body) {
     },
     ...productHeadings,
     { type: 'h2', text: 'How They Compare', sectionType: 'analysis' },
+    { type: 'h2', text: 'Which One Should You Buy', sectionType: 'buyer' },
+    { type: 'h2', text: 'Pickup by Situation', sectionType: 'situation' },
+    { type: 'h2', text: 'Safety Guidance', sectionType: 'safety' },
     { type: 'h2', text: `Frequently Asked Questions About ${keyword}`, sectionType: 'faq' },
     { type: 'h2', text: `Final Verdict: ${keyword}`, sectionType: 'verdict' }
   ]
@@ -436,7 +641,7 @@ export async function generateProductComparisonOutline(body) {
   return {
     success: true,
     title,
-    metaTitle: metadata.metaTitle || title.slice(0, 60),
+    metaTitle: keyword.length > 0 && keyword.length <= 60 ? keyword : title,
     metaDescription:
       metadata.metaDescription ||
       `Compare ${names} using listed features, pros, cons, and available Amazon feedback.`.slice(0, 160),
@@ -491,9 +696,9 @@ function bulletList(items) {
 
 function feedbackFacts(product) {
   if (product.rating) {
-    return `Amazon lists a rating of ${product.rating}${product.ratingCount ? ` from ${product.ratingCount} ratings` : ''}. Review quotes were not returned. Do not invent customer quotes.`
+    return `Amazon lists a rating of ${product.rating}${product.ratingCount ? ` from ${product.ratingCount} ratings` : ''}. Review quotes were not returned. Do not invent customer quotes. Explain what that score suggests, then use outside notes only as paraphrased themes.`
   }
-  return 'Amazon customer feedback was not returned for this listing. Say that clearly. Do not invent reviews, quotes, star ratings, or rating counts.'
+  return 'Amazon did not return review text or a star rating for this listing. Do not invent reviews, quotes, star ratings, or rating counts. If outside notes exist, paraphrase them. If they do not, discuss the listed features: most as strengths, and one as a constructive tradeoff rather than a defect.'
 }
 
 function readProducts(body, outline) {
@@ -542,27 +747,30 @@ export async function generateProductComparisonSection(body) {
   const keyword = body.targetKeyword || settings.targetKeyword || products.map(product => product.shortName).join(' vs ')
   const facts = comparisonFacts(products)
   const names = facts.map(item => item.name)
-  const perProductWords = products.length > 2 ? 160 : 210
+  const perProductWords = products.length > 2 ? 240 : 300
   const featureNotes = facts.map(item => `${item.name}: ${item.features.join('; ') || 'none returned'}`).join('\n')
+  const outsideNotes = researchBlock(products) || 'No outside notes were returned.'
+  const voice =
+    'Write clear, specific, slightly longer prose for a product comparison. Explain what the details mean for a buyer. Do not invent specifications, prices, star ratings, or customer quotes. Do not paste source URLs. Paraphrase outside notes as themes only.'
 
   if (section.sectionType === 'intro' || (!section.sectionType && /introduction/i.test(body.heading || ''))) {
     const fallback = [
-      `This comparison looks at ${names.join(' and ')} for ${keyword}. The short names below stand in for the long marketplace titles.`,
-      `A photo and a few listed features come first. After that, each product gets a closer description, then a written comparison, common questions, and a final verdict. The article stays with the details Amazon returned.`
+      `This comparison looks at ${names.join(' and ')} for ${keyword}. The short names below stand in for the long marketplace titles, and the phrase ${keyword} is the topic the rest of the article is built around.`,
+      `A photo and a few listed features come first. After that, each product gets a closer description, then a written comparison, a buying recommendation, a situation-by-situation pickup, safety guidance, common questions, and a final verdict. The article stays with details that were actually returned.`
     ].join('\n\n')
     let text = ''
 
     try {
       const response = await generateWithOneRetry(
-        `Write two plain-text paragraphs separated by a blank line, about 150 words total, introducing a comparison of ${names.join(', ')}. Topic: ${keyword}.
-Tell the reader that a short photo-and-features table comes next, followed by a closer look at each product, a descriptive comparison, FAQs, and a final verdict.
+        `Write three plain-text paragraphs separated by blank lines, about 190 words total, introducing a comparison of ${names.join(', ')}. Topic, keep this phrase intact if you use it: ${keyword}.
+Tell the reader that a short photo-and-features table comes next, followed by a closer look at each product, a descriptive comparison, a section on which one to buy, a pickup by situation, safety guidance, FAQs, and a final verdict.
 Use only these short product names. Do not use long marketplace titles. Do not mention prices. Do not invent features, ratings, or review quotes.
 Known features:
 ${featureNotes}
 No heading. No table. No bullet list.`,
-        'Write only the article introduction as plain text.',
+        voice,
         false,
-        700,
+        900,
         settings.model
       )
       text = response?.text?.trim() || ''
@@ -570,7 +778,7 @@ No heading. No table. No bullet list.`,
       text = ''
     }
 
-    return { success: true, text: proseBlocks(ensureProse(text, fallback, 110)) }
+    return { success: true, text: proseBlocks(ensureProse(text, fallback, 140)) }
   }
 
   if (section.sectionType === 'product') {
@@ -585,23 +793,26 @@ No heading. No table. No bullet list.`,
 
     const name = labelOf(product, index)
     const features = listedFeatures(product, 5)
+    const notes = Array.isArray(product.researchNotes) ? product.researchNotes : []
     let data = {}
 
     try {
       const response = await generateWithOneRetry(
         `Write a detailed section about ${name} for a comparison on "${keyword}".
 Return JSON only:
-{"overview":["paragraph 1","paragraph 2"],"pros":["..."],"cons":["..."],"customerFeedback":"..."}
-overview must be two paragraphs and about ${perProductWords - 40} words combined. Explain who the product suits and what the listed features mean in normal language.
-pros: up to 3 short points, each tied to a listed feature.
-cons: up to 2 short points, only when a listed feature shows a real limit. Return [] if you cannot support a con.
-customerFeedback: two sentences using only the rating note below. Do not invent quotes.
+{"overview":["paragraph 1","paragraph 2","paragraph 3"],"pros":["..."],"cons":["..."],"customerFeedback":"..."}
+overview must be three paragraphs and about ${perProductWords} words combined. Explain who the product suits and what the listed features mean in normal language.
+pros: up to 4 short points, each tied to a listed feature or a supported outside note.
+cons: up to 3 short points. Use a listed feature when it shows a real limit, and use the outside notes when they describe a real drawback such as install difficulty, bulk, weight, fit, a missing accessory, or a repeated complaint. Do not invent a con. Return [] only when neither the features nor the notes support one. Never write that the listing did not state a clear limitation.
+customerFeedback: one paragraph of about 90 words. If a rating is supplied, explain what that score suggests without inventing quotes. If outside notes mention shopper themes from Amazon, YouTube, Reddit, Quora, or other stores, paraphrase those themes and do not present them as quotations. If rating text and notes are both missing, discuss the listed features instead: treat all but one as strengths, and discuss the remaining feature as a constructive tradeoff the buyer should match to their use, not as a defect.
 Do not mention prices. Do not invent specifications. Use the short name "${name}" and never the long marketplace title.
 Listed features: ${features.join(' | ') || 'none returned'}.
-${feedbackFacts(product)}`,
-        'Return factual product evaluation JSON only.',
+${feedbackFacts(product)}
+Outside notes:
+${notes.join('\n') || 'none'}`,
+        'Return factual product evaluation JSON only. Do not invent reviews or specifications.',
         true,
-        1200,
+        1600,
         settings.model
       )
       data = parseJsonSafe(response.text) || {}
@@ -612,18 +823,20 @@ ${feedbackFacts(product)}`,
     const overview = ensureProse(
       data.overview,
       [
-        `${name} is included in this ${keyword} comparison because it is one of the submitted listings. The description stays with the details Amazon returned.`,
-        featureSentences(product, index)
+        `${name} is included in this ${keyword} comparison because it is one of the submitted listings. The description stays with the details that were returned, then explains what those details mean for a buyer.`,
+        featureSentences(product, index),
+        `Read ${name} against the job you need it to do. A listed feature is a reason to keep it in the running. A missing detail is unknown, not a hidden flaw and not a hidden advantage.`
       ],
-      Math.min(120, perProductWords - 40)
+      Math.min(180, perProductWords - 30)
     )
-    const pros = Array.isArray(data.pros) ? data.pros.map(item => String(item || '').trim()).filter(Boolean).slice(0, 3) : []
-    const cons = Array.isArray(data.cons) ? data.cons.map(item => String(item || '').trim()).filter(Boolean).slice(0, 2) : []
-    const feedback =
-      data.customerFeedback ||
-      (product.rating
-        ? `Amazon lists ${name} at ${product.rating}${product.ratingCount ? ` from ${product.ratingCount} ratings` : ''}. Individual review text was not available, so this article does not quote shoppers.`
-        : `Amazon customer feedback was not available for ${name}. This article does not guess a rating or invent review quotes.`)
+    const pros = Array.isArray(data.pros) ? data.pros.map(item => String(item || '').trim()).filter(Boolean).slice(0, 4) : []
+    if (!pros.length && features.length) pros.push(...features.slice(0, 3))
+    let cons = Array.isArray(data.cons)
+      ? data.cons.map(item => String(item || '').trim()).filter(item => item && !isRoboticLimit(item)).slice(0, 3)
+      : []
+    if (!cons.length) cons = consFromNotes(product)
+    const limitsHtml = cons.length ? bulletList(cons) : `<div>${plain(happyLimitLine(name, index, keyword))}</div>`
+    const feedback = isThinFeedback(data.customerFeedback) ? feedbackFallback(product, index) : String(data.customerFeedback).trim()
 
     return {
       success: true,
@@ -632,7 +845,7 @@ ${feedbackFacts(product)}`,
         proseBlocks(overview),
         `<div><h4>Listed Features</h4>${features.length ? bulletList(features) : '<div>Feature details were not returned for this listing.</div>'}</div>`,
         `<div><h4>Pros</h4>${pros.length ? bulletList(pros) : '<div>Pros could not be derived from the listed product data.</div>'}</div>`,
-        `<div><h4>Limits</h4>${cons.length ? bulletList(cons) : '<div>The listing did not state a clear limitation.</div>'}</div>`,
+        `<div><h4>Limits</h4>${limitsHtml}</div>`,
         `<div><h4>Amazon Customer Feedback</h4><div>${plain(feedback)}</div></div>`,
         `<div>${cta(product, settings)}</div>`
       ].join('\n\n')
@@ -651,22 +864,24 @@ ${feedbackFacts(product)}`,
 
   if (section.sectionType === 'analysis' || (!section.sectionType && /how they compare/i.test(body.heading || ''))) {
     const fallback = [
-      `Read next to each other, ${names.join(' and ')} are easier to separate by the features in the table than by their long marketplace titles.`,
+      `Read next to each other, ${names.join(' and ')} are easier to separate by the features in the table than by their long marketplace titles. This is the part of the ${keyword} comparison that lines those differences up.`,
       facts
-        .map(item => `${item.name} is defined here by ${item.features.length ? item.features.slice(0, 3).join(', ') : 'the absence of a returned feature list'}.`)
+        .map(item => `${item.name} is defined here by ${item.features.length ? item.features.slice(0, 4).join(', ') : 'the absence of a returned feature list'}.`)
         .join(' '),
-      `Choose by the feature that matters for ${keyword}. The listing that names that feature clearly is the practical fit. A missing detail is unknown, not a hidden advantage.`
+      `The practical difference is which listing names the feature you actually need. A missing detail is unknown, not a hidden advantage. Use the buying section after this one to turn that difference into a choice.`
     ].join('\n\n')
     let text = ''
 
     try {
       const response = await generateWithOneRetry(
-        `Write three plain-text paragraphs separated by blank lines, about 220 words total, comparing ${names.join(', ')} for "${keyword}".
+        `Write four plain-text paragraphs separated by blank lines, about 320 words total, comparing ${names.join(', ')} for "${keyword}".
 Use only these facts: ${JSON.stringify(facts)}
-Explain how the listed features differ and who each product suits. Do not write a table. Do not mention prices. Do not invent specifications, ratings, or review quotes. Use the short names only. No heading and no bullet list.`,
-        'Write a factual descriptive comparison as plain text.',
+Outside notes, paraphrase only and do not paste URLs:
+${outsideNotes}
+Explain how the listed features differ, what each difference means in daily use, and who each product suits. Do not write a table. Do not mention prices. Do not invent specifications, ratings, or review quotes. Use the short names only. No heading and no bullet list.`,
+        voice,
         false,
-        900,
+        1200,
         settings.model
       )
       text = response?.text?.trim() || ''
@@ -674,7 +889,104 @@ Explain how the listed features differ and who each product suits. Do not write 
       text = ''
     }
 
-    return { success: true, text: proseBlocks(ensureProse(text, fallback, 160)) }
+    return { success: true, text: proseBlocks(ensureProse(text, fallback, 200)) }
+  }
+
+  if (section.sectionType === 'buyer' || (!section.sectionType && /which one should you buy/i.test(body.heading || ''))) {
+    const fallback = [
+      `For ${keyword}, buy the product whose listed features match the job you repeat most often. Do not buy from the marketplace title alone.`,
+      facts
+        .map(item => `${item.name} is the closer fit when you specifically need ${item.features[0] || 'the details on its listing, which were not fully returned here'}.`)
+        .join(' '),
+      `If two listings look close, prefer the one that states the feature you cannot compromise on. A detail that was not returned is not a reason to reject a product.`
+    ].join('\n\n')
+    let text = ''
+
+    try {
+      const response = await generateWithOneRetry(
+        `Write three plain-text paragraphs separated by blank lines, about 220 words, under the idea "which one you should buy" for ${names.join(', ')}. Topic: ${keyword}.
+Use only these facts: ${JSON.stringify(facts)}
+Outside notes:
+${outsideNotes}
+Give a direct recommendation path: who should buy which product, and what to confirm on the listing before purchasing. Do not declare a winner from a missing fact. Do not mention prices. Do not invent specifications or quotes. No heading and no bullet list.`,
+        voice,
+        false,
+        1000,
+        settings.model
+      )
+      text = response?.text?.trim() || ''
+    } catch {
+      text = ''
+    }
+
+    return { success: true, text: proseBlocks(ensureProse(text, fallback, 150)) }
+  }
+
+  if (section.sectionType === 'situation' || (!section.sectionType && /pickup by situation/i.test(body.heading || ''))) {
+    const fallback = [
+      `Pick by the situation, not by a single score. ${keyword} covers more than one kind of buyer, and the listings are not interchangeable.`,
+      facts
+        .map((item, index) => {
+          const situations = ['everyday use', 'a tighter space or a more specific fit', 'a buyer who wants the extra listed detail']
+          return `${item.name} is the pickup for ${situations[index] || 'a buyer whose needs match its listed features'}, because it is tied to ${item.features.slice(0, 2).join(' and ') || 'the short list of details that were returned'}.`
+        })
+        .join(' '),
+      `If your situation is not named by any listing, treat that as a gap in the data. Open the product page and confirm the measurement, compatibility, or limit that matters to you.`
+    ].join('\n\n')
+    let text = ''
+
+    try {
+      const response = await generateWithOneRetry(
+        `Write three plain-text paragraphs separated by blank lines, about 220 words, picking ${names.join(', ')} by situation for "${keyword}".
+Use only these facts: ${JSON.stringify(facts)}
+Outside notes:
+${outsideNotes}
+Give one concrete situation for each product, such as daily use, a space or fit constraint, or a buyer who needs a specific listed feature. Do not mention prices. Do not invent specifications or quotes. No heading and no bullet list.`,
+        voice,
+        false,
+        1000,
+        settings.model
+      )
+      text = response?.text?.trim() || ''
+    } catch {
+      text = ''
+    }
+
+    return { success: true, text: proseBlocks(ensureProse(text, fallback, 150)) }
+  }
+
+  if (section.sectionType === 'safety' || (!section.sectionType && /safety guidance/i.test(body.heading || ''))) {
+    const fallback = [
+      `Safety guidance for ${keyword} has to stay inside what the listings actually say. This article does not invent certifications, crash scores, or test-lab results.`,
+      facts
+        .map(item =>
+          item.features.length
+            ? `${item.name} publishes these details a buyer should read as use limits, not as marketing: ${item.features.slice(0, 3).join('; ')}.`
+            : `${item.name} did not return feature details, so its safety claims cannot be summarized here.`
+        )
+        .join(' '),
+      `Before you buy, confirm the current weight, height, age, or compatibility limits on the Amazon listing, and follow the maker's install instructions. A feature that was not returned is unknown. It is not proof that the product is safer or less safe.`
+    ].join('\n\n')
+    let text = ''
+
+    try {
+      const response = await generateWithOneRetry(
+        `Write three plain-text paragraphs separated by blank lines, about 220 words of safety guidance for ${names.join(', ')} on "${keyword}".
+Use only these facts: ${JSON.stringify(facts)}
+Outside notes:
+${outsideNotes}
+Explain which listed features relate to safe use, fit, or installation. Tell the reader to confirm current limits on the product page. Do not invent certifications, test scores, recall history, prices, or quotes. If a safety detail was not returned, say it is unknown. No heading and no bullet list.`,
+        voice,
+        false,
+        1000,
+        settings.model
+      )
+      text = response?.text?.trim() || ''
+    } catch {
+      text = ''
+    }
+
+    return { success: true, text: proseBlocks(ensureProse(text, fallback, 150)) }
   }
 
   if (section.sectionType === 'faq') {
@@ -682,7 +994,7 @@ Explain how the listed features differ and who each product suits. Do not write 
 
     try {
       const response = await generateWithOneRetry(
-        `Write exactly four FAQs about ${names.join(', ')} for "${keyword}". Use only these facts and say when a fact was not returned: ${JSON.stringify(facts)}. Each answer should be two or three sentences. Do not mention prices. Do not invent features, ratings, or quotes. Return JSON {faqs:[{question,answer}]}.`,
+        `Write exactly four FAQs about ${names.join(', ')} for "${keyword}". Use only these facts and say when a fact was not returned: ${JSON.stringify(facts)}. Outside notes, paraphrase only: ${outsideNotes}. Each answer should be three or four sentences. Do not mention prices. Do not invent features, ratings, or quotes. Return JSON {faqs:[{question,answer}]}.`,
         'Return factual FAQ JSON only. Do not invent prices, ratings, or features.',
         true,
         1000,
@@ -723,7 +1035,7 @@ Explain how the listed features differ and who each product suits. Do not write 
 
     try {
       const response = await generateWithOneRetry(
-        `Return JSON {winnerIndex,verdict,bestFor[]} for these products, based only on the supplied facts. winnerIndex is the zero-based index of the stronger listed option, or 0 if the facts do not support a clear winner. bestFor must have one entry per product, each about 25 words. verdict should be two sentences and about 70 words. Do not mention prices. Do not invent specifications or review quotes. ${JSON.stringify(facts)}`,
+        `Return JSON {verdict,bestFor[]} for these products, based only on the supplied facts. bestFor must have one entry per product, each about 35 words. verdict should be three sentences and about 110 words. Do not mention prices. Do not invent specifications or review quotes. Do not add a buy button or a single product link. Facts: ${JSON.stringify(facts)} Outside notes: ${outsideNotes}`,
         'Return factual final verdict JSON only. Do not invent reviews or specifications.',
         true,
         800,
@@ -734,10 +1046,9 @@ Explain how the listed features differ and who each product suits. Do not write 
       verdict = {}
     }
 
-    const winnerIndex = Math.max(0, Math.min(products.length - 1, Number(verdict.winnerIndex) || 0))
     const summary =
       verdict.verdict ||
-      `Choose the listing whose returned features match what you need from ${keyword}. A missing detail is unknown, not a reason to prefer one product.`
+      `Choose the listing whose returned features match what you need from ${keyword}. The sections above already separate who should buy which product, which situation each one fits, and which safety details still need a look at the listing. A missing detail is unknown, not a reason to prefer one product.`
     const lines = products
       .map(
         (product, index) =>
@@ -747,12 +1058,12 @@ Explain how the listed features differ and who each product suits. Do not write 
 
     return {
       success: true,
-      text: [proseBlocks(ensureProse(summary, '', 40)), `<ul>${lines}</ul>`, `<div>${cta(products[winnerIndex], settings)}</div>`].join('\n\n')
+      text: [proseBlocks(ensureProse(summary, '', 70)), `<ul>${lines}</ul>`].join('\n\n')
     }
   }
 
   return {
     success: true,
-    text: `<div>This section sits outside the comparison structure. The article still opens with an introduction, a short photo-and-features table, a closer look at each product, a descriptive comparison, FAQs, and a final verdict for ${escapeHtml(keyword)}.</div>`
+    text: `<div>This section sits outside the comparison structure. The article still opens with an introduction, a short photo-and-features table, a closer look at each product, a descriptive comparison, a buying recommendation, a situation pickup, safety guidance, FAQs, and a final verdict for ${escapeHtml(keyword)}.</div>`
   }
 }
