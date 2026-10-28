@@ -883,6 +883,9 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
   const [customWPData, setCustomWPData] = useState({ name: '', url: '', username: '', password: '' })
   const [saveSiteToDb, setSaveSiteToDb] = useState(false)
   const [userSavedSites, setUserSavedSites] = useState([])
+  const [siteAllowance, setSiteAllowance] = useState({ limit: null, unlimited: false })
+  const savedSiteCount = userSavedSites.length
+  const siteCapReached = !siteAllowance.unlimited && siteAllowance.limit != null && savedSiteCount >= Number(siteAllowance.limit)
   const [isPublishing, setIsPublishing] = useState(false)
   const [publishTitle, setPublishTitle] = useState('')
   const [heroImageUrl, setHeroImageUrl] = useState(settings?.heroImage || '')
@@ -939,6 +942,14 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
       return
     }
 
+    if (resolvedSiteSelection === 'custom' && siteCapReached) {
+      toast.error(
+        `This plan can add ${siteAllowance.limit} website${Number(siteAllowance.limit) === 1 ? '' : 's'}. Only the Max plan can add unlimited websites.`
+      )
+
+      return
+    }
+
     let scheduledAtIso = ''
 
     if (status === 'future') {
@@ -973,15 +984,23 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
         const saveData = await saveRes.json()
 
-        if (saveData.success) {
-          setUserSavedSites(prev => [...prev, saveData.site])
-          activeCustomData = { ...customWPData, id: saveData.site?.id }
+        if (!saveRes.ok || !saveData.success) {
+          toast.error(serializeError(saveData.error) || 'Could not save this website.')
 
-          if (saveData.functionsPhp?.status === 'added') {
-            toast.success('Added the meta tag code to this site’s functions.php.')
-          } else if (saveData.functionsPhp?.status === 'failed') {
-            toast.warning(saveData.functionsPhp.error || 'Saved the site, but functions.php was not updated.')
-          }
+          return
+        }
+
+        setUserSavedSites(prev => [...prev, saveData.site])
+        setSiteAllowance(prev => ({
+          limit: saveData.unlimited ? null : saveData.websiteLimit ?? prev.limit,
+          unlimited: Boolean(saveData.unlimited)
+        }))
+        activeCustomData = { ...customWPData, id: saveData.site?.id }
+
+        if (saveData.functionsPhp?.status === 'added') {
+          toast.success('Added the meta tag code to this site’s functions.php.')
+        } else if (saveData.functionsPhp?.status === 'failed') {
+          toast.warning(saveData.functionsPhp.error || 'Saved the site, but functions.php was not updated.')
         }
       }
 
@@ -1250,6 +1269,10 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           const data = await res.json()
 
           setUserSavedSites(data.sites || [])
+          setSiteAllowance({
+            limit: data.unlimited ? null : data.websiteLimit,
+            unlimited: Boolean(data.unlimited)
+          })
         }
       } catch (error) {
         console.error('Failed to load custom sites', error)
@@ -2693,6 +2716,13 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                   <MenuItem value='custom'>➕ Add Custom WordPress Site</MenuItem>
                 </Select>
               </FormControl>
+              <Typography variant='caption' color='text.secondary'>
+                {siteAllowance.unlimited
+                  ? `Saved websites: ${savedSiteCount}. This plan can add unlimited websites.`
+                  : siteAllowance.limit == null
+                    ? `Saved websites: ${savedSiteCount}.`
+                    : `Saved websites: ${savedSiteCount} of ${siteAllowance.limit}. Only the Max plan can add unlimited websites.`}
+              </Typography>
 
               {siteSelectionType === 'custom' && (
                 <div className='flex flex-col gap-3 p-4 border rounded-md bg-gray-50'>
@@ -2734,9 +2764,20 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                   />
 
                   <FormControlLabel
-                    control={<Checkbox checked={saveSiteToDb} onChange={e => setSaveSiteToDb(e.target.checked)} />}
+                    control={
+                      <Checkbox
+                        checked={saveSiteToDb && !siteCapReached}
+                        disabled={siteCapReached}
+                        onChange={e => setSaveSiteToDb(e.target.checked)}
+                      />
+                    }
                     label='Save this site to my profile for future use'
                   />
+                  {siteCapReached ? (
+                    <Alert severity='warning'>
+                      Website limit reached ({savedSiteCount} of {siteAllowance.limit}). Only the Max plan can add unlimited websites.
+                    </Alert>
+                  ) : null}
                 </div>
               )}
             </>

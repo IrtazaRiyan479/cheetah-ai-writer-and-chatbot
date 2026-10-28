@@ -3,14 +3,19 @@ import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 import { requireAdmin } from '../_auth'
-import { FREE_WORD_CAP } from '@/libs/entitlement'
+import { FREE_WORD_CAP, getWebsiteLimitDefaults } from '@/libs/entitlement'
 import { serializeError } from '@/utils/serializeError'
 
 const prisma = global.prisma || new PrismaClient()
 
 if (process.env.NODE_ENV !== 'production') global.prisma = prisma
 
-function publicUser(user) {
+const ROLES = ['free', 'pro', 'max', 'admin']
+
+function publicUser(user, defaults = { free: 1, pro: 7 }) {
+  const unlimited = user.role === 'max' || user.plan === 'max' || user.role === 'admin' || user.plan === 'admin'
+  const fallback = user.role === 'pro' || user.plan === 'pro' ? defaults.pro : defaults.free
+
   return {
     id: user.id,
     name: user.name,
@@ -20,7 +25,11 @@ function publicUser(user) {
     subscriptionStatus: user.subscriptionStatus,
     wordsUsed: user.wordsUsed,
     wordsLimit: user.wordsLimit,
-    stripeCustomerId: user.stripeCustomerId || null
+    stripeCustomerId: user.stripeCustomerId || null,
+    websiteLimit: unlimited ? null : user.websiteLimitCustomized ? user.websiteLimit : fallback,
+    websiteLimitCustomized: Boolean(user.websiteLimitCustomized),
+    websitesUsed: user._count?.customWPSites || 0,
+    websitesUnlimited: unlimited
   }
 }
 
@@ -34,13 +43,14 @@ export async function GET(request) {
 
     if (gate.error) return gate.error
 
-    const [users, setting] = await Promise.all([
-      prisma.user.findMany({ orderBy: { email: 'asc' } }),
-      prisma.appSetting.findUnique({ where: { key: 'globalFreeWordCap' } })
+    const [users, setting, defaults] = await Promise.all([
+      prisma.user.findMany({ orderBy: { email: 'asc' }, include: { _count: { select: { customWPSites: true } } } }),
+      prisma.appSetting.findUnique({ where: { key: 'globalFreeWordCap' } }),
+      getWebsiteLimitDefaults()
     ])
     const cap = Math.max(0, Number(setting?.value ?? FREE_WORD_CAP))
 
-    return NextResponse.json({ success: true, users: users.map(user => ({ ...publicUser(user), wordsLimit: user.wordsLimitCustomized ? user.wordsLimit : cap })) })
+    return NextResponse.json({ success: true, users: users.map(user => ({ ...publicUser(user, defaults), wordsLimit: user.wordsLimitCustomized ? user.wordsLimit : cap })) })
   } catch (error) {
     return responseError(error)
   }
@@ -52,12 +62,13 @@ export async function POST(request) {
 
     if (gate.error) return gate.error
 
-    const { name, email, password, role = 'free', wordsLimit } = await request.json()
+    const { name, email, password, role = 'free', wordsLimit, websiteLimit } = await request.json()
 
     if (!email || !password) return responseError(new Error('Email and password are required.'), 400)
     if (String(password).length < 8) return responseError(new Error('Password must be at least 8 characters.'), 400)
-    if (!['free', 'pro', 'admin'].includes(role)) return responseError(new Error('Invalid role.'), 400)
+    if (!ROLES.includes(role)) return responseError(new Error('Invalid role.'), 400)
     if (wordsLimit !== undefined && wordsLimit !== '' && (!Number.isInteger(Number(wordsLimit)) || Number(wordsLimit) < 0)) return responseError(new Error('Word limit must be a non-negative whole number.'), 400)
+    if (websiteLimit !== undefined && websiteLimit !== '' && websiteLimit !== null && (!Number.isInteger(Number(websiteLimit)) || Number(websiteLimit) < 0)) return responseError(new Error('Website limit must be a non-negative whole number.'), 400)
 
     const defaultCapSetting = await prisma.appSetting.findUnique({ where: { key: 'globalFreeWordCap' } })
     const defaultCap = Math.max(0, Number(defaultCapSetting?.value ?? FREE_WORD_CAP))
@@ -69,11 +80,13 @@ export async function POST(request) {
         role,
         plan: role,
         wordsLimit: Number.isInteger(Number(wordsLimit)) && wordsLimit !== '' && Number(wordsLimit) >= 0 ? Number(wordsLimit) : defaultCap,
-        wordsLimitCustomized: wordsLimit !== undefined && wordsLimit !== ''
+        wordsLimitCustomized: wordsLimit !== undefined && wordsLimit !== '',
+        websiteLimit: websiteLimit !== undefined && websiteLimit !== '' && websiteLimit !== null ? Number(websiteLimit) : 1,
+        websiteLimitCustomized: websiteLimit !== undefined && websiteLimit !== '' && websiteLimit !== null
       }
     })
 
-    return NextResponse.json({ success: true, user: publicUser(created) })
+    return NextResponse.json({ success: true, user: publicUser(created, await getWebsiteLimitDefaults()) })
   } catch (error) {
     return responseError(error)
   }
@@ -85,12 +98,12 @@ export async function PATCH(request) {
 
     if (gate.error) return gate.error
 
-    const { id, password, role, wordsLimit, name, email } = await request.json()
+    const { id, password, role, wordsLimit, websiteLimit, name, email } = await request.json()
     const target = await prisma.user.findUnique({ where: { id } })
 
     if (!target) return responseError(new Error('User not found.'), 404)
 
-    if (role !== undefined && !['free', 'pro', 'admin'].includes(role)) return responseError(new Error('Invalid role.'), 400)
+    if (role !== undefined && !ROLES.includes(role)) return responseError(new Error('Invalid role.'), 400)
     if (role && role !== 'admin' && target.role === 'admin') {
       if (target.id === gate.user.id) return responseError(new Error('You cannot remove your own admin access.'), 403)
       const admins = await prisma.user.count({ where: { role: 'admin' } })
@@ -102,6 +115,9 @@ export async function PATCH(request) {
     }
     if (wordsLimit !== undefined && (!Number.isInteger(Number(wordsLimit)) || Number(wordsLimit) < 0)) {
       return responseError(new Error('Word limit must be a non-negative whole number.'), 400)
+    }
+    if (websiteLimit !== undefined && websiteLimit !== '' && websiteLimit !== null && (!Number.isInteger(Number(websiteLimit)) || Number(websiteLimit) < 0)) {
+      return responseError(new Error('Website limit must be a non-negative whole number.'), 400)
     }
 
     const data = {}
@@ -116,12 +132,18 @@ export async function PATCH(request) {
       data.wordsLimit = Number(wordsLimit)
       data.wordsLimitCustomized = true
     }
+    if (websiteLimit === '' || websiteLimit === null) {
+      data.websiteLimitCustomized = false
+    } else if (websiteLimit !== undefined) {
+      data.websiteLimit = Number(websiteLimit)
+      data.websiteLimitCustomized = true
+    }
     if (name !== undefined) data.name = name
     if (email !== undefined) data.email = email
 
-    const updated = await prisma.user.update({ where: { id }, data })
+    const updated = await prisma.user.update({ where: { id }, data, include: { _count: { select: { customWPSites: true } } } })
 
-    return NextResponse.json({ success: true, user: publicUser(updated) })
+    return NextResponse.json({ success: true, user: publicUser(updated, await getWebsiteLimitDefaults()) })
   } catch (error) {
     return responseError(error)
   }

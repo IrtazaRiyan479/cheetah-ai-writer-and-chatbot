@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client'
 
 import { requireAdmin } from '../_auth'
 import { serializeError } from '@/utils/serializeError'
-import { FREE_WORD_CAP } from '@/libs/entitlement'
+import { FREE_WORD_CAP, getWebsiteLimitDefaults } from '@/libs/entitlement'
 
 const prisma = global.prisma || new PrismaClient()
 
@@ -14,12 +14,13 @@ export async function GET(request) {
 
     if (gate.error) return gate.error
 
-    const [users, flags, setting] = await Promise.all([
+    const [users, flags, setting, websiteLimits] = await Promise.all([
       prisma.user.findMany({
         select: { wordsUsed: true, wordsLimit: true, wordsLimitCustomized: true, role: true, plan: true }
       }),
       prisma.featureFlag.findMany(),
-      prisma.appSetting.findUnique({ where: { key: 'globalFreeWordCap' } })
+      prisma.appSetting.findUnique({ where: { key: 'globalFreeWordCap' } }),
+      getWebsiteLimitDefaults()
     ])
 
     const globalFreeWordCap = Math.max(0, Number(setting?.value ?? FREE_WORD_CAP))
@@ -45,7 +46,8 @@ export async function GET(request) {
         wordsUsed,
         wordsCap,
         flagsOff: flags.filter(flag => flag.mode === 'off' || flag.enabled === false).length,
-        globalFreeWordCap
+        globalFreeWordCap,
+        websiteLimits
       }
     })
   } catch (error) {
@@ -59,24 +61,49 @@ export async function PATCH(request) {
 
     if (gate.error) return gate.error
 
-    const { globalFreeWordCap } = await request.json()
+    const body = await request.json()
+    const { globalFreeWordCap, websiteLimits } = body
 
-    if (!Number.isInteger(Number(globalFreeWordCap)) || Number(globalFreeWordCap) < 0) {
-      return Response.json(
-        { success: false, error: 'The global word cap must be a non-negative whole number.' },
-        { status: 400 }
-      )
+    if (globalFreeWordCap !== undefined) {
+      if (!Number.isInteger(Number(globalFreeWordCap)) || Number(globalFreeWordCap) < 0) {
+        return Response.json(
+          { success: false, error: 'The global word cap must be a non-negative whole number.' },
+          { status: 400 }
+        )
+      }
+
+      await prisma.appSetting.upsert({
+        where: { key: 'globalFreeWordCap' },
+        create: { key: 'globalFreeWordCap', value: String(Number(globalFreeWordCap)) },
+        update: { value: String(Number(globalFreeWordCap)) }
+      })
+      await prisma.user.updateMany({
+        where: { wordsLimitCustomized: false },
+        data: { wordsLimit: Number(globalFreeWordCap) }
+      })
     }
 
-    await prisma.appSetting.upsert({
-      where: { key: 'globalFreeWordCap' },
-      create: { key: 'globalFreeWordCap', value: String(Number(globalFreeWordCap)) },
-      update: { value: String(Number(globalFreeWordCap)) }
-    })
-    await prisma.user.updateMany({
-      where: { wordsLimitCustomized: false },
-      data: { wordsLimit: Number(globalFreeWordCap) }
-    })
+    if (websiteLimits !== undefined) {
+      const free = Number(websiteLimits?.free)
+      const pro = Number(websiteLimits?.pro)
+
+      if (!Number.isInteger(free) || free < 0 || !Number.isInteger(pro) || pro < 0) {
+        return Response.json(
+          { success: false, error: 'Website caps must be non-negative whole numbers. Max stays unlimited.' },
+          { status: 400 }
+        )
+      }
+
+      await prisma.appSetting.upsert({
+        where: { key: 'websiteLimits' },
+        create: { key: 'websiteLimits', value: JSON.stringify({ free, pro }) },
+        update: { value: JSON.stringify({ free, pro }) }
+      })
+    }
+
+    if (globalFreeWordCap === undefined && websiteLimits === undefined) {
+      return Response.json({ success: false, error: 'Nothing to save.' }, { status: 400 })
+    }
 
     return Response.json({ success: true })
   } catch (error) {

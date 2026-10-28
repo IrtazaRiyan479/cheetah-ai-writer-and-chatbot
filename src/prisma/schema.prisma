@@ -52,6 +52,8 @@ model User {
   wordsUsed     Int       @default(0)
   wordsLimit    Int       @default(5000)
   wordsLimitCustomized Boolean @default(false)
+  websiteLimit  Int       @default(1)
+  websiteLimitCustomized Boolean @default(false)
   accounts      Account[]
   sessions      Session[]
   generatedImages GeneratedImage[]

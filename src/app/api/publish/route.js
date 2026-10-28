@@ -7,7 +7,7 @@ import { PrismaClient } from '@prisma/client'
 import { getServerSession } from 'next-auth'
 
 import { authOptions } from '@/libs/auth'
-import { assertCanGenerate } from '@/libs/entitlement'
+import { assertCanGenerate, effectiveWebsiteLimit, getWebsiteLimitDefaults } from '@/libs/entitlement'
 import { ensureAiMetaFunctions } from '@/libs/wpThemeFunctions'
 import { serializeError } from '@/utils/serializeError'
 
@@ -727,6 +727,39 @@ export async function POST(request) {
       siteUrl = customSite.url
       wpUsername = customSite.username
       wpPassword = customSite.password
+
+      if (owner && !customSite.id) {
+        const websiteLimit = effectiveWebsiteLimit(owner, await getWebsiteLimitDefaults())
+
+        if (websiteLimit != null) {
+          const rows = await prisma.customWPSite.findMany({ where: { userId: owner.id }, select: { url: true } })
+          let target = ''
+
+          try {
+            target = normalizeWpSiteUrl(customSite.url)
+          } catch {
+            target = String(customSite.url || '').trim()
+          }
+
+          const alreadySaved = rows.some(row => {
+            try {
+              return normalizeWpSiteUrl(row.url) === target
+            } catch {
+              return false
+            }
+          })
+
+          if (!alreadySaved && rows.length >= websiteLimit) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: `This plan can add ${websiteLimit} website${websiteLimit === 1 ? '' : 's'}. Only the Max plan can add unlimited websites.`
+              },
+              { status: 403 }
+            )
+          }
+        }
+      }
     }
 
     if (!siteUrl || !wpUsername || !wpPassword) {

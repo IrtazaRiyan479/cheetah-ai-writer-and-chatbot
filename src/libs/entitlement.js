@@ -555,6 +555,35 @@ export function isPaid(user) {
   return tier === 'pro' || tier === 'max' || tier === 'admin'
 }
 
+export const DEFAULT_WEBSITE_LIMITS = { free: 1, pro: 7 }
+
+export async function getWebsiteLimitDefaults() {
+  const setting = await prisma.appSetting.findUnique({ where: { key: 'websiteLimits' } }).catch(() => null)
+  let parsed = {}
+
+  try {
+    parsed = setting?.value ? JSON.parse(setting.value) : {}
+  } catch {
+    parsed = {}
+  }
+
+  const free = Number(parsed.free)
+  const pro = Number(parsed.pro)
+
+  return {
+    free: Number.isInteger(free) && free >= 0 ? free : DEFAULT_WEBSITE_LIMITS.free,
+    pro: Number.isInteger(pro) && pro >= 0 ? pro : DEFAULT_WEBSITE_LIMITS.pro
+  }
+}
+
+export function effectiveWebsiteLimit(user, defaults = DEFAULT_WEBSITE_LIMITS) {
+  if (!user) return 0
+  if (isMax(user)) return null
+  if (user.websiteLimitCustomized) return Math.max(0, Number(user.websiteLimit) || 0)
+
+  return planTier(user) === 'pro' ? defaults.pro : defaults.free
+}
+
 export async function getDbUser({ userId, email }) {
   if (userId) return prisma.user.findUnique({ where: { id: userId } })
   if (email) return prisma.user.findUnique({ where: { email } })

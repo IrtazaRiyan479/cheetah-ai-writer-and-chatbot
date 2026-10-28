@@ -23,7 +23,7 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import { toast } from 'react-toastify'
 
-const blank = { id: '', name: '', email: '', password: '', role: 'free', wordsLimit: '' }
+const blank = { id: '', name: '', email: '', password: '', role: 'free', wordsLimit: '', websitePlan: 'default', websiteLimit: '' }
 
 export default function UsersPanel() {
   const { data: session } = useSession()
@@ -53,7 +53,8 @@ export default function UsersPanel() {
     setBusy(true)
     try {
       const editing = Boolean(form.id)
-      const response = await fetch('/api/admin/users', { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, wordsLimit: form.wordsLimit === '' ? undefined : Number(form.wordsLimit) }) })
+      const websiteLimit = form.websitePlan === 'default' ? '' : form.websitePlan === 'custom' ? Number(form.websiteLimit) : Number(form.websitePlan)
+      const response = await fetch('/api/admin/users', { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, wordsLimit: form.wordsLimit === '' ? undefined : Number(form.wordsLimit), websiteLimit }) })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Could not save user.')
       toast.success(editing ? 'User updated.' : 'User created.')
@@ -101,16 +102,24 @@ export default function UsersPanel() {
 
   return <>
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}><Typography color='text.secondary'>{users.length.toLocaleString()} accounts</Typography><Button variant='contained' disabled={busy} onClick={() => { setForm(blank); setDialog(true) }}>Add user</Button></Box>
-    <Paper variant='outlined' sx={{ borderRadius: 3, overflow: 'auto' }}><Table size='small' sx={{ minWidth: 980 }}><TableHead><TableRow><TableCell>Email</TableCell><TableCell>Role</TableCell><TableCell>Plan / status</TableCell><TableCell>Words used / limit</TableCell><TableCell>Stripe customer</TableCell><TableCell align='right'>Actions</TableCell></TableRow></TableHead><TableBody>
-      {users.map(user => <TableRow key={user.id} hover><TableCell><Typography fontWeight={600}>{user.email}</Typography><Typography variant='caption' color='text.secondary'>{user.name || '—'}</Typography></TableCell><TableCell><Chip size='small' label={user.role} color={user.role === 'admin' ? 'primary' : 'default'} /></TableCell><TableCell>{user.plan || 'free'} / {user.subscriptionStatus || 'none'}</TableCell><TableCell>{Number(user.wordsUsed || 0).toLocaleString()} / {Number(user.wordsLimit || 0).toLocaleString()}</TableCell><TableCell><Tooltip title={user.stripeCustomerId || 'No Stripe customer'}><Typography variant='body2' sx={{ fontFamily: 'monospace' }}>{user.stripeCustomerId ? `${user.stripeCustomerId.slice(0, 8)}…${user.stripeCustomerId.slice(-5)}` : '—'}</Typography></Tooltip></TableCell><TableCell align='right' sx={{ whiteSpace: 'nowrap' }}><Button size='small' disabled={busy} onClick={() => { setForm({ id: user.id, name: user.name || '', email: user.email || '', password: '', role: user.role, wordsLimit: String(user.wordsLimit ?? '') }); setDialog(true) }}>Edit</Button><Button size='small' disabled={busy} onClick={() => { setSelected(user); setPasswordDialog(true) }}>Reset password</Button><Button size='small' color='error' disabled={busy || user.id === session?.user?.id} onClick={() => setDeleteTarget(user)}>Delete</Button>{user.id === session?.user?.id ? <Button size='small' disabled={busy} onClick={manageBilling}>Manage billing</Button> : null}</TableCell></TableRow>)}
-      {!users.length ? <TableRow><TableCell colSpan={6} align='center'>No users found.</TableCell></TableRow> : null}
+    <Paper variant='outlined' sx={{ borderRadius: 3, overflow: 'auto' }}><Table size='small' sx={{ minWidth: 1100 }}><TableHead><TableRow><TableCell>Email</TableCell><TableCell>Role</TableCell><TableCell>Plan / status</TableCell><TableCell>Words used / limit</TableCell><TableCell>Sites</TableCell><TableCell>Stripe customer</TableCell><TableCell align='right'>Actions</TableCell></TableRow></TableHead><TableBody>
+      {users.map(user => <TableRow key={user.id} hover><TableCell><Typography fontWeight={600}>{user.email}</Typography><Typography variant='caption' color='text.secondary'>{user.name || '—'}</Typography></TableCell><TableCell><Chip size='small' label={user.role} color={user.role === 'admin' ? 'primary' : 'default'} /></TableCell><TableCell>{user.plan || 'free'} / {user.subscriptionStatus || 'none'}</TableCell><TableCell>{Number(user.wordsUsed || 0).toLocaleString()} / {Number(user.wordsLimit || 0).toLocaleString()}</TableCell><TableCell>{user.websitesUnlimited ? `${user.websitesUsed} / unlimited` : `${user.websitesUsed} / ${user.websiteLimit}`}</TableCell><TableCell><Tooltip title={user.stripeCustomerId || 'No Stripe customer'}><Typography variant='body2' sx={{ fontFamily: 'monospace' }}>{user.stripeCustomerId ? `${user.stripeCustomerId.slice(0, 8)}…${user.stripeCustomerId.slice(-5)}` : '—'}</Typography></Tooltip></TableCell><TableCell align='right' sx={{ whiteSpace: 'nowrap' }}><Button size='small' disabled={busy} onClick={() => { const limitValue = user.websiteLimitCustomized ? String(user.websiteLimit ?? '') : ''; const known = ['1', '3', '7']; setForm({ id: user.id, name: user.name || '', email: user.email || '', password: '', role: user.role, wordsLimit: String(user.wordsLimit ?? ''), websitePlan: !user.websiteLimitCustomized ? 'default' : known.includes(limitValue) ? limitValue : 'custom', websiteLimit: limitValue }); setDialog(true) }}>Edit</Button><Button size='small' disabled={busy} onClick={() => { setSelected(user); setPasswordDialog(true) }}>Reset password</Button><Button size='small' color='error' disabled={busy || user.id === session?.user?.id} onClick={() => setDeleteTarget(user)}>Delete</Button>{user.id === session?.user?.id ? <Button size='small' disabled={busy} onClick={manageBilling}>Manage billing</Button> : null}</TableCell></TableRow>)}
+      {!users.length ? <TableRow><TableCell colSpan={7} align='center'>No users found.</TableCell></TableRow> : null}
     </TableBody></Table></Paper>
     <Dialog open={dialog} onClose={() => !busy && setDialog(false)} fullWidth maxWidth='sm'><Box component='form' onSubmit={saveUser}><DialogTitle>{form.id ? 'Edit user' : 'Add user'}</DialogTitle><DialogContent sx={{ display: 'grid', gap: 2, pt: '12px !important' }}>
       <TextField label='Name' value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} />
       <TextField required type='email' label='Email' value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} />
       {!form.id ? <TextField required type='password' label='Temporary password' value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} /> : null}
-      <TextField select label='Role' value={form.role} onChange={event => setForm({ ...form, role: event.target.value })}>{['free', 'pro', 'admin'].map(role => <MenuItem key={role} value={role}>{role}</MenuItem>)}</TextField>
-      <TextField type='number' label='Words limit' value={form.wordsLimit} onChange={event => setForm({ ...form, wordsLimit: event.target.value })} inputProps={{ min: 0, step: 1 }} />
+      <TextField select label='Role' value={form.role} onChange={event => setForm({ ...form, role: event.target.value })}>{['free', 'pro', 'max', 'admin'].map(role => <MenuItem key={role} value={role}>{role === 'max' ? 'max (unlimited websites)' : role}</MenuItem>)}</TextField>
+      <TextField type='number' label='Words limit' value={form.wordsLimit} onChange={event => setForm({ ...form, wordsLimit: event.target.value })} inputProps={{ min: 0, step: 1 }} helperText='Word generation cap. This is not an article count.' />
+      <TextField select label='Websites they can add' value={form.websitePlan} onChange={event => setForm({ ...form, websitePlan: event.target.value })} helperText='After the WhatsApp screenshot, set Pro and the site allowance. Max and admin ignore this and stay unlimited.'>
+        <MenuItem value='default'>Plan default</MenuItem>
+        <MenuItem value='1'>Starter — 1 site</MenuItem>
+        <MenuItem value='3'>Growth — 3 sites</MenuItem>
+        <MenuItem value='7'>Pro — up to 7 sites</MenuItem>
+        <MenuItem value='custom'>Custom number</MenuItem>
+      </TextField>
+      {form.websitePlan === 'custom' ? <TextField required type='number' label='Custom website limit' value={form.websiteLimit} onChange={event => setForm({ ...form, websiteLimit: event.target.value })} inputProps={{ min: 0, step: 1 }} /> : null}
     </DialogContent><DialogActions><Button disabled={busy} onClick={() => setDialog(false)}>Cancel</Button><Button type='submit' variant='contained' disabled={busy}>{busy ? <CircularProgress size={18} /> : 'Save'}</Button></DialogActions></Box></Dialog>
     <Dialog open={Boolean(deleteTarget)} onClose={() => !busy && setDeleteTarget(null)}>
       <DialogTitle>Delete user?</DialogTitle>

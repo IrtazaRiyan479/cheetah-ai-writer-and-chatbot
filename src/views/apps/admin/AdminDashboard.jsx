@@ -82,7 +82,7 @@ export default function AdminDashboard() {
                 <Chip size='small' label='Private' color='primary' variant='outlined' />
               </Box>
               <Typography variant='body2' color='text.secondary' sx={{ mt: 0.25 }}>
-                Access, word caps, and one-time word packs.
+                Access, word caps, website caps, and one-time word packs.
               </Typography>
             </Box>
           </Box>

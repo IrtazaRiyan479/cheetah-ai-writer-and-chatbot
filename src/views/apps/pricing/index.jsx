@@ -8,6 +8,7 @@ import PricingSection from '@views/apps/pricing/PricingSection'
 import FreeTrial from './FreeTrial'
 import Plans from './Plans'
 import Faqs from './Faqs'
+import ManualPlans from './ManualPlans'
 import { useSettings } from '@core/hooks/useSettings'
 
 const PricingWrapper = ({ data }) => {
@@ -25,6 +26,7 @@ const PricingWrapper = ({ data }) => {
   return (
     <>
       <PricingSection data={data} />
+      <ManualPlans />
       <FreeTrial />
       <Plans />
       <Faqs />
