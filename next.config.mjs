@@ -3,6 +3,10 @@ const nextConfig = {
     output: 'standalone',
     basePath: process.env.BASEPATH,
     serverExternalPackages: ['amazon-paapi'],
+    outputFileTracingIncludes: {
+        '/api/generate': ['./src/app/api/generate/utils/fonts/**/*'],
+        '/api/generate/batch': ['./src/app/api/generate/utils/fonts/**/*']
+    },
     redirects: async () => {
         return [
             {

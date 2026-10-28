@@ -1,7 +1,60 @@
+import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { dirname, join } from 'path'
+import { fileURLToPath } from 'url'
+
 import { geminiGenerateContent, listGeminiApiKeys } from './geminiKeys'
 import { resolvePaidTier } from './providerKeys'
 
 import { callLightLLM, parseJsonSafe } from './lightLLM'
+
+const HERO_FONT_FAMILY = 'DejaVu Sans'
+
+function heroFontDir() {
+  const bundled = dirname(fileURLToPath(new URL('./fonts/DejaVuSans-Bold.ttf', import.meta.url)))
+
+  if (existsSync(join(bundled, 'DejaVuSans-Bold.ttf'))) return bundled
+
+  const fromCwd = join(process.cwd(), 'src/app/api/generate/utils/fonts')
+
+  if (existsSync(join(fromCwd, 'DejaVuSans-Bold.ttf'))) return fromCwd
+
+  return ''
+}
+
+// librsvg draws a .notdef box per character when fontconfig has no Latin face.
+// Point it at the bundled DejaVu file before sharp loads.
+function ensureHeroFontconfig() {
+  try {
+    const fontDir = heroFontDir()
+
+    if (!fontDir) return
+
+    const cacheDir = join('/tmp', 'affigenie-fontconfig')
+
+    mkdirSync(cacheDir, { recursive: true })
+
+    const confPath = join(cacheDir, 'fonts.conf')
+    const xmlDir = fontDir.replace(/&/g, '\u0026amp;')
+    const conf = `<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <dir>${xmlDir}</dir>
+  <cachedir>${cacheDir}</cachedir>
+  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
+</fontconfig>`
+
+    if (!existsSync(confPath) || process.env.AFFIGENIE_FONTCONFIG_DIR !== fontDir) {
+      writeFileSync(confPath, conf)
+      process.env.AFFIGENIE_FONTCONFIG_DIR = fontDir
+    }
+
+    process.env.FONTCONFIG_FILE = confPath
+  } catch (error) {
+    console.warn('[hero] fontconfig setup failed', error?.message || error)
+  }
+}
+
+ensureHeroFontconfig()
 
 export function mediaKey(item) {
   if (!item) return ''
@@ -553,7 +606,7 @@ function heroSvg(title, siteName, hasPhoto) {
   let lines = []
 
   while (font >= 28) {
-    const max = Math.max(14, Math.floor(1000 / (font * 0.52)))
+    const max = Math.max(12, Math.floor(1040 / (font * 0.62)))
     const words = String(title || 'Article').split(/\s+/)
 
     lines = []
@@ -586,9 +639,9 @@ function heroSvg(title, siteName, hasPhoto) {
 
   return `<svg width="1200" height="675" xmlns="http://www.w3.org/2000/svg">
     ${hasPhoto ? '<rect width="1200" height="675" fill="rgba(15,23,42,0.55)"/>' : '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1e3a8a"/><stop offset="1" stop-color="#4f46e5"/></linearGradient></defs><rect width="1200" height="675" fill="url(#g)"/>'}
-    <text x="80" y="${startY}" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="${font}" font-weight="700">${text}</text>
+    <text x="80" y="${startY}" fill="#ffffff" font-family="${HERO_FONT_FAMILY}" font-size="${font}" font-weight="700">${text}</text>
     <line x1="80" y1="${underlineY}" x2="420" y2="${underlineY}" stroke="#ffffff" stroke-width="4"/>
-    <text x="80" y="620" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="28">${xml(siteName)}</text>
+    <text x="80" y="620" fill="#ffffff" font-family="${HERO_FONT_FAMILY}" font-size="28">${xml(siteName)}</text>
   </svg>`
 }
 
@@ -655,6 +708,9 @@ export async function buildBrandedHero({ title, siteName, backgroundUrl, backgro
   }
 
   const svg = Buffer.from(heroSvg(title, siteName, Boolean(photoBuffer)))
+
+  ensureHeroFontconfig()
+
   const sharp = (await import('sharp')).default
   let base = sharp({ create: { width: 1200, height: 675, channels: 3, background: '#1e3a8a' } })
 
