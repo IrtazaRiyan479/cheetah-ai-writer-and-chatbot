@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
@@ -6,6 +7,112 @@ import { geminiGenerateContent, listGeminiApiKeys } from './geminiKeys'
 import { resolvePaidTier } from './providerKeys'
 
 import { callLightLLM, parseJsonSafe } from './lightLLM'
+
+export const generationContext = new AsyncLocalStorage()
+
+function currentGeneration() {
+  return generationContext.getStore() || {}
+}
+
+function parseRequestedCount(value) {
+  const raw = String(value ?? '').trim()
+
+  if (!raw) return null
+
+  const count = parseInt(raw, 10)
+
+  if (!Number.isFinite(count) || count < 0) return null
+
+  return count
+}
+
+function headingSkipsMedia(heading) {
+  const lower = String(heading || '').toLowerCase()
+
+  return (
+    lower.includes('conclusion') ||
+    lower.includes('final verdict') ||
+    lower.includes('faq') ||
+    lower.includes('frequently asked')
+  )
+}
+
+function outlineGroupHeadings(outline) {
+  const headings = []
+  let current = null
+
+  for (const item of Array.isArray(outline) ? outline : []) {
+    if (!item || (item.type !== 'h2' && item.type !== 'h3')) continue
+
+    if (item.type === 'h2') {
+      current = item
+      headings.push(String(item.text || ''))
+    } else if (!current) {
+      headings.push(String(item.text || ''))
+    }
+  }
+
+  return headings
+}
+
+function resolveAutoMediaPlacement(sectionIndex, heading, settings) {
+  const index = Number(sectionIndex)
+
+  if (!Number.isFinite(index) || index < 0) return null
+
+  const store = currentGeneration()
+  const headings = outlineGroupHeadings(store.outline)
+  const total = Math.max(headings.length, Number(store.totalSections) || 0, index + 1)
+  const heroBlocksFirst = Boolean(settings?.heroImage)
+  const imageCap = parseRequestedCount(settings?.numberOfImages)
+  const videoCap = parseRequestedCount(settings?.numberOfYoutubeVideos)
+  const maxImages = imageCap == null ? 999 : imageCap
+  const maxVideos = videoCap == null ? 999 : videoCap
+  const eligible = []
+
+  for (let i = 0; i < total; i++) {
+    const text = i === index ? String(heading || headings[i] || '') : headings[i] || ''
+
+    if (i === 0 && heroBlocksFirst) continue
+    if (headingSkipsMedia(text)) continue
+    eligible.push(i)
+  }
+
+  let images = 0
+  let videos = 0
+  let preferImage = true
+
+  for (const section of eligible) {
+    if (images >= maxImages && videos >= maxVideos) break
+
+    let kind = null
+
+    if (preferImage && images < maxImages) {
+      kind = 'image'
+      images += 1
+      if (videos < maxVideos) preferImage = false
+    } else if (videos < maxVideos) {
+      kind = 'video'
+      videos += 1
+      preferImage = images < maxImages
+    } else if (images < maxImages) {
+      kind = 'image'
+      images += 1
+    }
+
+    if (section === index) {
+      if (!kind) return null
+
+      return {
+        kind,
+        imageOrdinal: kind === 'image' ? images - 1 : 0,
+        videoOrdinal: kind === 'video' ? videos - 1 : 0
+      }
+    }
+  }
+
+  return null
+}
 
 const HERO_FONT_FAMILY = 'DejaVu Sans'
 
@@ -1856,37 +1963,22 @@ export async function getMediaInstruction(
 
       mediaInstruction = `\n[NOTE: A media file is placed at the end of this section. DO NOT output HTML tags for media.]`
     } else if (aiImagesAndVideos === 'auto') {
-      const lowerHeading = (heading || '').toLowerCase()
+      const placement = resolveAutoMediaPlacement(sectionIndex, heading, settings)
 
-      if (
-        lowerHeading.includes('conclusion') ||
-        lowerHeading.includes('final verdict') ||
-        lowerHeading.includes('faq') ||
-        lowerHeading.includes('frequently asked')
-      ) {
-        return { mediaInstruction: '', assignedMediaElement: null, mediaUrl: null, mediaId: null }
+      if (!placement) {
+        return {
+          mediaInstruction:
+            '\nMEDIA RULE: Do NOT add any image, iframe, video tag, or YouTube embed in this section. No media slot was reserved here.',
+          assignedMediaElement: null,
+          mediaUrl: null,
+          mediaId: null
+        }
       }
 
-      const imageLimit = parseInt(settings?.numberOfImages)
-      const hasImageLimit = !isNaN(imageLimit) && String(settings?.numberOfImages || '').trim() !== ''
-
-      const videoLimit = parseInt(settings?.numberOfYoutubeVideos)
-      const hasVideoLimit = !isNaN(videoLimit) && String(settings?.numberOfYoutubeVideos || '').trim() !== ''
-
-      const maxImageSlots = hasImageLimit ? imageLimit : 999
-      const maxVideoSlots = hasVideoLimit ? videoLimit : 999
-
-      const isImageSlot = sectionIndex % 2 === 0
-
-      const imageSlotNumber = Math.floor(sectionIndex / 2)
-      const videoSlotNumber = Math.floor(sectionIndex / 2)
-
-      const canHaveImage = isImageSlot && imageSlotNumber < maxImageSlots
-      const canHaveVideo = !isImageSlot && videoSlotNumber < maxVideoSlots
-
-      if (!canHaveImage && !canHaveVideo) {
-        return { mediaInstruction: '', assignedMediaElement: null, mediaUrl: null, mediaId: null }
-      }
+      const canHaveImage = placement.kind === 'image'
+      const canHaveVideo = placement.kind === 'video'
+      const imageSlotNumber = placement.imageOrdinal
+      const videoSlotNumber = placement.videoOrdinal
 
       if (canHaveImage) {
         const coreTopic = articleTitle || targetKeyword
@@ -1983,10 +2075,22 @@ export async function getMediaInstruction(
           }
         }
 
+        if (!bestImage) {
+          const fallbackPrompt =
+            smartImageData?.aiGenerationPrompt ||
+            `Photorealistic landscape photo of ${coreTopic}, no text, no watermark`
+
+          const aiImage = await generateFallbackImage(fallbackPrompt)
+
+          if (aiImage?.url) {
+            bestImage = { ...aiImage, id: aiImage.id || `ai-section-${imageSlotNumber}`, score: aiImage.score || 1 }
+          }
+        }
+
         if (bestImage) {
           selectedMediaUrl = bestImage.url
           console.log(
-            `[Section Image] ${bestImage.source} id=${bestImage.id} score=${bestImage.score.toFixed(2)} alt="${(bestImage.alt || '').slice(0, 50)}"`
+            `[Section Image] ${bestImage.source} id=${bestImage.id} score=${Number(bestImage.score || 0).toFixed(2)} alt="${(bestImage.alt || '').slice(0, 50)}"`
           )
 
           const imageTitle = heading || coreTopic
@@ -2028,7 +2132,9 @@ export async function getMediaInstruction(
         }
       }
 
-      mediaInstruction = `\n[NOTE: A contextual image or video is placed at the end of this section. DO NOT attempt to generate image/video tags yourself.]`
+      mediaInstruction = canHaveVideo
+        ? '\nMEDIA RULE: The system inserts the one YouTube video for this section. Do NOT add another image, iframe, video tag, or YouTube embed.'
+        : '\nMEDIA RULE: The system inserts the one image for this section. Do NOT add another image, iframe, video tag, or YouTube embed.'
     }
 
     return {
@@ -2240,6 +2346,7 @@ export function rememberSectionLinkPool(id, payload) {
   sectionLinkPools.set(key, {
     linkPool: Array.isArray(payload?.linkPool) ? payload.linkPool : [],
     preserve: Array.isArray(payload?.preserve) ? payload.preserve : [],
+    internalLink: payload?.internalLink || null,
     at: Date.now()
   })
 
@@ -2253,162 +2360,360 @@ export function rememberSectionLinkPool(id, payload) {
 export function takeSectionLinkPool(id) {
   const row = sectionLinkPools.get(String(id || ''))
 
-  if (!row) return { linkPool: [], preserve: [] }
+  if (!row) return { linkPool: [], preserve: [], internalLink: null }
 
-  return { linkPool: row.linkPool || [], preserve: row.preserve || [] }
+  return { linkPool: row.linkPool || [], preserve: row.preserve || [], internalLink: row.internalLink || null }
 }
 
 const sitemapCache = new Map()
+const INTERNAL_LINK_CAP = 2
+const internalLinkBudgets = globalThis.__affigenieInternalLinkBudgets || (globalThis.__affigenieInternalLinkBudgets = new Map())
 
-export async function getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks = []) {
-  const browserHeaders = {
-    'User-Agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
-    Connection: 'keep-alive'
+const browserHeadersForLinks = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.5',
+  Connection: 'keep-alive'
+}
+
+function internalHost(value) {
+  const raw = String(value || '').trim()
+
+  if (!raw) return ''
+
+  try {
+    const withProto = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+
+    return new URL(withProto).hostname.replace(/^www\./i, '').toLowerCase()
+  } catch {
+    return raw
+      .replace(/^https?:\/\//i, '')
+      .replace(/^www\./i, '')
+      .split('/')[0]
+      .toLowerCase()
+  }
+}
+
+function explicitInternalPage(value) {
+  const raw = String(value || '').trim()
+
+  if (!/^https?:\/\//i.test(raw)) return ''
+
+  try {
+    const url = new URL(raw)
+
+    if (!url.pathname || url.pathname === '/') return ''
+
+    return url.href
+  } catch {
+    return ''
+  }
+}
+
+function normalizeInternalUrl(url) {
+  try {
+    const parsed = new URL(url)
+
+    parsed.hash = ''
+    ;['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id'].forEach(key =>
+      parsed.searchParams.delete(key)
+    )
+
+    const path = parsed.pathname.replace(/\/+$/, '') || '/'
+
+    return `${parsed.hostname.replace(/^www\./i, '').toLowerCase()}${path}${parsed.search}`
+  } catch {
+    return String(url || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\/+$/, '')
+  }
+}
+
+function pagePhrase(url) {
+  try {
+    const slug = decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop() || '')
+
+    return slug
+      .replace(/\.[a-z0-9]+$/i, '')
+      .replace(/[-_]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  } catch {
+    return ''
+  }
+}
+
+function varyInternalAnchor(phrase) {
+  const raw = String(phrase || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const swaps = [
+    [/^(the\s+)?best\b/i, 'top rated'],
+    [/^(the\s+)?top rated\b/i, 'highest ranked'],
+    [/^(the\s+)?top\b/i, 'leading'],
+    [/^(the\s+)?ultimate\b/i, 'complete'],
+    [/^(the\s+)?complete\b/i, 'ultimate']
+  ]
+
+  for (const [pattern, replacement] of swaps) {
+    if (pattern.test(raw)) return raw.replace(pattern, replacement).replace(/\s+/g, ' ').trim()
   }
 
-  if (!internalLinks || internalLinks.length === 0) return { instruction: '', selectedUrl: null }
-  const domain = internalLinks[0]
+  if (/\bguide\b/i.test(raw)) return raw.replace(/\bguide\b/i, 'handbook')
+  if (/\breview\b/i.test(raw)) return raw.replace(/\breview\b/i, 'breakdown')
+  if (/\btips\b/i.test(raw)) return raw.replace(/\btips\b/i, 'advice')
 
-  if (!domain) return { instruction: '', selectedUrl: null }
+  return `top ${raw}`.replace(/^top top\b/i, 'top')
+}
 
-  let cleanDomain = String(domain)
-    .replace(/^https?:\/\//, '')
+function anchorForInternalUse(url, useIndex) {
+  const base = pagePhrase(url) || 'related guide'
+
+  if (useIndex === 0) return base
+
+  const varied = varyInternalAnchor(base)
+
+  if (varied.toLowerCase() === base.toLowerCase()) return `recommended ${base}`
+
+  return varied
+}
+
+function scoreInternalUrl(url, heading) {
+  const words = String(heading || '')
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(word => word.length > 3)
+
+  const lower = String(url || '').toLowerCase()
+
+  return words.reduce((score, word) => score + (lower.includes(word) ? 1 : 0), 0)
+}
+
+function reserveInternalPage(candidates, heading, inputs) {
+  const store = currentGeneration()
+  const settings = store.settings || {}
+  const articleKey = [
+    store.generationId || '',
+    settings.type || '',
+    settings.generatedTitle || settings.targetKeyword || '',
+    inputs.join('|')
+  ].join('::')
+  const now = Date.now()
+  let state = internalLinkBudgets.get(articleKey)
+
+  if (!state || now - state.at > 20 * 60 * 1000) {
+    state = { counts: new Map(), at: now }
+    internalLinkBudgets.set(articleKey, state)
+  }
+
+  state.at = now
+
+  if (internalLinkBudgets.size > 300) {
+    const oldest = [...internalLinkBudgets.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, 50)
+
+    oldest.forEach(([key]) => internalLinkBudgets.delete(key))
+  }
+
+  const ranked = candidates
+    .map(url => ({ url, key: normalizeInternalUrl(url), score: scoreInternalUrl(url, heading) }))
+    .sort((a, b) => b.score - a.score || a.url.localeCompare(b.url))
+
+  for (const item of ranked) {
+    const used = state.counts.get(item.key) || 0
+
+    if (used >= INTERNAL_LINK_CAP) continue
+
+    state.counts.set(item.key, used + 1)
+
+    return { url: item.url, anchor: anchorForInternalUse(item.url, used) }
+  }
+
+  return null
+}
+
+async function loadDomainPages(domain) {
+  let cleanDomain = String(domain || '')
+    .replace(/^https?:\/\//i, '')
+    .split('/')[0]
     .replace(/\/$/, '')
 
+  if (!cleanDomain) return []
   if (!cleanDomain.startsWith('www.')) cleanDomain = `www.${cleanDomain}`
+
+  if (sitemapCache.has(cleanDomain)) return sitemapCache.get(cleanDomain)
 
   const homeUrl = `https://${cleanDomain}`
   let extractedUrls = []
+  const sitemapPaths = ['/sitemap_index.xml', '/sitemap.xml', '/wp-sitemap.xml']
 
-  if (sitemapCache.has(cleanDomain)) {
-    extractedUrls = sitemapCache.get(cleanDomain)
-  } else {
-    const sitemapPaths = ['/sitemap_index.xml', '/sitemap.xml', '/wp-sitemap.xml']
-    let sitemapFound = false
-
-    for (const path of sitemapPaths) {
-      try {
-        const response = await fetch(`${homeUrl}${path}`, {
-          headers: browserHeaders,
-          signal: AbortSignal.timeout(6000)
-        })
-
-        if (response.ok) {
-          sitemapFound = true
-          const xmlText = await response.text()
-          let matches = [...xmlText.matchAll(/<loc>(.*?)<\/loc>/g)]
-
-          extractedUrls = matches.map(m => m[1])
-
-          const isSitemapIndex = extractedUrls.some(url => url.endsWith('.xml'))
-
-          if (isSitemapIndex) {
-            const subSitemaps = extractedUrls.filter(
-              url => url.includes('post-sitemap') || url.includes('page-sitemap') || url.includes('wp-sitemap-posts')
-            )
-
-            extractedUrls = []
-
-            for (const subMap of subSitemaps) {
-              const subResponse = await fetch(subMap, { headers: browserHeaders, signal: AbortSignal.timeout(6000) })
-
-              if (subResponse.ok) {
-                const subXmlText = await subResponse.text()
-                const subMatches = [...subXmlText.matchAll(/<loc>(.*?)<\/loc>/g)]
-
-                extractedUrls.push(...subMatches.map(m => m[1]))
-              }
-            }
-          }
-
-          break
-        }
-      } catch (error) {
-        continue
-      }
-    }
-
-    extractedUrls = extractedUrls.filter(url => {
-      if (!url) return false
-
-      try {
-        const path = new URL(url).pathname
-
-        return path.length > 1 && !url.endsWith('.xml') && !url.includes('/wp-content/uploads/')
-      } catch (e) {
-        return false
-      }
-    })
-
-    extractedUrls = [...new Set(extractedUrls)].slice(0, 100)
-    sitemapCache.set(cleanDomain, extractedUrls)
-  }
-
-  let availableUrls = extractedUrls.filter(url => !usedInternalLinks.includes(url))
-
-  if (availableUrls.length === 0) {
-    if (!usedInternalLinks.includes(homeUrl)) {
-      availableUrls = [homeUrl]
-    } else if (!usedInternalLinks.includes(domain)) {
-      availableUrls = [domain]
-    } else {
-      return { instruction: '', selectedUrl: null }
-    }
-  }
-
-  let bestMatchUrl = availableUrls[0]
-
-  if (availableUrls.length > 1) {
-    const pickByKeywords = () => {
-      const words = (heading || '')
-        .toLowerCase()
-        .replace(/[^\w\s]/g, '')
-        .split(/\s+/)
-        .filter(w => w.length > 3)
-
-      let best = availableUrls[0]
-      let max = -1
-
-      for (const url of availableUrls) {
-        const lower = url.toLowerCase()
-        const score = words.reduce((n, w) => n + (lower.includes(w) ? 1 : 0), 0)
-
-        if (score > max) {
-          max = score
-          best = url
-        }
-      }
-
-      return best
-    }
-
+  for (const path of sitemapPaths) {
     try {
-      const shortList = availableUrls.slice(0, 15)
-
-      const result = await callLightLLM({
-        system: 'Reply with JSON only.',
-        json: true,
-        max_tokens: 80,
-        waitOn429: false,
-        prompt: `Pick the ONE URL most relevant to this heading.
-Heading: "${heading}"
-URLs:
-${shortList.map(u => `- ${u}`).join('\n')}
-{"bestUrl":"<exact url or null>"}`
+      const response = await fetch(`${homeUrl}${path}`, {
+        headers: browserHeadersForLinks,
+        signal: AbortSignal.timeout(6000)
       })
 
-      const parsed = parseJsonSafe(result?.text)
+      if (!response.ok) continue
 
-      bestMatchUrl = parsed?.bestUrl && availableUrls.includes(parsed.bestUrl) ? parsed.bestUrl : pickByKeywords()
+      const xmlText = await response.text()
+      let matches = [...xmlText.matchAll(/<loc>(.*?)<\/loc>/g)]
+
+      extractedUrls = matches.map(match => match[1])
+
+      const isSitemapIndex = extractedUrls.some(url => url.endsWith('.xml'))
+
+      if (isSitemapIndex) {
+        const subSitemaps = extractedUrls.filter(
+          url => url.includes('post-sitemap') || url.includes('page-sitemap') || url.includes('wp-sitemap-posts')
+        )
+
+        extractedUrls = []
+
+        for (const subMap of subSitemaps) {
+          const subResponse = await fetch(subMap, {
+            headers: browserHeadersForLinks,
+            signal: AbortSignal.timeout(6000)
+          })
+
+          if (subResponse.ok) {
+            const subXmlText = await subResponse.text()
+            const subMatches = [...subXmlText.matchAll(/<loc>(.*?)<\/loc>/g)]
+
+            extractedUrls.push(...subMatches.map(match => match[1]))
+          }
+        }
+      }
+
+      break
     } catch {
-      bestMatchUrl = pickByKeywords()
+      continue
     }
   }
 
-  const instruction = `\nCRITICAL INTERNAL LINKING: Naturally integrate the following URL into your paragraph using properly formatted Markdown links (e.g., [anchor text](URL)). URL to use: ${bestMatchUrl}. Make the anchor text highly relevant to the context.`
+  extractedUrls = extractedUrls.filter(url => {
+    if (!url) return false
 
-  return { instruction, selectedUrl: bestMatchUrl }
+    try {
+      const path = new URL(url).pathname
+
+      return path.length > 1 && !url.endsWith('.xml') && !url.includes('/wp-content/uploads/')
+    } catch {
+      return false
+    }
+  })
+
+  extractedUrls = [...new Set(extractedUrls)].slice(0, 100)
+  sitemapCache.set(cleanDomain, extractedUrls)
+
+  return extractedUrls
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+export function stripModelMediaEmbeds(text) {
+  return String(text || '')
+    .replace(/<div\b[^>]*data-youtube-video[^>]*>[\s\S]*?<\/div>/gi, '')
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<video\b[^>]*>[\s\S]*?<\/video>/gi, '')
+}
+
+export function enforceInternalLink(text, selection) {
+  let output = String(text || '')
+  const hosts = (selection?.hosts || []).map(host => String(host || '').toLowerCase()).filter(Boolean)
+
+  if (!hosts.length) return output
+
+  const isInternal = url => {
+    try {
+      const host = new URL(url).hostname.replace(/^www\./i, '').toLowerCase()
+
+      return hosts.some(item => host === item || host.endsWith(`.${item}`))
+    } catch {
+      return false
+    }
+  }
+
+  output = output.replace(/(^|[^!])\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (match, lead, label, url) =>
+    isInternal(url) ? `${lead}${label}` : match
+  )
+
+  output = output.replace(/<a\b[^>]*href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>([\s\S]*?)<\/a>/gi, (match, href, href2, href3, inner) => {
+    const url = href || href2 || href3 || ''
+
+    return isInternal(url) ? inner : match
+  })
+
+  if (!selection?.url || !selection?.anchor) return output
+
+  const linked = `[${selection.anchor}](${selection.url})`
+  const phrase = new RegExp(escapeRegExp(selection.anchor), 'i')
+  let wrapped = false
+
+  if (phrase.test(output)) {
+    output = output.replace(phrase, match => {
+      if (wrapped) return match
+      wrapped = true
+
+      return linked
+    })
+  } else {
+    const sentence = `For a closer look, see ${linked}.`
+    const parts = output.split(/\n\n/)
+
+    if (parts.length > 1) parts.splice(1, 0, sentence)
+    else parts.push(sentence)
+
+    output = parts.join('\n\n')
+  }
+
+  return output
+}
+
+export async function getLinkInstruction(internalLinks, heading, genAI, usedInternalLinks = []) {
+  void genAI
+  void usedInternalLinks
+
+  const inputs = (internalLinks || []).map(item => String(item || '').trim()).filter(Boolean)
+
+  if (!inputs.length) return { instruction: '', selectedUrl: null }
+
+  const hosts = [...new Set(inputs.map(internalHost).filter(Boolean))]
+  const explicit = inputs.map(explicitInternalPage).filter(Boolean)
+  let pages = [...explicit]
+
+  for (const host of hosts.slice(0, 4)) {
+    const found = await loadDomainPages(host)
+
+    pages.push(...found)
+  }
+
+  pages = [...new Set(pages.filter(Boolean))]
+
+  if (!pages.length) {
+    hosts.forEach(host => pages.push(`https://${host}`))
+  }
+
+  const reserved = reserveInternalPage(pages, heading, inputs)
+  const selection = { url: reserved?.url || null, anchor: reserved?.anchor || '', hosts }
+  const store = currentGeneration()
+
+  if (store) store.internalLinkSelection = selection
+
+  if (!reserved) {
+    return {
+      instruction: `\nCRITICAL INTERNAL LINKING: Do NOT add an internal link in this section. Do not link to ${hosts.join(', ')}. Each specific page can appear at most twice in the article, and this section has no remaining slot.`,
+      selectedUrl: null
+    }
+  }
+
+  return {
+    instruction: `\nCRITICAL INTERNAL LINKING: Add exactly one Markdown link in this section and no other link to ${hosts.join(', ')}.\nUse this exact anchor text once: [${reserved.anchor}](${reserved.url})\nDo not repeat the URL. Do not reuse this anchor wording. The same page may be linked at most once more, in another section, with different wording.`,
+    selectedUrl: reserved.url
+  }
 }

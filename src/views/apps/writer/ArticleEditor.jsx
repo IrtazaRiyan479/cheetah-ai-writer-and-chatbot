@@ -1316,6 +1316,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
     abortControllerRef.current = new AbortController()
 
     const generateArticleSequentially = async () => {
+      const generationId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
       setIsGenerating(true)
       editor.setEditable(false)
       editor.commands.setContent('')
@@ -1511,7 +1512,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                 improveReadability: settings.improveReadability,
                 uploadedMedia: settings.uploadedMedia,
                 usedImageUrls: trackedImages,
-                usedInternalLinks: trackedInternalLinks
+                usedInternalLinks: trackedInternalLinks,
+                generationId
               })
             })
 
@@ -1650,7 +1652,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         liveUsedMedia,
         trackedImages,
         trackedInternalLinks,
-        trackedExternalLinks
+        trackedExternalLinks,
+        generationId
       }
 
       let shared = settings.type === 'product-comparison' ? settings.comparisonShared : null
@@ -1918,7 +1921,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                   uploadedMedia: settings.uploadedMedia,
                   usedImageUrls: usedSnapshot,
                   usedInternalLinks: trackedInternalLinks,
-                  shared: shared || (settings.type === 'product-comparison' ? settings.comparisonShared : null)
+                  shared: shared || (settings.type === 'product-comparison' ? settings.comparisonShared : null),
+                  generationId
                 })
               },
               { onRetry: setWait }
@@ -2100,7 +2104,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           improveReadability: ctx.settings.improveReadability,
           uploadedMedia: ctx.settings.uploadedMedia,
           usedImageUrls: Array.from(ctx.liveUsedMedia || []),
-          usedInternalLinks: ctx.trackedInternalLinks
+          usedInternalLinks: ctx.trackedInternalLinks,
+          generationId: ctx.generationId
         })
       })
 

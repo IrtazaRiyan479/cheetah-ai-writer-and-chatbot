@@ -13,10 +13,9 @@ import { generateRewriteOutline, generateRewriteSection } from './services/rewri
 import { generateAmazonRoundupOutline, generateAmazonRoundupSection } from './services/amazonRoundUp'
 import { generateAmazonReviewOutline, generateAmazonReviewSection } from './services/amazonReview'
 import { generateProductComparisonOutline, generateProductComparisonSection, validateProductComparisonUrls } from './services/productComparison'
-import { getBaseSystemInstruction } from './utils/helpers'
+import { getBaseSystemInstruction, attachBrandedHero, fetchSerperOutlineData, pickRelevantImages, prepareExternalLinks, finalizeSectionLinks, rememberSectionLinkPool, generationContext, stripModelMediaEmbeds, enforceInternalLink } from './utils/helpers'
 import { callLLM, createProviderGenAI } from './utils/llm'
 import { runWithPaidKeys } from './utils/providerKeys'
-import { attachBrandedHero, fetchSerperOutlineData, pickRelevantImages, prepareExternalLinks, finalizeSectionLinks, rememberSectionLinkPool } from './utils/helpers'
 
 export const maxDuration = 60
 
@@ -151,6 +150,15 @@ export async function POST(request) {
     }
 
     if (mode === 'section') {
+      generationContext.enterWith({
+        outline: body.outlineContext,
+        totalSections: body.totalSections,
+        settings,
+        generationId:
+          body.generationId ||
+          `${type || ''}|${settings.generatedTitle || body.articleTitle || settings.targetKeyword || ''}|${(body.internalLinks || []).join('|')}`
+      })
+
       if (!(await reserveFreeWords())) {
         return NextResponse.json(
           { success: false, error: 'Free word limit reached. Upgrade to Pro for unlimited writing.', code: 'WORD_LIMIT' },
@@ -204,14 +212,20 @@ export async function POST(request) {
 
       logStage('section', started, type)
 
+      const selection = generationContext.getStore()?.internalLinkSelection || null
+
+      if (result && selection?.url) result.internalLinkUrl = selection.url
+
       const preserve = [result?.internalLinkUrl, ...(Array.isArray(result?.preserveLinks) ? result.preserveLinks : [])].filter(Boolean)
 
       if (typeof result?.text === 'string') {
+        result.text = stripModelMediaEmbeds(result.text)
+        if (selection) result.text = enforceInternalLink(result.text, selection)
         result.text = finalizeSectionLinks(result.text, { linkPool, preserve })
       }
 
       if (result?.isDeepSearch && result?.interactionId) {
-        rememberSectionLinkPool(result.interactionId, { linkPool, preserve })
+        rememberSectionLinkPool(result.interactionId, { linkPool, preserve, internalLink: selection })
       }
 
       const sectionText = result?.text || result?.content || result?.html || ''

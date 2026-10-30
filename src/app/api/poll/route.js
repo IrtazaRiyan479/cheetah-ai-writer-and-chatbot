@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { GoogleGenAI } from '@google/genai'
 
 import { interactionUsesPaidKeys, withGeminiKey } from '@/app/api/generate/utils/geminiKeys'
-import { finalizeSectionLinks, takeSectionLinkPool } from '@/app/api/generate/utils/helpers'
+import { finalizeSectionLinks, takeSectionLinkPool, enforceInternalLink, stripModelMediaEmbeds } from '@/app/api/generate/utils/helpers'
 import { runWithPaidKeys } from '@/app/api/generate/utils/providerKeys'
 import { paidKeysEnabledFor } from '@/libs/entitlement'
 
@@ -25,7 +25,10 @@ export async function GET(request) {
 
     if (interaction.status === 'completed') {
       const saved = takeSectionLinkPool(id)
-      const text = finalizeSectionLinks(interaction.output_text, saved)
+      let text = stripModelMediaEmbeds(interaction.output_text || '')
+
+      if (saved.internalLink) text = enforceInternalLink(text, saved.internalLink)
+      text = finalizeSectionLinks(text, saved)
 
       return NextResponse.json({ status: 'completed', text })
     } else if (interaction.status === 'failed') {
