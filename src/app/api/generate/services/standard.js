@@ -1,6 +1,4 @@
-import { GoogleGenAI } from '@google/genai'
-
-import { withGeminiKey, rememberPaidInteraction } from '../utils/geminiKeys'
+import { startDeepSearch } from '../utils/deepSearch'
 
 import {
   fetchSerperOutlineData,
@@ -22,7 +20,6 @@ import {
 } from '../utils/helpers'
 import { languages } from '@/configs/languages'
 import { countries } from '@/configs/countries'
-import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
 
 export async function generateStandardBlogOutline(body, genAI) {
   const { prompt, settings } = body
@@ -125,29 +122,12 @@ export async function generateStandardBlogOutline(body, genAI) {
       lastOutlineError = err
       const msg = String(err?.message || err)
 
-      const isRateLimit =
-        /429|rate.?limit|quota|resource.?exhausted|503|high demand|unavailable|overloaded|try again later/i.test(msg)
+      if (/invalid JSON|empty article|not configured|model .+ failed|HTTP \d{3}|Unsupported selected model|Low credits/i.test(msg)) {
+        throw new Error(msg)
+      }
 
-      if (isRateLimit) {
-        console.warn('[Outline] Gemini quota — using Groq/Mistral')
-
-        const alt = await callLightLLM({
-          system: 'Return only valid JSON with keys metaTitle, metaDescription, title, outline.',
-          prompt:
-            outlinePrompt +
-            '\n\nReturn JSON: {"metaTitle":"","metaDescription":"","title":"","outline":[{"type":"h2","text":""}]}',
-          json: true,
-          max_tokens: 1200
-        })
-
-        const parsed = parseJsonSafe(alt?.text)
-
-        if (parsed?.outline?.length) {
-          parsedData = parsed
-          break
-        }
-
-        throw new Error('RATE_LIMIT: Gemini and Groq could not produce an outline. Wait ~60s.')
+      if (/429|rate.?limit|quota|resource.?exhausted|503|high demand|unavailable|overloaded|try again later/i.test(msg)) {
+        throw new Error(`RATE_LIMIT: ${msg}`)
       }
 
       if (attempt < 3) {
@@ -345,28 +325,31 @@ export async function generateStandardBlogSection(body, genAI) {
       `
 
   if (deepSearch) {
-    const interaction = await withGeminiKey(
-      async apiKey => {
-        const ai = new GoogleGenAI({
-          apiKey,
-          httpOptions: { retryOptions: { attempts: 0 } }
-        })
+    const researched = await startDeepSearch({
+      model: model || 'gemini-3.1-flash-lite',
+      paid: Boolean(genAI?.paid),
+      system: baseSystemInstruction,
+      prompt: `You are an expert researcher. Conduct a deep web search based on the following instructions. \n\nCRITICAL RULE: DO NOT output your research notes, search queries, or internal reasoning. Your FINAL output MUST strictly be the final, ready-to-publish Markdown text adhering exactly to the layout requirements provided below.\n\n---\n\n${sectionPrompt}`
+    })
 
-        return ai.interactions.create({
-          agent: 'deep-research-preview-04-2026',
-          input: `${baseSystemInstruction}\n\nYou are an expert researcher. Conduct a deep web search based on the following instructions. \n\nCRITICAL RULE: DO NOT output your research notes, search queries, or internal reasoning. Your FINAL output MUST strictly be the final, ready-to-publish Markdown text adhering exactly to the layout requirements provided below.\n\n---\n\n${sectionPrompt}`,
-          background: true
-        })
-      },
-      { paid: Boolean(genAI?.paid) }
-    )
+    if (!researched?.interactionId && !researched?.text) {
+      throw new Error('Deep search returned no article text.')
+    }
 
-    if (genAI?.paid && interaction?.id) rememberPaidInteraction(interaction.id)
+    if (researched.interactionId) {
+      return {
+        success: true,
+        isDeepSearch: true,
+        interactionId: researched.interactionId,
+        mediaHtml: assignedMediaElement,
+        mediaUrl: mediaUrl,
+        internalLinkUrl: internalLinkUrl
+      }
+    }
 
     return {
       success: true,
-      isDeepSearch: true,
-      interactionId: interaction.id,
+      text: researched.text,
       mediaHtml: assignedMediaElement,
       mediaUrl: mediaUrl,
       internalLinkUrl: internalLinkUrl
@@ -378,37 +361,7 @@ export async function generateStandardBlogSection(body, genAI) {
   try {
     result = await sectionModel.generateContent(sectionPrompt)
   } catch (error) {
-    const msg = (error?.message || String(error) || '').toLowerCase()
-
-    const shouldFallback =
-      /429|quota|rate.?limit|resource.?exhausted|503|high demand|unavailable|overloaded|try again later|fetch failed/i.test(
-        msg
-      )
-
-    if (!shouldFallback) throw error
-
-    console.warn('[Section] Gemini quota hit — writing this section with Groq/Mistral')
-
-    const alt = await callLightLLM({
-      system: 'You are an expert SEO article writer. Return only the section body in markdown. No preamble, no JSON.',
-      prompt: sectionPrompt.slice(0, 6000),
-      max_tokens: 1400,
-      waitOn429: false
-    })
-
-    if (!alt?.text) {
-      console.error('[Section] All providers exhausted. Skipping this heading.')
-
-      return {
-        success: false,
-        skipped: true,
-        heading,
-        error: 'RATE_LIMIT',
-        message: 'Gemini, Groq, and Mistral are all rate-limited. Wait ~60s and regenerate this section.'
-      }
-    }
-
-    result = { response: { text: () => alt.text } }
+    throw error
   }
 
   return {

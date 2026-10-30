@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -23,13 +23,23 @@ import { featureKeyForModel } from '@/libs/entitlement'
 
 import { ProLabel, useFeatureAccess } from './FeatureAccessContext'
 
+const FREE_DEFAULT_MODEL = 'gemini-3.1-flash-lite'
+const PRO_DEFAULT_MODEL = 'claude-sonnet-5-5'
+
 const availableModels = [
-  { label: 'Gemini 3.5 Flash', value: 'gemini-3.5-flash' },
   { label: 'Gemini 3.1 Flash-Lite', value: 'gemini-3.1-flash-lite' },
+  { label: 'Gemini 3.5 Flash', value: 'gemini-3.5-flash' },
   { label: 'Gemini 3.1 Pro', value: 'gemini-3.1-pro-preview-customtools' },
+  { label: 'Claude Haiku 4.5', value: 'claude-haiku-4-5' },
+  { label: 'Claude Haiku 5.5', value: 'claude-haiku-5-5' },
+  { label: 'Claude Sonnet 4.5', value: 'claude-sonnet-4-5' },
+  { label: 'Claude Sonnet 4.6', value: 'claude-sonnet-4-6' },
+  { label: 'Claude Sonnet 5', value: 'claude-sonnet-5' },
+  { label: 'Claude Sonnet 5.5', value: 'claude-sonnet-5-5' },
+  { label: 'Claude Opus 4.6', value: 'claude-opus-4-6' },
+  { label: 'Claude Opus 5.5', value: 'claude-opus-5-5' },
   { label: 'GPT-5.2', value: 'gpt-5.2' },
   { label: 'GPT-5 Mini', value: 'gpt-5-mini' },
-  { label: 'Claude 4.5 Sonnet', value: 'claude-4.5-sonnet' },
   { label: 'Grok 4.7', value: 'grok-4.7' }
 ]
 
@@ -37,15 +47,46 @@ const WriterHeader = ({
   settings, updateSetting, presets, selectedPresetId,
   onLoadPreset, onCreatePreset, onUpdatePreset, onDeletePreset
 }) => {
-  const { requireFeature, modeOf, featureModes } = useFeatureAccess()
+  const { requireFeature, modeOf, featureModes, isPaid, modesReady } = useFeatureAccess()
   const [openCreate, setOpenCreate] = useState(false)
   const [openDelete, setOpenDelete] = useState(false)
   const [newPresetName, setNewPresetName] = useState('')
+  const planDefaultApplied = useRef(false)
   const models = availableModels.filter(model => modeOf(featureKeyForModel(model.value)) !== 'off')
 
   useEffect(() => {
-    if (!models.some(model => model.value === settings.model) && models[0]) updateSetting('model', models[0].value)
-  }, [featureModes])
+    if (settings.model === 'claude-4.5-sonnet') {
+      updateSetting('model', 'claude-sonnet-4-5')
+      return
+    }
+
+    if (!models.length) return
+
+    const currentAllowed = models.some(model => model.value === settings.model)
+
+    if (!currentAllowed) {
+      const fallback = models.some(model => model.value === FREE_DEFAULT_MODEL)
+        ? FREE_DEFAULT_MODEL
+        : models[0].value
+
+      updateSetting('model', fallback)
+      return
+    }
+
+    if (!modesReady || planDefaultApplied.current || selectedPresetId !== 'default') return
+    if (settings.model !== FREE_DEFAULT_MODEL) {
+      planDefaultApplied.current = true
+      return
+    }
+    if (!isPaid) return
+
+    planDefaultApplied.current = true
+    const claudeDefault = models.some(model => model.value === PRO_DEFAULT_MODEL)
+      ? PRO_DEFAULT_MODEL
+      : models.find(model => model.value.startsWith('claude-'))?.value
+
+    if (claudeDefault) updateSetting('model', claudeDefault)
+  }, [featureModes, modesReady, isPaid, selectedPresetId])
 
   const handleModelChange = (e) => {
     const val = e.target.value
@@ -73,7 +114,7 @@ const WriterHeader = ({
           <Grid container spacing={5} alignItems='flex-end'>
 
             <Grid size={{ xs: 12, sm: 6 }}>
-              <Typography variant='subtitle2' className='mbe-2 font-medium'>AI Model <Tooltip title='Uses the selected provider. Keys rotate on quota.'><i className='ri-information-line' /></Tooltip></Typography>
+              <Typography variant='subtitle2' className='mbe-2 font-medium'>AI Model <Tooltip title='Uses the selected provider. Keys rotate on quota. If that provider is still rate limited, Groq then Mistral are used.'><i className='ri-information-line' /></Tooltip></Typography>
               <FormControl fullWidth size='small'>
                 <Select value={models.some(model => model.value === settings.model) ? settings.model : (models[0]?.value || '')} onChange={handleModelChange}>
                   {models.map((model) => (

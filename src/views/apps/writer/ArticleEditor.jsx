@@ -1576,13 +1576,20 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
                     const pollData = await pollRes.json()
 
+                    if (pollData.status === 'failed') {
+                      const failed = new Error(serializeError(pollData.error) || 'Deep search failed.')
+
+                      failed.deepSearchFailed = true
+                      throw failed
+                    }
+
                     if (pollData.status === 'completed') {
                       finalSectionText = pollData.text
                       setDeepSearchProgress(100)
                       isCompleted = true
                     }
                   } catch (pollError) {
-                    if (pollError.name === 'AbortError') throw pollError
+                    if (pollError.name === 'AbortError' || pollError.deepSearchFailed) throw pollError
                   }
                 }
 

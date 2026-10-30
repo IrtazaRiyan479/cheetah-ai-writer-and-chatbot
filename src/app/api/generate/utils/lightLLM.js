@@ -4,12 +4,35 @@ const GROQ_MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b']
 
 export function parseJsonSafe(text) {
   if (!text) return null
-  const cleaned = String(text).replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
-  try { return JSON.parse(cleaned) } catch {
-    const match = cleaned.match(/\{[\s\S]*\}/)
-    if (!match) return null
-    try { return JSON.parse(match[0]) } catch { return null }
+
+  const tryParse = value => {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return null
+    }
   }
+
+  const cleaned = String(text)
+    .replace(/^\uFEFF/, '')
+    .replace(/```(?:json)?/gi, '')
+    .trim()
+  const direct = tryParse(cleaned)
+
+  if (direct && typeof direct === 'object') return direct
+
+  const start = cleaned.indexOf('{')
+
+  if (start < 0) return null
+
+  for (let end = cleaned.lastIndexOf('}'); end > start; end = cleaned.lastIndexOf('}', end - 1)) {
+    const slice = cleaned.slice(start, end + 1)
+    const parsed = tryParse(slice) || tryParse(slice.replace(/,\s*([}\]])/g, '$1'))
+
+    if (parsed && typeof parsed === 'object') return parsed
+  }
+
+  return null
 }
 
 export async function callGroq({ prompt, system, json = false, model, max_tokens = 512, waitOn429 = true }) {
@@ -49,7 +72,7 @@ export async function callGroq({ prompt, system, json = false, model, max_tokens
   return null
 }
 
-export async function callMistral({ prompt, system, json = false, model = 'mistral-small-latest', max_tokens = 512 }) {
+export async function callMistral({ prompt, system, json = false, model = 'mistral-small-latest', max_tokens = 512, timeoutMs = 15000 }) {
   const paid = resolvePaidTier()
   const keys = paid
     ? listProviderKeys('MISTRAL_PAID_API_KEYS', { numberedPrefix: 'MISTRAL_PAID_API_KEY_', legacySingles: ['MISTRAL_PAID_API_KEY'] })
@@ -65,7 +88,7 @@ export async function callMistral({ prompt, system, json = false, model = 'mistr
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ model, messages, temperature: 0.2, max_tokens }),
-        signal: AbortSignal.timeout(15000)
+        signal: AbortSignal.timeout(timeoutMs)
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {

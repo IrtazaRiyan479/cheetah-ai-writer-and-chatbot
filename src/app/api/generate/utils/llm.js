@@ -31,11 +31,23 @@ const MODEL_CATALOG = {
   'gpt-5.2': { provider: 'openai', model: 'gpt-5.2' },
   'gpt-5-mini': { provider: 'openai', model: 'gpt-5-mini' },
   'claude-4.5-sonnet': { provider: 'anthropic', model: 'claude-sonnet-4-5' },
+  'claude-haiku-4-5': { provider: 'anthropic', model: 'claude-haiku-4-5' },
+  'claude-haiku-5-5': { provider: 'anthropic', model: 'claude-haiku-5-5' },
+  'claude-sonnet-4-5': { provider: 'anthropic', model: 'claude-sonnet-4-5' },
+  'claude-sonnet-4-6': { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+  'claude-sonnet-5': { provider: 'anthropic', model: 'claude-sonnet-5' },
+  'claude-sonnet-5-5': { provider: 'anthropic', model: 'claude-sonnet-5-5' },
+  'claude-opus-4-6': { provider: 'anthropic', model: 'claude-opus-4-6' },
+  'claude-opus-5-5': { provider: 'anthropic', model: 'claude-opus-5-5' },
   'grok-4.7': { provider: 'xai', model: 'grok-4.7' }
 }
 
 export function getStableSystemPrefix() {
   return STABLE_SYSTEM_PREFIX
+}
+
+export function isLimitError(error) {
+  return /429|quota|rate.?limit|resource.?exhausted|too many requests/i.test(serializeError(error))
 }
 
 export function isCapacityError(error) {
@@ -92,90 +104,197 @@ function keysFor(provider, paid = false) {
   })
 }
 
-function resolveModel(model) {
+export function resolveModel(model) {
   const requested = String(model || 'gemini-3.1-flash-lite')
   const known = MODEL_CATALOG[requested]
 
   if (known) return { ...known, requested }
-  if (requested.startsWith('gemini-'))
+
+  const lower = requested.toLowerCase()
+
+  if (lower.startsWith('claude')) return { provider: 'anthropic', model: requested, requested }
+  if (lower.startsWith('gpt-')) return { provider: 'openai', model: requested, requested }
+  if (lower.startsWith('grok')) return { provider: 'xai', model: requested, requested }
+  if (lower.startsWith('gemini-'))
     return { provider: 'gemini', model: requested, paid: /-pro(?:-|$)/i.test(requested), requested }
+
   throw new Error(`Unsupported selected model: ${requested}`)
 }
 
-async function callXai({ apiKey, model, system, prompt, maxTokens, temperature }) {
-  const response = await fetch(XAI_URL, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: process.env.XAI_MODEL || model || DEFAULT_XAI_MODEL,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: prompt }
-      ],
-      temperature,
-      max_tokens: maxTokens
-    }),
-    signal: AbortSignal.timeout(90000)
-  })
+function extractChatContent(message) {
+  if (!message) return ''
+  if (typeof message.content === 'string') return message.content.trim()
+  if (Array.isArray(message.content)) {
+    return message.content
+      .map(part => (typeof part === 'string' ? part : part?.text || part?.content || ''))
+      .join('')
+      .trim()
+  }
 
-  const data = await parseProviderResponse(response)
-  const text = data.choices?.[0]?.message?.content?.trim() || ''
-
-  if (!text) throw new Error('xAI returned an empty response')
-
-  return { text, provider: 'xai' }
+  return ''
 }
 
-async function callOpenAI({ apiKey, model, system, prompt, json, maxTokens, temperature }) {
-  const response = await fetch(OPENAI_URL, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: prompt }
-      ],
-      temperature,
-      max_tokens: maxTokens,
-      ...(json ? { response_format: { type: 'json_object' } } : {})
-    }),
-    signal: AbortSignal.timeout(90000)
-  })
+function extractAnthropicText(data) {
+  const blocks = Array.isArray(data?.content) ? data.content : []
 
-  const data = await parseProviderResponse(response)
-  const text = data.choices?.[0]?.message?.content?.trim() || ''
-
-  if (!text) throw new Error('OpenAI returned an empty response')
-
-  return { text, provider: 'openai' }
-}
-
-async function callAnthropic({ apiKey, model, system, prompt, maxTokens, temperature }) {
-  const response = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: process.env.ANTHROPIC_MODEL || model,
-      system,
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: maxTokens,
-      temperature
-    }),
-    signal: AbortSignal.timeout(90000)
-  })
-
-  const data = await parseProviderResponse(response)
-
-  const text = (data.content || [])
-    .filter(item => item.type === 'text')
+  return blocks
+    .filter(item => item && (item.type === 'text' || item.type === 'output_text'))
     .map(item => item.text || '')
     .join('')
     .trim()
+}
 
-  if (!text) throw new Error('Anthropic returned an empty response')
+function normalizeJsonText(text, provider) {
+  const parsed = parseJsonSafe(text)
 
-  return { text, provider: 'anthropic' }
+  if (!parsed || typeof parsed !== 'object') throw new Error(`${provider} returned invalid JSON`)
+
+  return JSON.stringify(parsed)
+}
+
+function isParameterError(error) {
+  return /output_config|effort|thinking|temperature|max_completion_tokens|max_tokens|response_format|reasoning_effort|unknown parameter|unexpected|not supported|extra (?:field|input)/i.test(
+    serializeError(error)
+  )
+}
+
+async function callXai({ apiKey, model, system, prompt, maxTokens, temperature }) {
+  const apiModel = model || DEFAULT_XAI_MODEL
+  const tokens = Math.max(Number(maxTokens) || 2048, 8192)
+  const messages = [
+    { role: 'system', content: system },
+    { role: 'user', content: prompt }
+  ]
+
+  const send = async payload => {
+    const response = await fetch(XAI_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(90000)
+    })
+    const data = await parseProviderResponse(response)
+    const text = extractChatContent(data.choices?.[0]?.message)
+
+    if (!text) throw new Error(`xAI model ${apiModel} returned an empty article.`)
+
+    return { text, provider: 'xai', model: apiModel }
+  }
+
+  try {
+    return await send({ model: apiModel, messages, temperature, max_tokens: tokens })
+  } catch (error) {
+    const message = serializeError(error)
+
+    if (/max_completion_tokens/i.test(message)) {
+      return send({ model: apiModel, messages, max_completion_tokens: tokens })
+    }
+
+    if (/temperature/i.test(message)) return send({ model: apiModel, messages, max_tokens: tokens })
+    throw error
+  }
+}
+
+async function callOpenAI({ apiKey, model, system, prompt, json, maxTokens }) {
+  const apiModel = model || process.env.OPENAI_MODEL
+
+  if (!apiModel) throw new Error('OpenAI model is required.')
+
+  const tokens = Math.max(Number(maxTokens) || 2048, 8192)
+  const messages = [
+    { role: 'system', content: system },
+    { role: 'user', content: prompt }
+  ]
+
+  const send = async payload => {
+    const response = await fetch(OPENAI_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(90000)
+    })
+    const data = await parseProviderResponse(response)
+    const message = data.choices?.[0]?.message
+    const text = extractChatContent(message)
+
+    if (!text && message?.refusal) throw new Error(`OpenAI model ${apiModel} refused the article: ${message.refusal}`)
+    if (!text) throw new Error(`OpenAI model ${apiModel} returned an empty article.`)
+
+    return { text, provider: 'openai', model: apiModel }
+  }
+
+  const jsonFormat = json ? { response_format: { type: 'json_object' } } : {}
+
+  try {
+    return await send({
+      model: apiModel,
+      messages,
+      max_completion_tokens: tokens,
+      reasoning_effort: 'low',
+      ...jsonFormat
+    })
+  } catch (error) {
+    if (!isParameterError(error)) throw error
+
+    try {
+      return await send({ model: apiModel, messages, max_completion_tokens: tokens, ...jsonFormat })
+    } catch (retryError) {
+      if (!isParameterError(retryError)) throw retryError
+
+      return send({ model: apiModel, messages, max_tokens: tokens, ...jsonFormat })
+    }
+  }
+}
+
+function anthropicBody(model, system, prompt, maxTokens, variant) {
+  const body = {
+    model,
+    system,
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: Math.max(8192, Number(maxTokens) || 0)
+  }
+
+  if (variant === 'effort') body.output_config = { effort: 'low' }
+  if (variant === 'disabled') body.thinking = { type: 'disabled' }
+
+  return body
+}
+
+async function callAnthropic({ apiKey, model, system, prompt, maxTokens }) {
+  const apiModel = model || 'claude-sonnet-5-5'
+
+  const send = async variant => {
+    const response = await fetch(ANTHROPIC_URL, {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify(anthropicBody(apiModel, system, prompt, maxTokens, variant)),
+      signal: AbortSignal.timeout(90000)
+    })
+    const data = await parseProviderResponse(response)
+    const text = extractAnthropicText(data)
+
+    if (!text) {
+      throw new Error(
+        `Anthropic model ${apiModel} returned an empty article (stop_reason=${data.stop_reason || 'unknown'}).`
+      )
+    }
+
+    return { text, provider: 'anthropic', model: apiModel }
+  }
+
+  try {
+    return await send('effort')
+  } catch (error) {
+    if (!isParameterError(error) && !/empty article/i.test(serializeError(error))) throw error
+
+    try {
+      return await send('disabled')
+    } catch (retryError) {
+      if (!isParameterError(retryError) && !/empty article/i.test(serializeError(retryError))) throw retryError
+
+      return send('plain')
+    }
+  }
 }
 
 async function callGemini({ apiKey, model, system, prompt, json, maxTokens, temperature, paid }) {
@@ -242,9 +361,38 @@ async function runProvider(config, request) {
   )
 }
 
-const FALLBACK_ORDER = ['xai', 'mistral', 'groq', 'gemini']
+async function limitFallback(skipProvider, request, json) {
+  const order = ['groq', 'mistral'].filter(provider => provider !== skipProvider)
 
-/** The selected Writer model runs first; exhausted configured providers use legacy fallbacks. */
+  for (const provider of order) {
+    const text =
+      provider === 'groq'
+        ? await callGroq({
+            ...request,
+            max_tokens: Math.min(request.maxTokens || 2048, 8192),
+            waitOn429: false
+          })
+        : await callMistral({
+            ...request,
+            max_tokens: Math.min(request.maxTokens || 2048, 8192),
+            timeoutMs: 25000
+          })
+
+    if (!text) continue
+
+    try {
+      const normalized = json ? normalizeJsonText(text, provider) : text
+
+      return { text: normalized, provider, model: provider === 'groq' ? 'groq-fallback' : 'mistral-small-latest' }
+    } catch (error) {
+      console.warn(`[llm] ${provider} fallback was not usable:`, serializeError(error).slice(0, 180))
+    }
+  }
+
+  return null
+}
+
+/** Selected model is called on its own API. Groq, then Mistral, run only after a rate limit. */
 export async function callLLM({
   system,
   prompt,
@@ -256,89 +404,54 @@ export async function callLLM({
   paid
 }) {
   const requested = resolveModel(model || geminiModel || 'gemini-3.1-flash-lite')
+  const wantPaid = resolvePaidTier(paid, requested.model)
+  const paidKeys = wantPaid ? keysFor(requested.provider, true) : []
+  const standardKeys = keysFor(requested.provider, false)
 
-  requested.paid = resolvePaidTier(paid, requested.model)
+  requested.paid = paidKeys.length > 0
   const stableSystem = `${STABLE_SYSTEM_PREFIX}\n\n${system || ''}`.trim()
   const userPrompt = json ? `${prompt || ''}${OUTLINE_JSON_SUFFIX}` : prompt || ''
   const request = { system: stableSystem, prompt: userPrompt, json, maxTokens, temperature }
-  const selectedKeys = keysFor(requested.provider, requested.paid)
+  const selectedKeys = requested.paid ? paidKeys : standardKeys
 
   if (!selectedKeys.length) {
-    if (requested.paid) {
-      console.error(`[llm] no paid keys for ${requested.provider}`)
-      const paidError = new Error('Low credits.')
-
-      paidError.code = 'PAID_KEYS_FAILED'
-      throw paidError
-    }
-
     throw new Error(`Selected provider ${requested.provider} is not configured for model ${requested.requested}.`)
   }
 
-  const failures = []
+  console.info(`[llm] provider=${requested.provider} model=${requested.model} paid=${requested.paid}`)
 
   try {
     const selected = await runProvider(requested, request)
 
-    if (selected?.text) return { ...selected, usedPaidKeys: requested.paid }
-    throw new Error(`Selected provider ${requested.provider} returned no response.`)
+    if (!selected?.text) throw new Error(`Selected provider ${requested.provider} returned no response.`)
+
+    const text = json ? normalizeJsonText(selected.text, requested.provider) : selected.text
+
+    return { ...selected, text, model: requested.model, usedPaidKeys: requested.paid }
   } catch (error) {
     const message = serializeError(error)
 
-    failures.push({ name: requested.provider, message, paid: requested.paid })
-    console.error(`[llm] selected ${requested.provider} failed (paid=${requested.paid}):`, message.slice(0, 220))
+    console.error(`[llm] ${requested.provider} model=${requested.model} failed:`, message.slice(0, 300))
 
-    if (requested.paid) {
+    if (requested.paid && /low credits|insufficient|billing|credit balance|payment required|\b402\b/i.test(message)) {
       const paidError = new Error('Low credits.')
 
       paidError.code = 'PAID_KEYS_FAILED'
       throw paidError
     }
 
-    if (requested.provider !== 'gemini') {
-      throw new Error(`${requested.provider} keys failed: ${message}`)
+    if (isLimitError(error)) {
+      const fallback = await limitFallback(requested.provider, request, json)
+
+      if (fallback?.text) {
+        console.info(`[llm] rate limit on ${requested.provider}; using ${fallback.provider}`)
+
+        return { ...fallback, usedPaidKeys: requested.paid }
+      }
     }
 
-    console.warn(`[llm] fallback after selected provider exhausted: ${requested.provider}`)
+    throw new Error(`${requested.provider} model ${requested.model} failed: ${message}`)
   }
-
-  const fallbacks = FALLBACK_ORDER.filter(provider => provider !== requested.provider)
-
-  for (const provider of fallbacks) {
-    const fallback = {
-      provider,
-      model:
-        provider === 'xai'
-          ? DEFAULT_XAI_MODEL
-          : provider === 'gemini'
-            ? 'gemini-3.1-flash-lite'
-            : provider === 'groq'
-              ? undefined
-              : provider === 'mistral'
-                ? 'mistral-small-latest'
-                : undefined,
-      paid: false
-    }
-
-    if (!keysFor(provider, false).length) continue
-
-    try {
-      const result = await runProvider(fallback, request)
-
-      if (result?.text) return { ...result, usedPaidKeys: false }
-      failures.push({ name: provider, message: 'empty response' })
-    } catch (error) {
-      const message = serializeError(error)
-
-      failures.push({ name: provider, message })
-      console.error(`[llm] ${provider} failed:`, message.slice(0, 220))
-    }
-  }
-
-  const summary =
-    failures.map(item => `${item.name}: ${item.message}`).join(' | ') || 'no fallback providers configured'
-
-  throw new Error(`All language providers failed. ${summary}`.slice(0, 700))
 }
 
 export async function callLLMJson(options) {
@@ -381,7 +494,7 @@ export function createProviderGenAI({ paid = false } = {}) {
         systemInstruction: config.systemInstruction || '',
         model: config.model || 'gemini-3.1-flash-lite',
         json: wantsJson,
-        maxTokens: 4096,
+        maxTokens: config.generationConfig?.maxOutputTokens || (wantsJson ? 8192 : 4096),
         paid
       })
     },
