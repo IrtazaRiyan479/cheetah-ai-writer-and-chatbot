@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url'
 
 import { geminiGenerateContent, listGeminiApiKeys } from './geminiKeys'
 import { resolvePaidTier } from './providerKeys'
+import { cleanRewriteKeyword } from './articleHtml'
 
 import { callLightLLM, parseJsonSafe } from './lightLLM'
 
@@ -998,7 +999,7 @@ export async function attachBrandedHero(result, settings = {}) {
 
     try {
       heroImage = await buildBrandedHero({
-        title: result.title || settings.targetKeyword || 'Product',
+        title: cleanRewriteKeyword(result.title || settings.targetKeyword || 'Product') || 'Product',
         siteName: siteLabel(settings)
       })
     } catch (error) {
@@ -1014,7 +1015,7 @@ export async function attachBrandedHero(result, settings = {}) {
     }
   }
 
-  const title = result.title || settings.targetKeyword || 'Article'
+  const title = cleanRewriteKeyword(result.title || settings.targetKeyword || 'Article') || 'Article'
   const rewriteStock = settings.type === 'amazon-roundup-rewrite' || settings.type === 'amazon-review-rewrite'
 
   const youtubeThumb =
@@ -1532,8 +1533,8 @@ export async function fetchArticleData(url) {
 
     const markdownText = await res.text()
 
-    const firstLine = markdownText.split('\n')[0]
-    const extractedTitle = firstLine.replace(/^#+\s*/, '').trim() || 'Extracted Article'
+    const firstLine = markdownText.split('\n').find(line => String(line || '').trim()) || ''
+    const extractedTitle = cleanRewriteKeyword(firstLine) || 'Extracted Article'
 
     return {
       success: true,
@@ -1777,14 +1778,27 @@ async function keepLiveSpecificLinks(items) {
   return [...new Set(checks.filter(Boolean))].slice(0, 3)
 }
 
-export async function fetchSerperOutlineData(query) {
+function isResearchLink(raw) {
+  const link = String(raw || '')
+
+  if (/\.pdf($|\?)/i.test(link)) return true
+
+  return /doi\.org|researchgate\.net|academia\.edu|semanticscholar\.org|arxiv\.org|scholar\.google|books\.google|jstor\.org|sciencedirect\.com|springer\.com|wiley\.com|ncbi\.nlm\.nih\.gov|pubmed\.ncbi/i.test(
+    link
+  )
+}
+
+export async function fetchSerperOutlineData(query, options = {}) {
+  const strictProduct = Boolean(options.strictProduct)
+  const cleanedQuery = cleanRewriteKeyword(query)
+
   if (!process.env.SERPER_API_KEY) return { organic: [], faqs: [], related: [], authorityLinks: [] }
 
   try {
     const res = await fetch(`https://google.serper.dev/search`, {
       method: 'POST',
       headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q: query })
+      body: JSON.stringify({ q: cleanedQuery || query })
     })
 
     const data = await res.json()
@@ -1796,10 +1810,10 @@ export async function fetchSerperOutlineData(query) {
     }
 
     const organic = Array.isArray(data.organic) ? data.organic : []
-    const queryWords = linkTokens(query)
+    const queryWords = linkTokens(cleanedQuery || query)
     const minOverlap = queryWords.length >= 2 ? 2 : 1
     const ranked = organic
-      .filter(item => item?.link && isSpecificArticleUrl(item.link))
+      .filter(item => item?.link && isSpecificArticleUrl(item.link) && !(strictProduct && isResearchLink(item.link)))
       .map(item => {
         const titleHits = linkTokens(item.title || '').filter(token => queryWords.includes(token)).length
         const extraHits = linkTokens(`${item.snippet || ''} ${item.link || ''}`).filter(token =>
@@ -2312,13 +2326,23 @@ export function externalTopicQuery(topic, heading) {
   return `${subject} ${headingText}`.trim().slice(0, 180)
 }
 
-export async function prepareExternalLinks({ automaticExternalLinks, externalLinks, topic, heading } = {}) {
+export async function prepareExternalLinks({
+  automaticExternalLinks,
+  externalLinks,
+  topic,
+  heading,
+  articleType
+} = {}) {
   if (!automaticExternalLinks) return []
 
-  const fallback = (externalLinks || []).filter(link => isSpecificArticleUrl(link)).slice(0, 4)
+  const strictProduct = articleType === 'amazon-roundup-rewrite'
+  const cleanedTopic = cleanRewriteKeyword(topic)
+  const fallback = (externalLinks || [])
+    .filter(link => isSpecificArticleUrl(link) && !(strictProduct && isResearchLink(link)))
+    .slice(0, 4)
 
   try {
-    const fresh = await fetchSerperOutlineData(externalTopicQuery(topic, heading))
+    const fresh = await fetchSerperOutlineData(externalTopicQuery(cleanedTopic, heading), { strictProduct })
 
     if (fresh?.authorityLinks?.length) return fresh.authorityLinks
   } catch {

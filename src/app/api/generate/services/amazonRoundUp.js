@@ -19,6 +19,7 @@ import { countries } from '@/configs/countries'
 import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
 import {
   buildCheckPriceButton,
+  cleanRewriteKeyword,
   escapeHtml,
   renderResponsiveTable,
   renderTopPickCards,
@@ -180,6 +181,24 @@ async function fillRoundupProducts(products, settings, keyword) {
   return kept.slice(0, requested)
 }
 
+function outlineProductData(product) {
+  const features = (Array.isArray(product?.features) ? product.features : [])
+    .map(item => String(item || '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .map(item => item.slice(0, 180))
+
+  return {
+    productName: product?.productName || '',
+    amazonUrl: product?.amazonUrl || '',
+    imageUrl: product?.imageUrl || '',
+    price: product?.price || '',
+    asin: product?.asin || '',
+    rating: product?.rating || '',
+    features
+  }
+}
+
 function applyExactProductOutline(outline, products) {
   const items = Array.isArray(outline) ? outline : []
 
@@ -187,13 +206,7 @@ function applyExactProductOutline(outline, products) {
     type: 'h2',
     text: titleCaseWords(`${index + 1}. ${product.productName || product.asin || 'Amazon Product'}`),
     sectionType: 'product',
-    productData: {
-      productName: product.productName || '',
-      amazonUrl: product.amazonUrl || '',
-      imageUrl: product.imageUrl || '',
-      price: product.price || '',
-      asin: product.asin || ''
-    }
+    productData: outlineProductData(product)
   }))
 
   const before = []
@@ -220,10 +233,13 @@ function applyExactProductOutline(outline, products) {
 }
 
 export async function generateAmazonRoundupOutline(body, genAI) {
-  const { settings, targetKeyword } = body
+  const { settings } = body
+  let { targetKeyword } = body
   const { model, language, country, includeFaq, automaticExternalLinks } = settings
   const sourceArticleText = String(body.sourceArticleText || '').trim()
   const isRewriteMode = Boolean(sourceArticleText) || settings.type === 'amazon-roundup-rewrite'
+
+  if (isRewriteMode) targetKeyword = cleanRewriteKeyword(targetKeyword) || targetKeyword || ''
 
   let formattedProducts = Array.isArray(body.prefetchedProducts)
     ? body.prefetchedProducts.filter(p => p && (p.productName || p.asin || p.amazonUrl))
@@ -262,7 +278,9 @@ export async function generateAmazonRoundupOutline(body, genAI) {
   let relatedInstruction = ''
 
   if (automaticExternalLinks || includeFaq) {
-    const outlineData = await fetchSerperOutlineData(targetKeyword)
+    const outlineData = await fetchSerperOutlineData(targetKeyword, {
+      strictProduct: settings.type === 'amazon-roundup-rewrite'
+    })
 
     if (automaticExternalLinks) {
       fetchedExternalLinks = outlineData.authorityLinks
@@ -450,13 +468,7 @@ export async function generateAmazonRoundupOutline(body, genAI) {
 
         productCursor += 1
         next.sectionType = 'product'
-        next.productData = {
-          productName: product.productName,
-          amazonUrl: product.amazonUrl,
-          imageUrl: product.imageUrl,
-          price: product.price,
-          asin: product.asin
-        }
+        next.productData = outlineProductData(product)
 
         if (product.productName && !/^\d+\.\s+/.test(String(next.text || ''))) {
           next.text = titleCaseWords(`${productCursor}. ${product.productName}`)
@@ -635,7 +647,7 @@ ${sourceArticleText.substring(0, 80000)}`
 
     sectionPrompt +=
       settings.roundupLayout === 'top-pick'
-        ? `TASK: Write an engaging introduction for "${targetKeyword}". Follow it with these ranked product cards; do not add a product table:\n${topPicksTable}`
+        ? `TASK: Write an engaging introduction for "${targetKeyword}". Do NOT output a product table, product cards, product images, or Check Price buttons. The ranked Top Pick cards are inserted after your paragraphs.`
         : `TASK: Write a strong, engaging introduction for the keyword "${targetKeyword}". Immediately following your introductory paragraphs, include this Product Table:\n### Our Top 3 Products\n${topPicksTable}`
   } else if (activeSectionType === 'product') {
     const cleanHeading = activeHeadingText
@@ -739,21 +751,36 @@ ${sourceArticleText.substring(0, 80000)}`
 
   if (activeSectionType === 'intro' && typeof topPicksTable === 'string' && topPicksTable) {
     if (settings.roundupLayout === 'top-pick') {
-      sectionText = sectionText.replace(/<table\b[\s\S]*?<\/table>/gi, '')
-      if (!/affigenie-product-cards/i.test(sectionText)) sectionText += `\n\n${topPicksTable}`
+      sectionText = sectionText
+        .replace(/<div\b[^>]*affigenie-product-cards[\s\S]*$/i, '')
+        .replace(/<article\b[^>]*affigenie-product-card[\s\S]*?<\/article>/gi, '')
+        .replace(/<h2\b[^>]*affigenie-top-pick[\s\S]*?<\/h2>/gi, '')
+        .replace(/<table\b[\s\S]*?<\/table>/gi, '')
+        .trim()
+      sectionText = `${sectionText}\n\n${topPicksTable}`
     } else if (!/<table[\s>]/i.test(sectionText)) {
       sectionText += `\n\n${topPicksTable}`
     }
   }
 
-  if (activeSectionType === 'product' && matchedProduct?.amazonUrl) {
-    sectionText = withRequiredCheckPrice(sectionText, {
-      url: matchedProduct.amazonUrl,
-      asin: matchedProduct.asin,
-      language: settings.language,
-      domain: settings.amazonDomain || 'www.amazon.com',
-      partnerTag: settings.amazonTrackingId || process.env.AMAZON_PARTNER_TAG || ''
-    })
+  if (activeSectionType === 'product' && matchedProduct) {
+    const shot = toHdAmazonImage(matchedProduct.imageUrl)
+
+    if (shot && !sectionText.includes(shot) && !sectionText.includes(String(matchedProduct.imageUrl || ''))) {
+      const alt = escapeHtml(`${targetKeyword || ''} ${matchedProduct.productName || ''}`.trim())
+
+      sectionText += `\n\n<img src="${escapeHtml(shot)}" alt="${alt}" />`
+    }
+
+    if (matchedProduct.amazonUrl || matchedProduct.asin) {
+      sectionText = withRequiredCheckPrice(sectionText, {
+        url: matchedProduct.amazonUrl,
+        asin: matchedProduct.asin,
+        language: settings.language,
+        domain: settings.amazonDomain || 'www.amazon.com',
+        partnerTag: settings.amazonTrackingId || process.env.AMAZON_PARTNER_TAG || ''
+      })
+    }
   }
 
   return { success: true, text: sectionText, mediaHtml: null, internalLinkUrl: internalLinkUrl }

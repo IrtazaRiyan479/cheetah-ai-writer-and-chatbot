@@ -19,6 +19,62 @@ const prisma = global.prismaPublish || new PrismaClient()
 
 if (process.env.NODE_ENV !== 'production') global.prismaPublish = prisma
 
+function hostsMatch(left, right) {
+  const host = value => {
+    try {
+      const raw = String(value || '').trim()
+
+      if (!raw) return ''
+
+      const withProto = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+
+      return new URL(withProto).hostname.replace(/^www\./, '').toLowerCase()
+    } catch {
+      return ''
+    }
+  }
+
+  const a = host(left)
+  const b = host(right)
+
+  return Boolean(a && b && a === b)
+}
+
+function slugFromUrl(raw) {
+  try {
+    const url = new URL(String(raw || ''))
+    const parts = url.pathname.split('/').filter(Boolean)
+    const last = decodeURIComponent(parts[parts.length - 1] || '')
+
+    return last.replace(/\.html?$/i, '').trim()
+  } catch {
+    return ''
+  }
+}
+
+async function findExistingWpBySlug(siteUrl, authHeaders, slug) {
+  if (!slug) return null
+
+  for (const kind of ['posts', 'pages']) {
+    try {
+      const res = await wpFetch(
+        `${siteUrl}/wp-json/wp/v2/${kind}?slug=${encodeURIComponent(slug)}&_fields=id,link,slug,status,featured_media`,
+        { headers: authHeaders }
+      )
+
+      if (!res.ok) continue
+
+      const rows = await readWp(res, 'Could not look up the existing article')
+
+      if (Array.isArray(rows) && rows[0]?.id) return { kind, row: rows[0] }
+    } catch {
+      continue
+    }
+  }
+
+  return null
+}
+
 function normalizeWpSiteUrl(url) {
   let clean = String(url || '').trim()
 
@@ -839,11 +895,26 @@ export async function POST(request) {
       postPayload.featured_media = featuredMediaId
     }
 
-    const response = await wpFetch(`${cleanSiteUrl}/wp-json/wp/v2/posts?_fields=id,link,status,featured_media`, {
-      method: 'POST',
-      headers: { ...authHeaders, 'Content-Type': 'application/json' },
-      body: JSON.stringify(postPayload)
-    })
+    const sourceUrl = String(body.articleUrlToRewrite || settings?.articleUrlToRewrite || '').trim()
+    const rewriteSameUrl = /rewrite/i.test(String(articleType || '')) && sourceUrl && hostsMatch(sourceUrl, cleanSiteUrl)
+    const existingWp = rewriteSameUrl
+      ? await findExistingWpBySlug(cleanSiteUrl, authHeaders, slugFromUrl(sourceUrl))
+      : null
+
+    if (existingWp) postPayload.slug = existingWp.row.slug || slugFromUrl(sourceUrl)
+
+    const wpCollection = existingWp?.kind || 'posts'
+
+    const response = await wpFetch(
+      existingWp
+        ? `${cleanSiteUrl}/wp-json/wp/v2/${wpCollection}/${existingWp.row.id}?_fields=id,link,status,featured_media`
+        : `${cleanSiteUrl}/wp-json/wp/v2/posts?_fields=id,link,status,featured_media`,
+      {
+        method: 'POST',
+        headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify(postPayload)
+      }
+    )
 
     const data = await readWp(response, 'Failed to publish to WordPress')
 
@@ -855,7 +926,7 @@ export async function POST(request) {
 
     if (featuredMediaId && Number(created.featured_media) !== Number(featuredMediaId)) {
       const retry = await wpFetch(
-        `${cleanSiteUrl}/wp-json/wp/v2/posts/${created.id}?_fields=id,link,status,featured_media`,
+        `${cleanSiteUrl}/wp-json/wp/v2/${wpCollection}/${created.id}?_fields=id,link,status,featured_media`,
         {
           method: 'POST',
           headers: { ...authHeaders, 'Content-Type': 'application/json' },
@@ -868,7 +939,7 @@ export async function POST(request) {
 
       if (featured !== Number(featuredMediaId)) {
         const readBack = await wpFetch(
-          `${cleanSiteUrl}/wp-json/wp/v2/posts/${created.id}?_fields=id,featured_media,link`,
+          `${cleanSiteUrl}/wp-json/wp/v2/${wpCollection}/${created.id}?_fields=id,featured_media,link`,
           { headers: authHeaders }
         )
 
@@ -921,7 +992,9 @@ export async function POST(request) {
       status: created.status || postPayload.status,
       featuredMediaId,
       functionsPhp,
-      articleId
+      articleId,
+      updatedExisting: Boolean(existingWp),
+      sourceUrl
     })
   } catch (error) {
     console.error('WordPress API Error:', serializeError(error))

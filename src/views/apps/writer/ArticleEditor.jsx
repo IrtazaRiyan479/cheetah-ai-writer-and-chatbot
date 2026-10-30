@@ -247,7 +247,10 @@ function sectionTextToHtml(finalSectionText, language) {
 
   cleanMd = cleanMd.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
   cleanMd = cleanMd.replace(/(?<!\w)\*(.*?)\*(?!\w)/g, '<em>$1</em>')
-  cleanMd = cleanMd.replace(/(?<!\w)_(.*?)_(?!\w)/g, '<em>$1</em>')
+  cleanMd = cleanMd
+    .split(/(<[^>]+>)/g)
+    .map(part => (part.startsWith('<') ? part : part.replace(/(?<!\w)_(.*?)_(?!\w)/g, '<em>$1</em>')))
+    .join('')
   cleanMd = cleanMd.replace(
     /`([^`]+)`/g,
     '<code style="background-color: rgba(38, 43, 67, 0.06); padding: 2px 6px; border-radius: 4px; color: #666CFF; font-family: monospace; font-size: 0.875rem; border: 1px solid rgba(38, 43, 67, 0.12);">$1</code>'
@@ -262,7 +265,7 @@ function sectionTextToHtml(finalSectionText, language) {
     .map(block => {
       block = block.trim()
       if (!block) return ''
-      if (block.match(/^(<h|<ul|<ol|<blockquote|<pre|<table|<hr|<img|<div|<figure)/)) return block
+      if (block.match(/^(<h|<ul|<ol|<blockquote|<pre|<table|<hr|<img|<div|<figure|<p|<article|<a)/i)) return block
 
       return `<p>${block.replace(/\n/g, '<br/>')}</p>`
     })
@@ -1163,6 +1166,7 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         metaDescription: metaDescription,
         articleType: settings.type || '',
         settings: slimPublishSettings(settings),
+        articleUrlToRewrite: settings.articleUrlToRewrite || '',
         scheduledAt: status === 'future' ? scheduledAtIso : '',
         articleId: draftId || undefined
       }
@@ -1190,6 +1194,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           id: result.wpPostId,
           status: wpStatus,
           scheduledLabel: status === 'future' ? scheduleLabel(scheduleAt) : '',
+          updatedExisting: Boolean(result.updatedExisting),
+          sourceUrl: result.sourceUrl || settings.articleUrlToRewrite || '',
           type:
             wpStatus === 'draft'
               ? 'wp-draft-success'
@@ -2592,7 +2598,9 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
               </div>
               <Typography variant='h6'>Saved as a WordPress draft</Typography>
               <Typography variant='body2' color='text.secondary'>
-                It will appear under Posts → Drafts. Your writer can open it and click Schedule.
+                {/rewrite/i.test(settings.type || '') && publishSuccessData.updatedExisting
+                  ? 'Updated the existing draft. The URL stayed the same.'
+                  : 'It will appear under Posts → Drafts. Your writer can open it and click Schedule.'}
               </Typography>
               {publishSuccessData.editLink && (
                 <Button
@@ -2605,6 +2613,17 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                   Open Draft in WP Admin
                 </Button>
               )}
+              {/rewrite/i.test(settings.type || '') && publishSuccessData.sourceUrl ? (
+                <Button
+                  variant='outlined'
+                  onClick={() => {
+                    navigator.clipboard.writeText(publishSuccessData.sourceUrl)
+                    toast.success('Original URL copied.')
+                  }}
+                >
+                  Copy original URL
+                </Button>
+              ) : null}
             </div>
           ) : publishSuccessData?.type === 'wp-schedule-success' ? (
             <div className='flex flex-col items-center justify-center p-6 text-center gap-4'>
@@ -2635,6 +2654,13 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
                 <i className='ri-check-line' />
               </div>
               <Typography variant='h6'>Your article is live!</Typography>
+              {/rewrite/i.test(settings.type || '') && publishSuccessData.sourceUrl ? (
+                <Typography variant='body2' color='text.secondary'>
+                  {publishSuccessData.updatedExisting
+                    ? 'Updated the existing article. The URL stayed the same.'
+                    : 'A new post was created because that slug was not on this site. Copy the original URL to update it by hand.'}
+                </Typography>
+              ) : null}
               <Button
                 variant='contained'
                 color='primary'
@@ -2644,6 +2670,17 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
               >
                 View Article on Website
               </Button>
+              {/rewrite/i.test(settings.type || '') && publishSuccessData.sourceUrl ? (
+                <Button
+                  variant='outlined'
+                  onClick={() => {
+                    navigator.clipboard.writeText(publishSuccessData.sourceUrl)
+                    toast.success('Original URL copied.')
+                  }}
+                >
+                  Copy original URL
+                </Button>
+              ) : null}
             </div>
           ) : (
             <>

@@ -34,6 +34,15 @@ const CHECK_PRICE_LABELS = {
 
 const CTA_TEXT_RE = /check\s*price|buy on amazon|view on amazon|voir le prix|precio en amazon|preis auf amazon/i
 
+export function cleanRewriteKeyword(value) {
+  return String(value || '')
+    .replace(/^\uFEFF/, '')
+    .replace(/^#+\s*/, '')
+    .replace(/^(?:title|h1)\s*[:：]\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -190,38 +199,44 @@ export function titleCaseWords(value) {
 }
 
 export function renderTopPickCards(products = [], options = {}) {
-  const cards = products
-    .map((product, index) => {
-      const rawName = product.productName || product.title || 'Amazon Product'
-      const name = escapeHtml(titleCaseWords(rawName))
-      const image = product.imageUrl
-        ? `<img src="${escapeHtml(protectUrl(product.imageUrl))}" alt="${name}" style="display:block;width:100%;max-width:420px;height:auto;object-fit:contain;border-radius:10px;margin:12px auto;" />`
+  const blocks = []
+  const badges = ['Top Pick', 'Best Value', 'Best Overall']
+
+  products.forEach((product, index) => {
+    const rawName = product.productName || product.title || 'Amazon Product'
+    const name = escapeHtml(titleCaseWords(rawName))
+    const imageUrl = String(product.imageUrl || product.image || '').trim()
+    const image =
+      /^https?:/i.test(imageUrl) || imageUrl.startsWith('data:')
+        ? `<img src="${escapeHtml(protectUrl(imageUrl))}" alt="${name}" />`
         : ''
-      const rating = product.rating ? `<p><strong>Rating:</strong> ${escapeHtml(product.rating)}</p>` : ''
-      const features = Array.isArray(product.features) ? product.features.slice(0, 3) : []
-      const pros = features.length
-        ? `<p><strong>Pros:</strong> ${features.map(escapeHtml).join(' · ')}</p>`
-        : '<p><strong>Pros:</strong> Amazon-listed details are available for review.</p>'
-      const cons = '<p><strong>Cons:</strong> Confirm product limitations and fit on the Amazon listing.</p>'
-      const verdict = `<p>${index === 0 ? 'Our leading option based on its relevance to this roundup and the available listing details.' : 'A worthwhile alternative; compare its listing details against your needs.'}</p>`
-      const button = buildCheckPriceButton(product.amazonUrl, { ...options, asin: product.asin })
-      const topPickHeading =
-        index === 0
-          ? '<h2 class="affigenie-top-pick" style="margin:0 0 12px;font-size:2.25rem;line-height:1.1;font-weight:800;letter-spacing:-0.03em;color:#111827;">Top Pick</h2>'
-          : ''
+    const features = (Array.isArray(product.features) ? product.features : [])
+      .map(item => String(item || '').replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+      .slice(0, 3)
+    const featureHtml = features.length
+      ? `<p><strong>Top features</strong></p>\n\n<ul>${features.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
+      : ''
+    const badge = badges[index]
+      ? `<p class="affigenie-top-pick-badge"><strong>${escapeHtml(badges[index])}</strong></p>`
+      : ''
+    const heading = index === 0 ? '<h2 class="affigenie-top-pick">Top Pick</h2>' : ''
+    const rating = product.rating ? `<p><strong>Rating:</strong> ${escapeHtml(String(product.rating))}</p>` : ''
+    const button = buildCheckPriceButton(product.amazonUrl || product.url, { ...options, asin: product.asin })
+    const buttonHtml = button ? `<p>${button}</p>` : ''
 
-      return `<article class="affigenie-product-card" style="box-sizing:border-box;width:100%;max-width:100%;margin:20px 0;padding:16px;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">${topPickHeading}${image}<h3>${name}</h3>${rating}${verdict}${pros}${cons}<div style="width:100%;max-width:100%;">${button}</div></article>`
-    })
-    .join(
-      '<hr class="affigenie-top-pick-separator" style="border:0;border-top:2px solid #d1d5db;margin:28px 0;height:0;clear:both;background:transparent;" />'
-    )
+    blocks.push([heading, badge, image, `<h3>${name}</h3>`, rating, featureHtml, buttonHtml].filter(Boolean).join('\n\n'))
 
-  return `<div class="affigenie-product-cards" style="width:100%;max-width:100%;">${cards}</div>`
+    if (index < products.length - 1) blocks.push('<hr class="affigenie-top-pick-separator" />')
+  })
+
+  return blocks.join('\n\n')
 }
 
 export function getAffigenieArticleCss() {
   return `
 h2.affigenie-top-pick,.ProseMirror h2.affigenie-top-pick{font-size:2.25rem!important;line-height:1.1!important;font-weight:800!important;letter-spacing:-0.03em!important;margin:0 0 12px!important;color:#111827!important}
+p.affigenie-top-pick-badge,.ProseMirror p.affigenie-top-pick-badge{display:inline-block!important;margin:0 0 8px!important;padding:4px 10px!important;border-radius:999px!important;background:#111827!important;color:#ffffff!important;font-size:13px!important;font-weight:700!important;line-height:1.3!important}
 hr.affigenie-top-pick-separator,.ProseMirror hr.affigenie-top-pick-separator{display:block!important;clear:both!important;border:0!important;border-top:2px solid #d1d5db!important;margin:28px 0!important;height:0!important;background:transparent!important}
 table.affigenie-table{width:100%;max-width:100%;border-collapse:collapse;table-layout:auto;display:table;overflow:visible;margin:24px 0}
 table.affigenie-table th,table.affigenie-table td{word-break:normal;overflow-wrap:break-word;white-space:normal;vertical-align:middle;text-align:left}
@@ -473,13 +488,14 @@ export function prepareArticleHtml(html, options = {}) {
 export function withRequiredCheckPrice(text, options = {}) {
   const source = String(text || '')
 
-  if (/affigenie-check-price|check-price-btn/i.test(source) || /check price/i.test(source)) return source
+  if (/affigenie-check-price|check-price-btn/i.test(source)) return source
+  if (/<a\b[^>]*>[^<]*check\s*price[^<]*<\/a>/i.test(source)) return source
 
   const button = buildCheckPriceButton(options.url || '', options)
 
   if (!button) return source
 
-  return `${source}\n\n${button}`
+  return `${source}\n\n<p>${button}</p>`
 }
 
 export function finalizeArticleHtml(html, options = {}) {

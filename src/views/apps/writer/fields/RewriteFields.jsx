@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 import { clientSites } from '@/configs/clientSites'
 import { countries } from '@/configs/countries'
 import { languages } from '@/configs/languages'
-import { rewriteAcceptsSource, rewriteSourceError } from '@/app/api/generate/utils/articleHtml'
+import { cleanRewriteKeyword, rewriteAcceptsSource, rewriteSourceError } from '@/app/api/generate/utils/articleHtml'
 
 import { FlagSwitch } from '../FeatureAccessContext'
 import GatedSelect, { GatedNumber, InternalLinkFields } from '../GatedSelect'
@@ -49,9 +49,11 @@ export const RewriteSourceField = ({ settings, updateSetting }) => {
             setStatusText(rewriteSourceError(settings.type))
             setStatusColor('text-error')
           } else {
-            setStatusText(`Successfully fetched: ${data.title}${data.detectedType ? ` (${data.detectedType})` : ''}`)
+            const fetchedTitle = cleanRewriteKeyword(data.title)
+
+            setStatusText(`Successfully fetched: ${fetchedTitle}${data.detectedType ? ` (${data.detectedType})` : ''}`)
             setStatusColor('text-success')
-            if (data.title) updateSetting('targetKeyword', data.title)
+            if (fetchedTitle) updateSetting('targetKeyword', fetchedTitle)
           }
         } else {
           updateSetting('sourceArticleType', '')

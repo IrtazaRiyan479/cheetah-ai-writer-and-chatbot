@@ -24,6 +24,7 @@ import { countries } from '@/configs/countries'
 import { callLightLLM, parseJsonSafe } from '../utils/lightLLM'
 import {
   buildCheckPriceButton,
+  cleanRewriteKeyword,
   escapeHtml,
   extractAsin,
   renderResponsiveTable,
@@ -321,7 +322,9 @@ function attachProductsToOutline(outline, products) {
         amazonUrl: product.amazonUrl,
         imageUrl: product.imageUrl,
         price: product.price,
-        asin: product.asin
+        asin: product.asin,
+        rating: product.rating || '',
+        features: Array.isArray(product.features) ? product.features.slice(0, 3) : []
       }
     }
   })
@@ -735,6 +738,10 @@ function lengthInstruction(articleLength, customSectionCount) {
 export async function generateRewriteOutline(body, genAI) {
   const { prompt, settings } = body
 
+  if (settings && typeof settings === 'object') {
+    settings.targetKeyword = cleanRewriteKeyword(settings.targetKeyword) || settings.targetKeyword || ''
+  }
+
   const {
     model,
     targetKeyword,
@@ -769,7 +776,8 @@ export async function generateRewriteOutline(body, genAI) {
   const rewriteProducts = loadedProducts.products || []
 
   if (settings.type === 'amazon-roundup-rewrite') {
-    const keyword = targetKeyword || rewriteProducts[0]?.productName || prompt || 'Amazon products'
+    const keyword =
+      cleanRewriteKeyword(targetKeyword) || rewriteProducts[0]?.productName || prompt || 'Amazon products'
     const asins = rewriteProducts.map(p => p.asin).filter(Boolean)
 
     const roundupResult = await generateAmazonRoundupOutline(
@@ -1317,7 +1325,7 @@ export async function generateRewriteSection(body, genAI) {
     rewriteType === 'amazon-review-rewrite'
       ? `SINGLE-PRODUCT REVIEW LAYOUT: Match Amazon Single Product Review. One product only. Intro has the product image and Check Price button, feature sections follow, pros and cons are one two-column table, and the conclusion ends with the Check Price button.`
       : rewriteType === 'amazon-roundup-rewrite'
-        ? `ROUNDUP LAYOUT: This section may cover one product in a multi-product roundup. Keep product-focused structure. Do not add Pexels, Pixabay, Unsplash, or YouTube media. The original Amazon product image is inserted by the system.`
+        ? `ROUNDUP LAYOUT: This section may cover one product in a multi-product roundup. Keep product-focused structure. Do not add Pexels, Pixabay, Unsplash, or YouTube media. The original Amazon product image is inserted by the system.${settings.roundupLayout === 'top-pick' ? ' If this is the introduction, do NOT output a product table, Top Pick cards, product images, or Check Price buttons. Those cards are inserted after your paragraphs.' : ''}`
         : `STANDARD BLOG REWRITE: Follow a natural blog structure grounded in the source.`
 
   let sectionStructureRequirements =
@@ -1531,8 +1539,13 @@ export async function generateRewriteSection(body, genAI) {
               })
 
         if (settings.roundupLayout === 'top-pick') {
-          text = text.replace(/<table\b[\s\S]*?<\/table>/gi, '')
-          if (!/affigenie-product-cards/i.test(text)) text += `\n\n${layout}`
+          text = text
+            .replace(/<div\b[^>]*affigenie-product-cards[\s\S]*$/i, '')
+            .replace(/<article\b[^>]*affigenie-product-card[\s\S]*?<\/article>/gi, '')
+            .replace(/<h2\b[^>]*affigenie-top-pick[\s\S]*?<\/h2>/gi, '')
+            .replace(/<table\b[\s\S]*?<\/table>/gi, '')
+            .trim()
+          text = `${text}\n\n${layout}`
         } else if (layout && !/<table[\s>]/i.test(text)) {
           text += `\n\n${layout}`
         }

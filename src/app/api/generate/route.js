@@ -173,7 +173,8 @@ export async function POST(request) {
             automaticExternalLinks: true,
             externalLinks: body.externalLinks,
             topic,
-            heading
+            heading,
+            articleType: type
           })
         : []
 
