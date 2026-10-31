@@ -20,6 +20,7 @@ const numberingOptions = descending => [
 
 const ListItemPromptField = ({ value, onChange }) => {
   const { modeOf, requireFeature } = useFeatureAccess()
+
   if (modeOf('menu-list-item-prompt') === 'off') return null
 
   return (
@@ -32,11 +33,17 @@ const ListItemPromptField = ({ value, onChange }) => {
         multiline
         rows={3}
         size='small'
-        placeholder='e.g. Include pros and cons for each item, and focus on durability...'
+        placeholder='e.g. Include pros and cons for each item, focus on durability, and only write a max of 200 words...'
         value={value || ''}
         onChange={event => {
           const next = event.target.value
-          if (next.trim() && next.trim() !== 'only write a max of 200 words' && !requireFeature('menu-list-item-prompt')) return
+
+          if (
+            next.trim() &&
+            next.trim() !== 'only write a max of 200 words' &&
+            !requireFeature('menu-list-item-prompt')
+          )
+            return
           onChange(next)
         }}
       />
@@ -136,7 +143,10 @@ const ListicleFields = ({ settings, updateSetting }) => (
 
     {String(settings.aiImagesAndVideos || '').startsWith('upload') && (
       <Grid size={{ xs: 12 }}>
-        <MediaUploader uploadType={settings.aiImagesAndVideos} onFilesUpdate={files => updateSetting('uploadedMedia', files)} />
+        <MediaUploader
+          uploadType={settings.aiImagesAndVideos}
+          onFilesUpdate={files => updateSetting('uploadedMedia', files)}
+        />
       </Grid>
     )}
     <Grid size={{ xs: 12, sm: settings.aiImagesAndVideos === 'auto' ? 4 : 6 }}>
