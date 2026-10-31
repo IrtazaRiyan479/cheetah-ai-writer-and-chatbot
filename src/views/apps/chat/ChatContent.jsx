@@ -91,18 +91,20 @@ const ChatContent = props => {
     setIsTyping(true)
 
     try {
-      await fetch('/api/chat', { method: 'POST', body: JSON.stringify(userMsg) })
+      const saveUserMessage = fetch('/api/chat', { method: 'POST', body: JSON.stringify(userMsg) })
 
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: userText,
-          history: messages,
+          history: messages.slice(-6),
           model: selectedModel,
           settings: { model: selectedModel }
         })
       })
+
+      await saveUserMessage.catch(() => {})
 
       const data = await res.json().catch(() => ({}))
 

@@ -349,32 +349,45 @@ async function callAnthropic({ apiKey, model, system, prompt, maxTokens }) {
   }
 }
 
-async function callGemini({ apiKey, model, system, prompt, json, maxTokens, temperature, paid }) {
+async function callGemini({ apiKey, model, system, prompt, json, maxTokens, temperature, paid, timeoutMs, fast }) {
   void apiKey
 
-  const data = await geminiGenerateContent({
-    model,
-    paid,
-    body: {
-      systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature,
-        maxOutputTokens: maxTokens,
-        ...(json ? { responseMimeType: 'application/json' } : {})
-      }
-    },
-    timeoutMs: 90000
-  })
+  const send = async useFastThinking => {
+    const data = await geminiGenerateContent({
+      model,
+      paid,
+      body: {
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature,
+          maxOutputTokens: maxTokens,
+          ...(json ? { responseMimeType: 'application/json' } : {}),
+          ...(useFastThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {})
+        }
+      },
+      timeoutMs: timeoutMs || 90000
+    })
 
-  const text = (data.candidates?.[0]?.content?.parts || [])
-    .map(part => part.text || '')
-    .join('')
-    .trim()
+    const text = (data.candidates?.[0]?.content?.parts || [])
+      .map(part => part.text || '')
+      .join('')
+      .trim()
 
-  if (!text) throw new Error('Gemini returned an empty response')
+    if (!text) throw new Error('Gemini returned an empty response')
 
-  return { text, provider: 'gemini' }
+    return { text, provider: 'gemini' }
+  }
+
+  if (!fast) return send(false)
+
+  try {
+    return await send(true)
+  } catch (error) {
+    if (!/thinking|unknown|not support|invalid argument|invalid value/i.test(serializeError(error))) throw error
+
+    return send(false)
+  }
 }
 
 async function runProvider(config, request) {
@@ -453,7 +466,10 @@ export async function callLLM({
   temperature = 0.4,
   model,
   geminiModel,
-  paid
+  paid,
+  timeoutMs,
+  fast = false,
+  bareSystem = false
 }) {
   const requested = resolveModel(model || geminiModel || 'gemini-3.1-flash-lite')
   const wantPaid = resolvePaidTier(paid, requested.model)
@@ -461,9 +477,9 @@ export async function callLLM({
   const standardKeys = keysFor(requested.provider, false)
 
   requested.paid = paidKeys.length > 0
-  const stableSystem = `${STABLE_SYSTEM_PREFIX}\n\n${system || ''}`.trim()
+  const stableSystem = bareSystem ? String(system || '').trim() : `${STABLE_SYSTEM_PREFIX}\n\n${system || ''}`.trim()
   const userPrompt = json ? `${prompt || ''}${OUTLINE_JSON_SUFFIX}` : prompt || ''
-  const request = { system: stableSystem, prompt: userPrompt, json, maxTokens, temperature }
+  const request = { system: stableSystem, prompt: userPrompt, json, maxTokens, temperature, timeoutMs, fast }
   const selectedKeys = requested.paid ? paidKeys : standardKeys
 
   if (!selectedKeys.length) {

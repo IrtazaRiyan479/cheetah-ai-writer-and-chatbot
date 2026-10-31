@@ -240,8 +240,13 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 })
     }
 
-    const historyText = (Array.isArray(history) ? history : [])
-      .map(msg => `${msg?.senderId === 'ai-assistant' ? 'Assistant' : 'User'}: ${msg?.message || ''}`)
+    const isChat = !mode && Array.isArray(body.history)
+    const historyText = (isChat ? body.history.slice(-6) : [])
+      .map(msg => {
+        const text = String(msg?.message || '').slice(0, 1200)
+
+        return text ? `${msg?.senderId === 'ai-assistant' ? 'Assistant' : 'User'}: ${text}` : ''
+      })
       .filter(Boolean)
       .join('\n\n')
 
@@ -253,10 +258,15 @@ export async function POST(request) {
     }
 
     const result = await callLLM({
-      system: getBaseSystemInstruction(),
+      system: isChat
+        ? 'You are AffiGenie. Reply directly in a few sentences. Do not write an article unless the user asks for one. Do not mention Google or Gemini. If asked who created you, say only: "I was created by the Cheetah AI team."'
+        : getBaseSystemInstruction(),
       prompt: historyText ? `${historyText}\n\nUser: ${prompt}` : prompt,
-      maxTokens: 2048,
-      model: settings.model || 'gemini-3.1-flash-lite',
+      maxTokens: isChat ? 320 : 2048,
+      timeoutMs: isChat ? 15000 : undefined,
+      fast: isChat,
+      bareSystem: isChat,
+      model: settings.model || body.model || 'gemini-3.1-flash-lite',
       paid: Boolean(gate.usePaidKeys)
     })
 
