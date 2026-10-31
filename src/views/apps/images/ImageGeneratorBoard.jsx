@@ -18,6 +18,7 @@ import MenuItem from '@mui/material/MenuItem'
 import FormControl from '@mui/material/FormControl'
 import InputLabel from '@mui/material/InputLabel'
 import Chip from '@mui/material/Chip'
+import ListSubheader from '@mui/material/ListSubheader'
 
 // MUI Icons
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
@@ -33,13 +34,14 @@ import ImageCard from './ImageCard'
 
 // Util Imports
 import { commonLayoutClasses } from '@layouts/utils/layoutClasses'
+import { DEFAULT_IMAGE_MODEL, IMAGE_MODELS } from '@/configs/imageModels'
 import { serializeError } from '@/utils/serializeError'
 
 const ImageGeneratorBoard = () => {
   const { data: session, status: sessionStatus } = useSession()
   const promptRef = useRef(null)
   const [prompt, setPrompt] = useState('')
-  const [model, setModel] = useState('nano-banana')
+  const [model, setModel] = useState(DEFAULT_IMAGE_MODEL)
   const [style, setStyle] = useState('Photographic')
   const [size, setSize] = useState('1:1')
   const [numImages, setNumImages] = useState(1)
@@ -247,11 +249,22 @@ const ImageGeneratorBoard = () => {
           <Typography variant='h5' className='font-bold flex items-center gap-2 mb-2'><AutoAwesomeIcon color='primary' /> Generator</Typography>
           <FormControl fullWidth size='small'>
             <InputLabel>Model</InputLabel>
-            <Select value={model} label='Model' onChange={event => setModel(event.target.value)}>
-              <MenuItem value='nano-banana'>Nano Banana</MenuItem>
-              <MenuItem value='gpt-2-fast'>GPT-2 Fast</MenuItem>
-              <MenuItem value='dalle-3-pro'>DALL-E 3 Pro</MenuItem>
-              <MenuItem value='midjourney-v6'>Midjourney V6</MenuItem>
+            <Select
+              value={model}
+              label='Model'
+              onChange={event => setModel(event.target.value)}
+              renderValue={value => IMAGE_MODELS.find(item => item.id === value)?.label || value}
+            >
+              {[...new Set(IMAGE_MODELS.map(item => item.group))].map(group => [
+                <ListSubheader key={group} disableSticky onClickCapture={event => event.stopPropagation()}>
+                  {group}
+                </ListSubheader>,
+                ...IMAGE_MODELS.filter(item => item.group === group).map(item => (
+                  <MenuItem key={item.id} value={item.id}>
+                    {item.label}
+                  </MenuItem>
+                ))
+              ])}
             </Select>
           </FormControl>
           <FormControl fullWidth size='small'>

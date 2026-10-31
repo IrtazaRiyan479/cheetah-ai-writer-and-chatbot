@@ -5,9 +5,11 @@ import { PrismaClient } from '@prisma/client'
 
 import { authOptions } from '@/libs/auth'
 import { assertCanGenerate, getDbUser } from '@/libs/entitlement'
-import { geminiGenerateContent } from '@/app/api/generate/utils/geminiKeys'
 import { runWithPaidKeys } from '@/app/api/generate/utils/providerKeys'
+import { getImageModel, normalizeAspect, normalizeStyle } from '@/configs/imageModels'
 import { serializeError } from '@/utils/serializeError'
+
+import { generateProviderImage } from './providers'
 
 const prisma = global.prisma || new PrismaClient()
 
@@ -62,6 +64,24 @@ export async function DELETE() {
   }
 }
 
+function readReference(uploadedImage) {
+  if (!uploadedImage) return null
+
+  const value = String(uploadedImage)
+  const comma = value.indexOf(',')
+  const header = comma > 0 ? value.slice(0, comma) : ''
+  const mimeMatch = header.match(/^data:(image\/(?:png|jpeg|jpg|webp));base64$/i)
+
+  if (!mimeMatch) throw new Error('Reference image must be a PNG, JPEG, or WebP file.')
+
+  const mime = mimeMatch[1].toLowerCase() === 'image/jpg' ? 'image/jpeg' : mimeMatch[1].toLowerCase()
+  const base64 = value.slice(comma + 1).replace(/\s/g, '')
+
+  if (!base64) throw new Error('Reference image was empty.')
+
+  return { mime, base64, dataUri: `data:${mime};base64,${base64}` }
+}
+
 export async function POST(req) {
   const session = await getServerSession(authOptions)
 
@@ -74,112 +94,91 @@ export async function POST(req) {
 
   if (!gate.ok) return NextResponse.json({ success: false, error: serializeError(gate.error) }, { status: gate.status })
 
-  const body = await req.json()
-  const { prompt, model, style, size, numImages, lossless, uploadedImage } = body
+  let body
 
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json(
+      { success: false, error: serializeError(new Error('Invalid image request.')) },
+      { status: 400 }
+    )
+  }
+
+  const selected = getImageModel(body?.model)
+
+  if (!selected) {
+    return NextResponse.json(
+      { success: false, error: serializeError(new Error('Select a supported image model.')) },
+      { status: 400 }
+    )
+  }
+
+  let reference
+
+  try {
+    reference = readReference(body?.uploadedImage)
+  } catch (error) {
+    return NextResponse.json({ success: false, error: serializeError(error) }, { status: 400 })
+  }
+
+  const style = normalizeStyle(body?.style)
+  const aspect = normalizeAspect(body?.size)
+  const lossless = Boolean(body?.lossless)
+  const count = Math.min(4, Math.max(1, Number(body?.numImages) || 1))
+  let instruction = String(body?.prompt || '').trim()
+
+  if (!instruction && reference) instruction = 'Create a high-quality variation of the reference image.'
+  if (!instruction) {
+    return NextResponse.json(
+      { success: false, error: serializeError(new Error('A prompt or an uploaded image is required.')) },
+      { status: 400 }
+    )
+  }
+
+  const finalPrompt = `${style} style. ${instruction}. Show only the requested subject. Do not add flowers, mountains, landscapes, abstract backgrounds, or unrelated scenes. Do not draw words or titles.`
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({
     async start(controller) {
+      const send = payload => controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`))
+
       return runWithPaidKeys(Boolean(gate.usePaidKeys), async () => {
         try {
-          const modelMapping = {
-            'nano-banana': 'gemini-3-pro-image',
-            'gpt-2-fast': 'gemini-3.1-flash-image',
-            'dalle-3-pro': 'gemini-2.5-flash-image',
-            'midjourney-v6': 'gemini-3-pro-image'
-          }
+          send({ status: 'processing', promptUsed: finalPrompt, modelUsed: selected.label, modelId: selected.id })
 
-          const displayNames = {
-            'nano-banana': 'Nano Banana',
-            'gpt-2-fast': 'GPT-2 Fast',
-            'dalle-3-pro': 'DALL-E 3 Pro',
-            'midjourney-v6': 'Midjourney V6'
-          }
-
-          const backendModel = modelMapping[model] || 'gemini-2.5-flash-image'
-          let finalPrompt = prompt
-
-          if (uploadedImage) {
-            const base64Data = uploadedImage.includes(',') ? uploadedImage.split(',')[1] : uploadedImage
-            const mimeType = uploadedImage.match(/data:(.*?);base64/)?.[1] || 'image/jpeg'
-
-            const userInstructions = finalPrompt
-              ? `The user's specific instructions are: "${finalPrompt}".`
-              : 'Create a visually similar, high-quality variation of this image.'
-
-            const visionPayload = {
-              contents: [
-                {
-                  parts: [
-                    {
-                      text: `Analyze this image. The user wants to generate a new AI image based on it. ${userInstructions} Write a highly detailed, descriptive text prompt for an AI image generator to fulfill this request. Respond ONLY with the prompt text, nothing else.`
-                    },
-                    { inlineData: { mimeType, data: base64Data } }
-                  ]
-                }
-              ]
-            }
-
+          const jobs = Array.from({ length: count }, async () => {
             try {
-              const flashData = await geminiGenerateContent({ model: 'gemini-3.1-flash-lite', body: visionPayload })
-
-              finalPrompt = flashData.candidates?.[0]?.content?.parts?.[0]?.text || finalPrompt
-            } catch {}
-          }
-
-          if (!finalPrompt) throw new Error('A prompt or an uploaded image is required.')
-          if (lossless) finalPrompt = `${finalPrompt}, 8k resolution, ultra-crisp, uncompressed style`
-          finalPrompt = `${style} style. ${finalPrompt}. Show only the requested subject. Do not add flowers, mountains, landscapes, abstract backgrounds, or unrelated scenes. Do not draw words or titles.`
-
-          const initPayload = JSON.stringify({
-            status: 'processing',
-            promptUsed: finalPrompt,
-            modelUsed: displayNames[model]
-          })
-
-          controller.enqueue(encoder.encode(`data: ${initPayload}\n\n`))
-
-          const requestBody = {
-            contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
-            generationConfig: { imageConfig: { aspectRatio: size } }
-          }
-
-          const fetchPromises = Array.from({ length: Number(numImages) || 1 }).map(async () => {
-            try {
-              const data = await geminiGenerateContent({ model: backendModel, body: requestBody })
-
-              let originalBase64 = null
-
-              data.candidates?.forEach(candidate => {
-                candidate.content?.parts?.forEach(part => {
-                  if (part.inlineData?.data) originalBase64 = part.inlineData.data
-                  else if (part.inline_data?.data) originalBase64 = part.inline_data.data
-                })
+              const generated = await generateProviderImage({
+                selected,
+                prompt: finalPrompt,
+                aspect,
+                reference,
+                lossless
               })
 
-              if (!originalBase64) throw new Error('No image was returned by the model for this request.')
+              if (!generated?.base64) throw new Error('No image was returned by the model for this request.')
 
-              let finalBase64 = `data:image/png;base64,${originalBase64}`
+              const mime = generated.mime || 'image/png'
+              let finalBase64 = `data:${mime};base64,${generated.base64}`
 
-              if (!lossless) {
+              if (!lossless && process.env.TINYPNG_API_KEY) {
                 try {
                   const tinyKey = Buffer.from(`api:${process.env.TINYPNG_API_KEY}`).toString('base64')
-                  const imageBuffer = Buffer.from(originalBase64, 'base64')
-
+                  const imageBuffer = Buffer.from(generated.base64, 'base64')
                   const shrinkRes = await fetch('https://api.tinify.com/shrink', {
                     method: 'POST',
-                    headers: { Authorization: `Basic ${tinyKey}`, 'Content-Type': 'image/png' },
+                    headers: { Authorization: `Basic ${tinyKey}`, 'Content-Type': mime },
                     body: imageBuffer
                   })
-
                   const shrinkData = await shrinkRes.json()
 
-                  if (!shrinkData.error) {
+                  if (!shrinkData.error && shrinkData.output?.url) {
                     const compRes = await fetch(shrinkData.output.url)
                     const compBuffer = await compRes.arrayBuffer()
+                    const compressedMime = (compRes.headers.get('content-type') || mime).split(';')[0].trim() || mime
 
-                    finalBase64 = `data:image/png;base64,${Buffer.from(compBuffer).toString('base64')}`
+                    finalBase64 = `data:${compressedMime};base64,${Buffer.from(compBuffer).toString('base64')}`
                   }
                 } catch (compressionError) {
                   console.error(
@@ -195,24 +194,19 @@ export async function POST(req) {
                   userId: session.user.id,
                   image: finalBase64,
                   prompt: finalPrompt,
-                  title: `Model: ${displayNames[model]}`,
+                  title: `Model: ${selected.label}`,
                   description: finalPrompt
                 }
               })
 
-              const successPayload = JSON.stringify({ success: true, image: dbRecord })
-
-              controller.enqueue(encoder.encode(`data: ${successPayload}\n\n`))
+              send({ success: true, image: dbRecord, modelId: selected.id })
             } catch (err) {
-              const errorPayload = JSON.stringify({ success: false, error: serializeError(err) })
-
-              controller.enqueue(encoder.encode(`data: ${errorPayload}\n\n`))
+              send({ success: false, error: serializeError(err), modelId: selected.id })
             }
           })
 
-          await Promise.all(fetchPromises)
-
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`))
+          await Promise.all(jobs)
+          send({ done: true, modelId: selected.id })
           controller.close()
         } catch (error) {
           console.error(
@@ -220,9 +214,7 @@ export async function POST(req) {
             error?.status || error?.statusCode || 'unknown',
             serializeError(error).slice(0, 180)
           )
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ success: false, error: serializeError(error) })}\n\n`)
-          )
+          send({ success: false, error: serializeError(error), modelId: selected.id })
           controller.close()
         }
       })
