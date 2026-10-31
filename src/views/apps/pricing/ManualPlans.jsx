@@ -80,7 +80,7 @@ const bankRows = [
 
 const steps = [
   'Choose your plan',
-  'Pay with any method below',
+  'Pay with any method above',
   'Send a payment screenshot and your plan name on WhatsApp',
   'Get access after we confirm'
 ]
@@ -93,7 +93,8 @@ const ManualPlans = () => {
           <Chip label='1 month' color='primary' variant='tonal' size='small' />
           <Typography variant='h4'>AI article plans</Typography>
           <Typography className='max-is-[640px]'>
-            For bloggers, affiliate marketers and content teams. Pay locally, send the screenshot on WhatsApp, and we turn the plan on from the admin dashboard.
+            For bloggers, affiliate marketers and content teams. Pay locally, send the screenshot on WhatsApp, and we
+            turn the plan on from the admin dashboard.
           </Typography>
         </div>
 
@@ -106,7 +107,13 @@ const ManualPlans = () => {
                 })}
               >
                 {plan.popular ? (
-                  <Chip color='primary' label='Popular' size='small' className='absolute block-start-4 inline-end-5' variant='tonal' />
+                  <Chip
+                    color='primary'
+                    label='Popular'
+                    size='small'
+                    className='absolute block-start-4 inline-end-5'
+                    variant='tonal'
+                  />
                 ) : null}
                 <div className='flex justify-center'>
                   <img src={plan.img} height={120} width={120} alt='' />
@@ -156,7 +163,8 @@ const ManualPlans = () => {
         </Grid>
 
         <Typography variant='body2' color='text.secondary' className='text-center'>
-          USD prices are approximate (about 123.7 BDT per USD). Final amount may vary with exchange rate and payment fees. Only the Max plan can add unlimited websites.{' '}
+          USD prices are approximate (about 123.7 BDT per USD). Final amount may vary with exchange rate and payment
+          fees. Only the Max plan can add unlimited websites.{' '}
           <a href={wa('Custom order')} target='_blank' rel='noopener noreferrer'>
             Request a custom order
           </a>
@@ -166,7 +174,9 @@ const ManualPlans = () => {
         <div className='flex flex-col gap-6'>
           <div className='flex flex-col text-center gap-2'>
             <Typography variant='h4'>Payment methods</Typography>
-            <Typography>Send the screenshot of your payment on WhatsApp. We confirm it, then set the account to Pro.</Typography>
+            <Typography>
+              Send the screenshot of your payment on WhatsApp. We confirm it, then set the account to Pro.
+            </Typography>
           </div>
           <Grid container spacing={6}>
             {payments.map(method => (
@@ -182,7 +192,14 @@ const ManualPlans = () => {
                     <Typography key={line}>{line}</Typography>
                   ))}
                   {method.href ? (
-                    <Button component='a' href={method.href} target='_blank' rel='noopener noreferrer' variant='text' className='self-start'>
+                    <Button
+                      component='a'
+                      href={method.href}
+                      target='_blank'
+                      rel='noopener noreferrer'
+                      variant='text'
+                      className='self-start'
+                    >
                       {method.linkLabel}
                     </Button>
                   ) : null}
