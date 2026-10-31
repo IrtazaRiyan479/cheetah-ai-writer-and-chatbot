@@ -20,69 +20,6 @@ import Skeleton from '@mui/material/Skeleton'
 import Box from '@mui/material/Box'
 
 import ModuleGate from '@/components/access/ModuleGate'
-import { extractStoredOutline, stripOutlineField } from '@/app/api/generate/utils/articleHtml'
-
-const extractPreview = htmlContent => {
-  const visible = stripOutlineField(htmlContent)
-
-  if (!visible) return { img: null, desc: '' }
-
-  const imgMatch = visible.match(/<img[^>]+src=["']([^"']+)["']/i)
-  const img = imgMatch ? imgMatch[1] : null
-
-  let desc = ''
-  const pMatches = visible.match(/<p>([\s\S]*?)<\/p>/gi)
-
-  if (pMatches) {
-    desc = pMatches
-      .map(p => p.replace(/<[^>]+>/g, '').trim())
-      .filter(t => t.length > 0 && !/^affigenie-outline:/i.test(t))
-      .join(' ')
-  } else {
-    desc = visible
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/affigenie-outline:[A-Za-z0-9+/=]+/gi, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-  }
-
-  if (desc.length > 420) {
-    desc = desc.substring(0, 400) + '...'
-  }
-
-  return { img, desc }
-}
-
-const readOutlineMeta = article => {
-  if (article?.status !== 'outline' || !article.outline) return null
-
-  try {
-    const parsed = JSON.parse(article.outline)
-
-    if (!parsed?.review || !Array.isArray(parsed.outline)) return null
-
-    const headings = parsed.outline
-      .map(item => item?.text)
-      .filter(Boolean)
-      .slice(0, 4)
-      .join(' · ')
-
-    const heroImage =
-      parsed.heroImage ||
-      parsed.image ||
-      parsed.featuredImage ||
-      parsed.settings?.heroImage ||
-      parsed.settings?.youtubeThumbnail ||
-      ''
-
-    return {
-      img: heroImage,
-      desc: headings || 'Outline is ready. Open it, review the headings, then click Write Article.'
-    }
-  } catch {
-    return null
-  }
-}
 
 const writerHref = query => {
   const segment = window.location.pathname.split('/').filter(Boolean)[0]
@@ -145,8 +82,7 @@ export default function DraftsPage() {
   }
 
   const handleEdit = article => {
-    const outlineMeta = readOutlineMeta(article)
-    const query = outlineMeta ? `outlineId=${article.id}` : `draftId=${article.id}`
+    const query = article.status === 'outline' ? `outlineId=${article.id}` : `draftId=${article.id}`
 
     router.push(writerHref(query))
   }
@@ -198,22 +134,11 @@ export default function DraftsPage() {
         ) : (
           <Grid container spacing={4}>
             {articles.map(article => {
-              const outlineMeta = readOutlineMeta(article)
-              const hidden = extractStoredOutline(article.content)
-              let columnHero = ''
-
-              try {
-                const parsed = article.outline ? JSON.parse(article.outline) : null
-
-                columnHero = parsed?.heroImage || parsed?.settings?.heroImage || parsed?.image || ''
-              } catch {
-                columnHero = ''
-              }
-
-              const { img, desc } = extractPreview(article.content)
-              const cardImg = outlineMeta?.img || columnHero || hidden?.heroImage || img
-
-              const preview = outlineMeta ? outlineMeta.desc : desc
+              const isOutline = article.status === 'outline'
+              const cardImg = article.image || ''
+              const preview =
+                article.preview ||
+                (isOutline ? 'Outline is ready. Open it, review the headings, then click Write Article.' : '')
 
               return (
                 <Grid size={12} key={article.id}>
@@ -221,7 +146,7 @@ export default function DraftsPage() {
                     {/* Hero Image Section */}
                     {cardImg ? (
                       <Box
-                        className={`w-full bg-cover bg-center border-b border-gray-100 ${outlineMeta ? 'h-96' : 'h-80'}`}
+                        className={`w-full bg-cover bg-center border-b border-gray-100 ${isOutline ? 'h-96' : 'h-80'}`}
                         style={{ backgroundImage: `url(${cardImg})`, width: '100%' }}
                       />
                     ) : (
@@ -233,9 +158,9 @@ export default function DraftsPage() {
                     <CardContent className='flex-grow flex flex-col gap-3 p-5'>
                       <div className='flex justify-between items-start'>
                         <Chip
-                          label={outlineMeta ? 'OUTLINE' : article.status.toUpperCase()}
+                          label={isOutline ? 'OUTLINE' : article.status.toUpperCase()}
                           size='small'
-                          color={outlineMeta ? 'info' : article.status === 'draft' ? 'warning' : 'success'}
+                          color={isOutline ? 'info' : article.status === 'draft' ? 'warning' : 'success'}
                           className='font-medium text-xs'
                         />
                         {article.targetSite && (
@@ -272,7 +197,7 @@ export default function DraftsPage() {
                         onClick={() => handleEdit(article)}
                         startIcon={<i className='ri-edit-line' />}
                       >
-                        {outlineMeta ? 'Review outline' : 'Continue Editing'}
+                        {isOutline ? 'Review outline' : 'Continue Editing'}
                       </Button>
                       <IconButton
                         size='small'

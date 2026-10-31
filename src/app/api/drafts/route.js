@@ -5,7 +5,83 @@ import { getServerSession } from 'next-auth/next'
 
 import { authOptions } from '@/libs/auth'
 
-const prisma = new PrismaClient()
+const prisma = global.prisma || new PrismaClient()
+
+if (process.env.NODE_ENV !== 'production') global.prisma = prisma
+
+function usableUrl(value) {
+  const url = String(value || '')
+    .trim()
+    .replace(/\\\//g, '/')
+    .replace(/\\u0026/g, '&')
+    .replace(new RegExp('&' + 'amp;', 'gi'), '&')
+
+  if (!url || url.startsWith('data:') || url.length > 4000) return ''
+  if (!/^https?:\/\//i.test(url) && !url.startsWith('/')) return ''
+
+  return url
+}
+
+function imageFromSrcChunk(chunk) {
+  const raw = String(chunk || '')
+  const end = raw.search(/["']/)
+  const url = end === -1 ? raw : raw.slice(0, end)
+
+  return usableUrl(url)
+}
+
+function textPreview(chunk) {
+  const text = String(chunk || '')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/affigenie-outline:[A-Za-z0-9+/=\s]+/gi, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(new RegExp('&' + 'amp;', 'gi'), '&')
+    .replace(new RegExp('&' + 'apos;|&#39;', 'gi'), "'")
+    .replace(new RegExp('&' + 'quot;', 'gi'), '"')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!text || /^[A-Za-z0-9+/=\s]{40,}$/.test(text)) return ''
+
+  return text.length > 320 ? `${text.slice(0, 300)}...` : text
+}
+
+function outlinePreview(outlineHead) {
+  const texts = []
+  const pattern = /"text"\s*:\s*"((?:\\.|[^"\\])*)"/g
+  let match = pattern.exec(String(outlineHead || ''))
+
+  while (match && texts.length < 4) {
+    const text = match[1]
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, ' ')
+      .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    if (text && text.length <= 180) texts.push(text)
+    match = pattern.exec(String(outlineHead || ''))
+  }
+
+  return texts.join(' · ')
+}
+
+function toListItem(row) {
+  const isOutline = row.status === 'outline'
+  const image = usableUrl(row.outlineHero) || imageFromSrcChunk(row.imgChunk)
+  const preview = isOutline ? outlinePreview(row.outlineHead) || textPreview(row.textChunk) : textPreview(row.textChunk)
+
+  return {
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    targetSite: row.targetSite,
+    createdAt: row.createdAt,
+    image,
+    preview
+  }
+}
 
 export async function POST(request) {
   try {
@@ -97,12 +173,45 @@ export async function GET(request) {
       return NextResponse.json({ article })
     }
 
-    const articles = await prisma.article.findMany({
-      where: { userId: user.id, status: { in: ['draft', 'outline'] } },
-      orderBy: { createdAt: 'desc' }
-    })
+    const rows = await prisma.$queryRaw`
+      SELECT \`id\`, \`title\`, \`status\`, \`targetSite\`, \`createdAt\`,
+        CASE
+          WHEN LOCATE('"heroImage":"', IFNULL(\`outline\`, '')) > 0
+          THEN LEFT(
+            SUBSTRING_INDEX(
+              SUBSTRING(\`outline\`, LOCATE('"heroImage":"', \`outline\`) + 13, 4200),
+              '"',
+              1
+            ),
+            4000
+          )
+          ELSE ''
+        END AS outlineHero,
+        CASE
+          WHEN LOCATE('src="http', IFNULL(\`content\`, '')) > 0
+          THEN SUBSTRING(\`content\`, LOCATE('src="http', \`content\`) + 5, 4200)
+          WHEN LOCATE('src=''http', IFNULL(\`content\`, '')) > 0
+          THEN SUBSTRING(\`content\`, LOCATE('src=''http', \`content\`) + 5, 4200)
+          ELSE ''
+        END AS imgChunk,
+        CASE
+          WHEN \`status\` = 'outline' AND LOCATE('"outline":[', IFNULL(\`outline\`, '')) > 0
+          THEN SUBSTRING(\`outline\`, LOCATE('"outline":[', \`outline\`), 8000)
+          WHEN \`status\` = 'outline' AND \`outline\` IS NOT NULL
+          THEN LEFT(\`outline\`, 8000)
+          ELSE ''
+        END AS outlineHead,
+        CASE
+          WHEN LOCATE('<p', IFNULL(\`content\`, '')) > 0
+          THEN SUBSTRING(\`content\`, LOCATE('<p', \`content\`), 1200)
+          ELSE ''
+        END AS textChunk
+      FROM \`Article\`
+      WHERE \`userId\` = ${user.id} AND \`status\` IN ('draft', 'outline')
+      ORDER BY \`createdAt\` DESC
+    `
 
-    return NextResponse.json({ articles })
+    return NextResponse.json({ articles: rows.map(toListItem) })
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch articles' }, { status: 500 })
   }

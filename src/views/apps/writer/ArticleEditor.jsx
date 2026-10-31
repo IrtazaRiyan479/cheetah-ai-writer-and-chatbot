@@ -1994,13 +1994,11 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
 
     const fetchAndLoadDraft = async () => {
       try {
-        const res = await fetch('/api/drafts')
+        const res = await fetch(`/api/drafts?id=${encodeURIComponent(draftId)}`)
         const data = await res.json()
+        const draft = data.article
 
-        if (data.articles) {
-          const draft = data.articles.find(a => a.id === draftId)
-
-          if (draft) {
+        if (draft) {
             let stored = null
 
             if (draft.outline) {
@@ -2059,7 +2057,6 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
             if (draft.targetSite) {
               setSiteSelectionType(draft.targetSite)
             }
-          }
         }
       } catch (error) {
         toast.error(serializeError(error))
