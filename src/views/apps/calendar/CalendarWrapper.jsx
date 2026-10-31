@@ -47,7 +47,7 @@ async function persist(kind, payload) {
 
     if (!res.ok) throw new Error(data.error || 'Could not remove this article from the calendar.')
 
-    return { success: true }
+    return data
   }
 
   const res = await fetch('/api/calendar', {
@@ -171,6 +171,12 @@ const AppCalendar = () => {
   const onPersist = async (kind, payload) => {
     try {
       const event = await persist(kind, payload)
+
+      if (kind === 'delete') {
+        loadEvents()
+
+        return event
+      }
 
       await loadEvents()
 

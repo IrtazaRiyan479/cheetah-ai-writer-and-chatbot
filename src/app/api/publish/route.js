@@ -11,7 +11,7 @@ import { assertCanGenerate, effectiveWebsiteLimit, getWebsiteLimitDefaults } fro
 import { ensureAiMetaFunctions } from '@/libs/wpThemeFunctions'
 import { serializeError } from '@/utils/serializeError'
 
-import { escapeHtml, finalizeArticleHtml } from '../generate/utils/articleHtml'
+import { escapeHtml, finalizeArticleHtml, serializeStoredOutline, stripOutlineField } from '../generate/utils/articleHtml'
 
 export const maxDuration = 60
 
@@ -625,7 +625,7 @@ function wpFutureDateGmt(scheduledAt) {
   return when.toISOString().replace(/\.\d{3}Z$/, '+00:00')
 }
 
-async function mirrorPublishedArticle({ userId, body, created, editLink, siteKey, title, content }) {
+async function mirrorPublishedArticle({ userId, body, created, editLink, siteKey, title, content, outline }) {
   const wpStatus = String(created.status || '')
   const calendar = wpStatus === 'future' ? 'Scheduled' : wpStatus === 'publish' ? 'Published' : 'Draft'
   const localStatus = wpStatus === 'future' ? 'scheduled' : wpStatus === 'publish' ? 'published' : 'draft'
@@ -650,6 +650,8 @@ async function mirrorPublishedArticle({ userId, body, created, editLink, siteKey
     })
   }
 
+  if (outline) data.outline = outline
+
   const articleId = body.articleId ? String(body.articleId) : ''
   let existing = null
 
@@ -666,11 +668,13 @@ async function mirrorPublishedArticle({ userId, body, created, editLink, siteKey
       where: { id: existing.id },
       data: {
         title: data.title,
+        content: data.content,
         status: data.status,
         wpPostId: data.wpPostId,
         targetSite: data.targetSite,
         scheduledAt: data.scheduledAt,
-        publishMeta: data.publishMeta
+        publishMeta: data.publishMeta,
+        ...(data.outline ? { outline: data.outline } : {})
       }
     })
 
@@ -710,6 +714,7 @@ export async function POST(request) {
       language,
       articleType,
       settings,
+      outline,
       trimTitleAndHero,
       scheduledAt
     } = body
@@ -746,6 +751,7 @@ export async function POST(request) {
       if (article) {
         if (!title) title = article.title
         if (!content) content = article.content
+        if (!outline && article.outline) outline = article.outline
       }
     }
 
@@ -843,15 +849,24 @@ export async function POST(request) {
 
     const masterStyles = `<style id="cheetah-master-styles">#cheetah-article-wrapper{line-height:1.7;font-family:system-ui,-apple-system,sans-serif}#cheetah-article-wrapper table{width:100%!important;table-layout:auto!important;border-collapse:separate!important;border-spacing:0!important;margin:32px 0!important;border-radius:10px!important;border:1px solid #1e40af!important;background-color:#ffffff!important;box-shadow:0 4px 12px -2px rgba(0,0,0,0.03)!important}#cheetah-article-wrapper th,#cheetah-article-wrapper td{padding:18px 24px!important;vertical-align:top!important;border-bottom:1px solid #e5e7eb!important;border-right:1px solid #e5e7eb!important;text-align:left!important;word-wrap:break-word!important}#cheetah-article-wrapper th:last-child,#cheetah-article-wrapper td:last-child{border-right:none!important}#cheetah-article-wrapper tr:last-child td{border-bottom:none!important}#cheetah-article-wrapper th:first-child{border-top-left-radius:9px!important}#cheetah-article-wrapper th:last-child{border-top-right-radius:9px!important}#cheetah-article-wrapper tr:last-child td:first-child{border-bottom-left-radius:9px!important}#cheetah-article-wrapper tr:last-child td:last-child{border-bottom-right-radius:9px!important}#cheetah-article-wrapper th{background:#ffffff!important;color:#1e40af!important;font-weight:700!important;font-size:15px!important;text-transform:uppercase!important;letter-spacing:0.05em!important}#cheetah-article-wrapper td{font-size:16px!important;color:#374151!important;line-height:1.6!important}#cheetah-article-wrapper a.cta-button{text-decoration:none!important;background-color:#6366f1!important;color:#ffffff!important;font-weight:700!important;padding:12px 26px!important;border-radius:9999px!important;display:inline-block!important;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1)!important;border:1px solid #4f46e5!important}#cheetah-article-wrapper img{border-radius:12px!important;box-shadow:0 10px 15px -3px rgba(0,0,0,0.1)!important;max-width:100%!important;height:auto!important}@media (max-width:640px){#cheetah-article-wrapper .product-name-desktop{display:none!important}#cheetah-article-wrapper .product-name-mobile{display:inline!important;font-size:13px!important;line-height:1.3!important}#cheetah-article-wrapper table.affigenie-table td:first-child{width:auto!important;min-width:0!important;max-width:none!important}#cheetah-article-wrapper table td:first-child img{width:80px!important;height:80px!important;max-width:80px!important;object-fit:contain!important}#cheetah-article-wrapper a.cta-button{padding:8px 12px!important;font-size:12px!important}}#cheetah-article-wrapper table img{width:80px!important;height:auto!important;max-width:90px!important;margin:0!important;box-shadow:none!important;aspect-ratio:auto!important}.check-price-btn{display:inline-block!important;background-color:#6366f1!important;color:#fff!important;font-weight:700!important;padding:10px 24px!important;border-radius:9999px!important;text-decoration:none!important;transition:background-color .2s,transform .2s!important}.check-price-btn:hover{background-color:#4f46e5!important;transform:translateY(-1px)!important}table{width:100%!important;max-width:100%!important;border-collapse:collapse!important;margin:24px 0!important;display:table!important;overflow:visible!important}td,th{word-break:normal;white-space:normal}</style>`
 
+    const durableHero = sideloaded.heroSrc || featuredImageUrl || settings?.heroImage || ''
+    const publishSettings = {
+      ...(settings && typeof settings === 'object' && !Array.isArray(settings) ? settings : {}),
+      ...(durableHero && !String(durableHero).startsWith('data:') ? { heroImage: durableHero } : {})
+    }
+    const storedOutline = serializeStoredOutline(outline, publishSettings, durableHero)
     const articleHtml = finalizeArticleHtml(sideloaded.html || '', {
       language,
       partnerTag: process.env.AMAZON_PARTNER_TAG || '',
       domain: 'www.amazon.com',
       articleType,
-      settings: slimSettings(settings)
+      settings: slimSettings(publishSettings),
+      heroImage: durableHero,
+      outline
     })
 
-    const contentHead = String(articleHtml)
+    const contentHead = stripOutlineField(String(articleHtml))
+      .replace(/<div\b[^>]*data-affigenie-marker=["']1["'][^>]*>[\s\S]*?<\/div>/gi, '')
       .replace(/<style[\s\S]*?<\/style>/gi, '')
       .slice(0, 3000)
 
@@ -977,7 +992,8 @@ export async function POST(request) {
           editLink,
           siteKey,
           title: postPayload.title,
-          content: finalContent
+          content: finalContent,
+          outline: storedOutline
         })
       }
     } catch (mirrorError) {

@@ -17,6 +17,7 @@ import OutlineEditor from '@views/apps/writer/OutlineEditor'
 import ArticleEditor from '@views/apps/writer/ArticleEditor'
 import { FeatureAccessProvider } from '@views/apps/writer/FeatureAccessContext'
 import ModuleGate from '@/components/access/ModuleGate'
+import { extractStoredOutline, normalizeOutlineItems } from '@/app/api/generate/utils/articleHtml'
 
 const defaultSettings = {
   model: 'gemini-3.1-flash-lite',
@@ -68,20 +69,6 @@ const defaultSettings = {
   amazonDomain: 'amazon.com'
 }
 
-function normalizeOutlineItems(items) {
-  if (!Array.isArray(items)) return []
-
-  return items.map((item, index) => {
-    if (typeof item === 'string') return { id: `heading-${index}`, type: 'h2', text: item }
-
-    return {
-      id: item?.id || `heading-${index}`,
-      type: item?.type || 'h2',
-      text: String(item?.text || item?.heading || item?.title || '')
-    }
-  })
-}
-
 function unpackOutlineArticle(article) {
   let parsed = null
 
@@ -94,25 +81,29 @@ function unpackOutlineArticle(article) {
   const savedSettings =
     parsed && !Array.isArray(parsed) && parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {}
   const items = Array.isArray(parsed) ? parsed : parsed?.outline
+  const hidden = extractStoredOutline(article?.content)
   const imgMatch = String(article?.content || '').match(/<img[^>]+src=["']([^"']+)["']/i)
   const heroImage =
     parsed?.heroImage ||
     parsed?.image ||
+    hidden?.heroImage ||
     savedSettings.heroImage ||
     savedSettings.youtubeThumbnail ||
+    hidden?.settings?.heroImage ||
     (imgMatch ? imgMatch[1] : '') ||
     ''
 
   return {
-    title: article?.title || savedSettings.generatedTitle || '',
+    title: article?.title || savedSettings.generatedTitle || hidden?.settings?.generatedTitle || '',
     settings: {
+      ...(hidden?.settings || {}),
       ...savedSettings,
       heroImage: heroImage || savedSettings.heroImage || '',
-      generatedTitle: savedSettings.generatedTitle || article?.title || '',
-      targetKeyword: savedSettings.targetKeyword || article?.title || '',
+      generatedTitle: savedSettings.generatedTitle || hidden?.settings?.generatedTitle || article?.title || '',
+      targetKeyword: savedSettings.targetKeyword || hidden?.settings?.targetKeyword || article?.title || '',
       useOutlineEditor: true
     },
-    outline: normalizeOutlineItems(items)
+    outline: normalizeOutlineItems(Array.isArray(items) && items.length ? items : hidden?.outline)
   }
 }
 
@@ -124,7 +115,8 @@ const AffiGenieWriter = () => {
   const [outline, setOutline] = useState([])
   const searchParams = useSearchParams()
   const outlineId = searchParams.get('outlineId')
-  const [hydratingOutline, setHydratingOutline] = useState(Boolean(outlineId))
+  const draftId = searchParams.get('draftId')
+  const [hydratingOutline, setHydratingOutline] = useState(Boolean(outlineId || draftId))
   const [outlineError, setOutlineError] = useState('')
 
   useEffect(() => {
@@ -167,6 +159,47 @@ const AffiGenieWriter = () => {
       cancelled = true
     }
   }, [outlineId])
+
+  useEffect(() => {
+    if (!draftId || outlineId) return
+
+    let cancelled = false
+
+    const loadDraft = async () => {
+      setHydratingOutline(true)
+      setOutlineError('')
+
+      try {
+        const res = await fetch(`/api/drafts?id=${encodeURIComponent(draftId)}`)
+        const data = await res.json()
+
+        if (!res.ok || !data.article) {
+          throw new Error(data?.error || 'Draft not found')
+        }
+
+        const loaded = unpackOutlineArticle(data.article)
+
+        if (cancelled) return
+
+        setSettings({ ...defaultSettings, ...loaded.settings })
+        setOutline(loaded.outline)
+        setStep(String(data.article.content || '').trim() ? 2 : loaded.outline.length ? 1 : 0)
+      } catch (error) {
+        if (!cancelled) {
+          setOutlineError(error?.message || 'Could not open this draft.')
+          setStep(0)
+        }
+      } finally {
+        if (!cancelled) setHydratingOutline(false)
+      }
+    }
+
+    loadDraft()
+
+    return () => {
+      cancelled = true
+    }
+  }, [draftId, outlineId])
 
   const fetchPresets = async () => {
     try {
@@ -305,7 +338,7 @@ const AffiGenieWriter = () => {
         <OutlineEditor settings={settings} setStep={setStep} outline={outline} setOutline={setOutline} />
       )}
 
-      {step === 2 && (
+      {step === 2 && !hydratingOutline && (
         <ArticleEditor
           settings={settings}
           setSettings={setSettings}

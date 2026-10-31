@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth'
 
 import { authOptions } from '@/libs/auth'
 import { assertCanGenerate } from '@/libs/entitlement'
+import { ensureOutlineInHtml, extractStoredOutline, serializeStoredOutline } from '../generate/utils/articleHtml'
 
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
@@ -841,7 +842,7 @@ async function saveAction(user, session, body) {
 
   const wpStatus = calendar === 'Scheduled' ? 'future' : 'publish'
   const authed = siteAuth(site)
-  const html = String(body.content || article.content || '').trim()
+  const html = ensureOutlineInHtml(String(body.content || article.content || '').trim(), article.outline, null)
   const payload = {
     title: article.title || 'Untitled article',
     status: wpStatus
@@ -996,6 +997,158 @@ export async function PUT(request) {
   return writeEvent(request)
 }
 
+async function findMirroredArticle(userId, wpPostId, siteKey) {
+  const matches = await prisma.article.findMany({
+    where: { userId, wpPostId },
+    orderBy: { updatedAt: 'desc' }
+  })
+  const exact = matches.filter(item => item.targetSite === siteKey)
+
+  if (exact.length) return exact[0]
+  if (matches.length === 1) return matches[0]
+
+  return null
+}
+
+async function saveRemovedArticleAsDraft({ userId, existing, title, content, siteKey, wpPostId, outline }) {
+  const source = existing || { publishMeta: '' }
+  const data = {
+    title: title || existing?.title || 'Untitled article',
+    content: content || existing?.content || '',
+    status: 'draft',
+    targetSite: siteKey || existing?.targetSite || null,
+    scheduledAt: null,
+    wpPostId,
+    publishMeta: writeMeta(source, {
+      calendar: 'Draft',
+      siteKey: siteKey || existing?.targetSite || '',
+      hidden: false
+    }),
+    ...(outline ? { outline } : {})
+  }
+
+  if (existing) {
+    return prisma.article.update({ where: { id: existing.id }, data })
+  }
+
+  return prisma.article.create({
+    data: {
+      userId,
+      outline: outline || null,
+      ...data
+    }
+  })
+}
+
+async function readFeaturedImage(authed, post) {
+  const embedded = post?._embedded?.['wp:featuredmedia']?.[0]?.source_url
+
+  if (typeof embedded === 'string' && /^https?:\/\//i.test(embedded)) return embedded
+
+  const mediaId = Number(post?.featured_media)
+
+  if (!mediaId) return ''
+
+  try {
+    const loaded = await wpRequest(authed, `/wp-json/wp/v2/media/${mediaId}?_fields=source_url`, { timeoutMs: 8000 })
+    const url = loaded.data?.source_url || ''
+
+    return /^https?:\/\//i.test(url) ? url : ''
+  } catch {
+    return ''
+  }
+}
+
+function recoveredOutlineValue(content, existingOutline, featured) {
+  const fromHtml = extractStoredOutline(content)
+  let fromColumn = null
+
+  if (existingOutline) {
+    try {
+      fromColumn = JSON.parse(existingOutline)
+    } catch {
+      fromColumn = null
+    }
+  }
+
+  const columnItems = Array.isArray(fromColumn) ? fromColumn : fromColumn?.outline
+  const items = fromHtml?.outline?.length ? fromHtml.outline : columnItems
+  const settings = {
+    ...(fromColumn && !Array.isArray(fromColumn) ? fromColumn.settings || {} : {}),
+    ...(fromHtml?.settings || {})
+  }
+  const hero = fromHtml?.heroImage || fromColumn?.heroImage || fromColumn?.settings?.heroImage || featured || ''
+
+  return serializeStoredOutline(items, { ...settings, ...(hero ? { heroImage: hero } : {}) }, hero)
+}
+
+async function readWpPostForDraft(authed, postId) {
+  const fields = 'id,title,content,featured_media'
+  const editPath = `/wp-json/wp/v2/posts/${postId}?context=edit&_fields=${fields}`
+  const viewPath = `/wp-json/wp/v2/posts/${postId}?_fields=${fields}`
+  let editPost = null
+
+  try {
+    editPost = (await wpRequest(authed, editPath, { timeoutMs: 12000 })).data
+  } catch (error) {
+    const missing = Number(error?.status) === 404 || error?.code === 'rest_post_invalid_id'
+
+    if (missing) return null
+    if (Number(error?.status) !== 401 && Number(error?.status) !== 403) throw error
+  }
+
+  if (extractStoredOutline(wpHtml(editPost))) return editPost
+
+  try {
+    const loaded = await wpRequest(authed, viewPath, { timeoutMs: 12000 })
+    const viewPost = loaded.data
+
+    if (extractStoredOutline(wpHtml(viewPost))) return viewPost
+    if (wpHtml(editPost).trim()) return editPost
+    if (wpHtml(viewPost).trim()) return viewPost
+
+    return editPost || viewPost
+  } catch (error) {
+    const missing = Number(error?.status) === 404 || error?.code === 'rest_post_invalid_id'
+
+    if (missing) return editPost
+    if (editPost && wpHtml(editPost).trim()) return editPost
+    throw error
+  }
+}
+
+async function removeLiveWpPost(authed, postId) {
+  const response = await fetch(`${authed.base}/wp-json/wp/v2/posts/${postId}?force=true&_fields=id`, {
+    method: 'DELETE',
+    headers: authed.authorization ? { Authorization: authed.authorization } : {},
+    signal: AbortSignal.timeout(20000),
+    cache: 'no-store'
+  })
+
+  if (response.ok) {
+    await response.body?.cancel?.()
+
+    return
+  }
+
+  const raw = await response.text()
+  let data = null
+
+  try {
+    data = raw ? JSON.parse(raw) : null
+  } catch {
+    data = null
+  }
+
+  if (response.status === 404 || data?.code === 'rest_post_invalid_id') return
+
+  const error = new Error(data ? wpMessage(data, response.status) : `WordPress HTTP ${response.status}`)
+
+  error.status = response.status
+  error.code = data?.code || ''
+  throw error
+}
+
 export async function DELETE(request) {
   try {
     const { session, user } = await requireUser()
@@ -1006,17 +1159,90 @@ export async function DELETE(request) {
     const ref = parseWpRef(id)
 
     if (ref) {
-      const sites = await connectedSites(user, session)
+      const wpPostId = Number(ref.postId)
+      const [sites, existing] = await Promise.all([
+        connectedSites(user, session),
+        findMirroredArticle(user.id, wpPostId, ref.siteKey)
+      ])
       const site = sites.find(item => item.siteKey === ref.siteKey)
 
       if (!site) return NextResponse.json({ error: 'Article not found on a connected site.' }, { status: 404 })
 
-      await wpRequest(siteAuth(site), `/wp-json/wp/v2/posts/${ref.postId}?force=true`, {
-        method: 'DELETE',
-        timeoutMs: 30000
-      })
+      const authed = siteAuth(site)
+      let title = existing?.title || ''
+      let content = String(existing?.content || '').trim()
+      let featured = ''
+      const localHit = extractStoredOutline(content)
 
-      return NextResponse.json({ success: true })
+      if (!content || !localHit?.outline?.length || !localHit?.heroImage) {
+        try {
+          const wpPost = await readWpPostForDraft(authed, ref.postId)
+
+          if (wpPost) {
+            const wpContent = wpHtml(wpPost).trim()
+            const wpHit = extractStoredOutline(wpContent)
+
+            featured = await readFeaturedImage(authed, wpPost)
+
+            if (!content || (wpHit?.outline?.length && !localHit?.outline?.length) || (wpContent && !localHit)) {
+              title = wpPlainTitle(wpPost) || title
+              content = wpContent || content
+            }
+          }
+        } catch (error) {
+          if (!content) throw error
+        }
+      }
+
+      if (!content) {
+        return NextResponse.json(
+          { error: 'The article could not be copied into Drafts, so it was left on WordPress.' },
+          { status: 400 }
+        )
+      }
+
+      const snapshot = existing
+        ? {
+            title: existing.title,
+            content: existing.content,
+            status: existing.status,
+            targetSite: existing.targetSite,
+            scheduledAt: existing.scheduledAt,
+            wpPostId: existing.wpPostId,
+            publishMeta: existing.publishMeta,
+            outline: existing.outline
+          }
+        : null
+      const draftInput = {
+        userId: user.id,
+        existing,
+        title: title || 'Untitled article',
+        content,
+        siteKey: site.siteKey,
+        wpPostId: null,
+        outline: recoveredOutlineValue(content, existing?.outline, featured)
+      }
+      const [saveResult, deleteResult] = await Promise.allSettled([
+        saveRemovedArticleAsDraft(draftInput),
+        removeLiveWpPost(authed, ref.postId)
+      ])
+
+      if (deleteResult.status === 'rejected') {
+        if (saveResult.status === 'fulfilled') {
+          if (snapshot) {
+            await prisma.article.update({ where: { id: existing.id }, data: snapshot })
+          } else if (saveResult.value?.id) {
+            await prisma.article.delete({ where: { id: saveResult.value.id } })
+          }
+        }
+
+        throw deleteResult.reason
+      }
+
+      const saved =
+        saveResult.status === 'fulfilled' ? saveResult.value : await saveRemovedArticleAsDraft(draftInput)
+
+      return NextResponse.json({ success: true, drafted: true, articleId: saved.id })
     }
 
     const article = await loadOwnedArticle(user.id, id)

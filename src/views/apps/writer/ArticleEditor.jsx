@@ -63,7 +63,10 @@ import {
   finalizeArticleHtml,
   linkMapSnapshots,
   buildArticleIdentityMarker,
-  titleCaseWords
+  titleCaseWords,
+  extractStoredOutline,
+  stripOutlineField,
+  serializeStoredOutline
 } from '@/app/api/generate/utils/articleHtml'
 
 function minScheduleInputValue() {
@@ -1168,7 +1171,8 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
         settings: slimPublishSettings(settings),
         articleUrlToRewrite: settings.articleUrlToRewrite || '',
         scheduledAt: status === 'future' ? scheduledAtIso : '',
-        articleId: draftId || undefined
+        articleId: draftId || undefined,
+        outline
       }
 
       const res = await fetch('/api/publish', {
@@ -1241,9 +1245,11 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           content: finalizeArticleHtml(linkMapSnapshots(editor?.getHTML() || ''), {
             language: settings.language,
             articleType: settings.type || '',
-            settings
+            settings,
+            heroImage: heroImageUrl || settings.heroImage || '',
+            outline
           }),
-          outline: outline && outline.length > 0 ? JSON.stringify(outline) : null,
+          outline: serializeStoredOutline(outline, settings, heroImageUrl || settings.heroImage || ''),
           status: 'draft',
           targetSite: resolvedSiteSelection && resolvedSiteSelection !== 'custom' ? resolvedSiteSelection : null
         })
@@ -1995,30 +2001,59 @@ const ArticleEditor = ({ settings, setSettings, setStep, outline, setOutline }) 
           const draft = data.articles.find(a => a.id === draftId)
 
           if (draft) {
-            editor.commands.setContent(draft.content)
-            setPublishTitle(draft.title)
+            let stored = null
 
-            const imgMatch = draft.content.match(/<img[^>]+src=["']([^"']+)["']/i)
+            if (draft.outline) {
+              try {
+                const parsed = JSON.parse(draft.outline)
+
+                stored = Array.isArray(parsed) ? { outline: parsed } : parsed
+              } catch (e) {
+                console.error('Failed to parse outline JSON:', e)
+              }
+            }
+
+            if (!Array.isArray(stored?.outline) || !stored.outline.length || !(stored.heroImage || stored.settings?.heroImage)) {
+              const hidden = extractStoredOutline(draft.content)
+
+              if (hidden) {
+                stored = {
+                  outline: stored?.outline?.length ? stored.outline : hidden.outline,
+                  settings: { ...(hidden.settings || {}), ...(stored?.settings || {}) },
+                  heroImage: stored?.heroImage || hidden.heroImage || ''
+                }
+              }
+            }
+
+            const visibleHtml = stripOutlineField(draft.content || '')
+            const imgMatch = visibleHtml.match(/<img[^>]+src=["']([^"']+)["']/i)
             const draftImage = imgMatch ? imgMatch[1] : ''
+            const storedHero = stored?.heroImage || stored?.settings?.heroImage || ''
+            const hero = storedHero || draftImage
+            const safeHero = String(hero || '').replace(/"/g, '%22')
+            const safeTitle = String(draft.title || '').replace(/"/g, String.fromCharCode(38) + 'quot;')
+            const editorHtml =
+              hero && !/<img\b/i.test(visibleHtml)
+                ? `<p><img src="${safeHero}" alt="${safeTitle}" /></p>${visibleHtml}`
+                : visibleHtml
+
+            editor.commands.setContent(editorHtml)
+            setPublishTitle(draft.title)
+            if (hero) setHeroImageUrl(hero)
 
             if (typeof setSettings === 'function') {
               setSettings(prev => ({
                 ...prev,
-                metaTitle: data.generatedMetaTitle,
-                metaDescription: data.generatedMetaDescription,
+                ...(stored?.settings && typeof stored.settings === 'object' ? stored.settings : {}),
+                metaTitle: stored?.settings?.metaTitle || prev.metaTitle,
+                metaDescription: stored?.settings?.metaDescription || prev.metaDescription,
                 generatedTitle: draft.title,
-                heroImage: draftImage || prev.heroImage
+                heroImage: hero || prev.heroImage
               }))
             }
 
-            if (draft.outline && setOutline) {
-              try {
-                const parsedOutline = JSON.parse(draft.outline)
-
-                setOutline(parsedOutline)
-              } catch (e) {
-                console.error('Failed to parse outline JSON:', e)
-              }
+            if (Array.isArray(stored?.outline) && stored.outline.length && setOutline) {
+              setOutline(stored.outline)
             }
 
             if (draft.targetSite) {

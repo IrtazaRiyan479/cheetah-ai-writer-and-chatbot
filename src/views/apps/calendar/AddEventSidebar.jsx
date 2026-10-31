@@ -283,6 +283,8 @@ const AddEventSidebar = props => {
 
       if (removed == null) return
 
+      if (removed.drafted) toast.success('Removed from WordPress and saved to Drafts.')
+
       dispatch(deleteEvent(id))
       dispatch(deleteEvent(calendarStore.selectedEvent.id))
       dispatch(filterEvents())
@@ -615,11 +617,11 @@ const AddEventSidebar = props => {
         </ScrollWrapper>
       </Drawer>
       <Dialog open={confirmDelete} onClose={() => !deleting && setConfirmDelete(false)}>
-        <DialogTitle>Delete this article forever?</DialogTitle>
+        <DialogTitle>Remove this article from WordPress?</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            This article will be deleted from the live site forever. It will be permanently removed from WordPress and
-            cannot be restored.
+            This article will be deleted from the live site and saved in your app drafts. Deleting it later from Drafts
+            removes it forever.
           </DialogContentText>
         </DialogContent>
         <DialogActions>
@@ -627,7 +629,7 @@ const AddEventSidebar = props => {
             Cancel
           </Button>
           <Button color='error' variant='contained' onClick={confirmDeleteArticle} disabled={deleting}>
-            {deleting ? 'Deleting...' : 'Delete forever'}
+            {deleting ? 'Deleting...' : 'Delete from site'}
           </Button>
         </DialogActions>
       </Dialog>

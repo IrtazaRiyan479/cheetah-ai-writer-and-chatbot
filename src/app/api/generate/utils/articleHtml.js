@@ -416,6 +416,222 @@ function encodeBase64(text) {
   return btoa(binary)
 }
 
+function decodeBase64(text) {
+  const binary = atob(String(text || '').replace(/\s+/g, ''))
+  const bytes = new Uint8Array(binary.length)
+
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+
+  return new TextDecoder().decode(bytes)
+}
+
+function slimSnapshot(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
+
+  const out = {}
+
+  for (const [key, value] of Object.entries(input)) {
+    if (typeof value === 'number' || typeof value === 'boolean') out[key] = value
+    else if (typeof value === 'string' && !value.startsWith('data:') && value.length <= 2000) out[key] = value
+  }
+
+  return out
+}
+
+function durableImageUrl(value) {
+  const url = String(value || '').trim()
+
+  if (!url || url.startsWith('data:') || url.length > 4000) return ''
+  if (!/^https?:\/\//i.test(url) && !url.startsWith('/')) return ''
+
+  return url
+}
+
+function parseOutlinePayload(value) {
+  if (typeof value !== 'string') return value
+
+  const trimmed = value.trim()
+
+  if (!trimmed) return null
+
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    return null
+  }
+}
+
+export function resolveHeroImage(outline, settings, explicit) {
+  const direct = durableImageUrl(explicit)
+
+  if (direct) return direct
+
+  const fromSettings = durableImageUrl(settings?.heroImage) || durableImageUrl(settings?.youtubeThumbnail)
+
+  if (fromSettings) return fromSettings
+
+  const parsed = parseOutlinePayload(outline)
+
+  if (parsed && !Array.isArray(parsed)) {
+    return (
+      durableImageUrl(parsed.heroImage) ||
+      durableImageUrl(parsed.image) ||
+      durableImageUrl(parsed.settings?.heroImage) ||
+      durableImageUrl(parsed.settings?.youtubeThumbnail) ||
+      ''
+    )
+  }
+
+  return ''
+}
+
+function snapshotFromOutline(outline, settings, explicitHero) {
+  const snap = slimSnapshot(settings)
+  const hero = resolveHeroImage(outline, settings, explicitHero)
+
+  if (hero) snap.heroImage = hero
+  if (Object.keys(snap).length) return snap
+
+  const parsed = parseOutlinePayload(outline)
+
+  if (parsed && !Array.isArray(parsed) && parsed.settings) {
+    const nested = slimSnapshot(parsed.settings)
+    const nestedHero = resolveHeroImage(parsed, parsed.settings, explicitHero)
+
+    if (nestedHero) nested.heroImage = nestedHero
+
+    return nested
+  }
+
+  return hero ? { heroImage: hero } : {}
+}
+
+export function normalizeOutlineItems(value) {
+  const parsed = parseOutlinePayload(value)
+  const items = Array.isArray(parsed) ? parsed : parsed?.outline
+
+  if (!Array.isArray(items)) return []
+
+  return items
+    .map((item, index) => {
+      if (typeof item === 'string') return { id: `heading-${index}`, type: 'h2', text: item }
+
+      const next = {}
+
+      if (item && typeof item === 'object') {
+        for (const [key, val] of Object.entries(item)) {
+          if (val == null) continue
+
+          if (typeof val === 'string') {
+            if (val.startsWith('data:') || val.length > 4000) continue
+            next[key] = val
+          } else if (typeof val === 'number' || typeof val === 'boolean') next[key] = val
+          else if (Array.isArray(val) || typeof val === 'object') {
+            try {
+              if (JSON.stringify(val).length <= 8000) next[key] = val
+            } catch {
+              /* skip values that cannot be stored in the hidden field */
+            }
+          }
+        }
+      }
+
+      next.id = next.id || `heading-${index}`
+      next.type = next.type || 'h2'
+      next.text = String(next.text || next.heading || next.title || '')
+
+      return next
+    })
+    .filter(item => item.text || item.sectionType)
+}
+
+export function stripOutlineField(html) {
+  return String(html || '')
+    .replace(/<div\b[^>]*data-affigenie-outline=["']1["'][^>]*>[\s\S]*?<\/div>/gi, '')
+    .replace(/<!--\s*affigenie-outline:[\s\S]*?-->/gi, '')
+}
+
+export function buildOutlineField(outline, settings, explicitHero) {
+  const items = normalizeOutlineItems(outline)
+  const heroImage = resolveHeroImage(outline, settings, explicitHero)
+
+  if (!items.length && !heroImage) return ''
+
+  let encoded = ''
+
+  try {
+    encoded = encodeBase64(
+      JSON.stringify({
+        outline: items,
+        settings: snapshotFromOutline(outline, settings, heroImage),
+        heroImage
+      })
+    ).replace(/[^A-Za-z0-9+/=]/g, '')
+  } catch {
+    return ''
+  }
+
+  if (!encoded) return ''
+
+  return `<!--affigenie-outline:${encoded}--><div data-affigenie-outline="1" hidden style="display:none!important;height:0;width:0;overflow:hidden;font-size:0;line-height:0;mso-hide:all;" aria-hidden="true">affigenie-outline:${encoded}</div>`
+}
+
+export function extractStoredOutline(html) {
+  const match = String(html || '').match(/affigenie-outline:([A-Za-z0-9+/=\s]+)/i)
+
+  if (!match?.[1]) return null
+
+  try {
+    const parsed = JSON.parse(decodeBase64(match[1]))
+    const outline = normalizeOutlineItems(parsed)
+    const settings =
+      parsed && !Array.isArray(parsed) && parsed.settings && typeof parsed.settings === 'object'
+        ? slimSnapshot(parsed.settings)
+        : {}
+    const heroImage =
+      durableImageUrl(parsed?.heroImage) || durableImageUrl(settings.heroImage) || durableImageUrl(settings.youtubeThumbnail)
+
+    if (heroImage) settings.heroImage = heroImage
+    if (!outline.length && !heroImage) return null
+
+    return { outline, settings, heroImage }
+  } catch {
+    return null
+  }
+}
+
+export function serializeStoredOutline(outline, settings, explicitHero) {
+  const items = normalizeOutlineItems(outline)
+  const heroImage = resolveHeroImage(outline, settings, explicitHero)
+
+  if (!items.length && !heroImage) return null
+
+  return JSON.stringify({
+    outline: items,
+    settings: snapshotFromOutline(outline, settings, heroImage),
+    heroImage
+  })
+}
+
+export function ensureOutlineInHtml(html, outline, settings, explicitHero) {
+  const source = String(html || '')
+  const heroImage = resolveHeroImage(outline, settings, explicitHero)
+  const existing = extractStoredOutline(source)
+
+  if (existing?.outline?.length && (!heroImage || existing.heroImage)) return source
+  if (!normalizeOutlineItems(outline).length && !heroImage && !existing?.outline?.length) return source
+
+  const field = buildOutlineField(
+    normalizeOutlineItems(outline).length ? outline : existing?.outline,
+    settings || existing?.settings,
+    heroImage || existing?.heroImage
+  )
+
+  if (!field) return source
+
+  return `${field}\n${stripOutlineField(source)}`
+}
+
 export function buildArticleIdentityMarker(type, settings) {
   const writerType = String(type || '')
     .trim()
@@ -506,6 +722,15 @@ export function finalizeArticleHtml(html, options = {}) {
     const marker = buildArticleIdentityMarker(options.articleType, options.settings)
 
     if (marker) prepared = `${marker}\n${prepared}`
+  }
+
+  const heroImage = resolveHeroImage(options.outline, options.settings, options.heroImage)
+
+  if (normalizeOutlineItems(options.outline).length || heroImage) {
+    prepared = stripOutlineField(prepared)
+    const outlineField = buildOutlineField(options.outline, options.settings, heroImage)
+
+    if (outlineField) prepared = `${outlineField}\n${prepared}`
   }
 
   if (prepared.includes('id="affigenie-article-styles"')) return prepared

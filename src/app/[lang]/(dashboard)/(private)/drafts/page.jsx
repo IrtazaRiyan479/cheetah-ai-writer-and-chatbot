@@ -20,24 +20,28 @@ import Skeleton from '@mui/material/Skeleton'
 import Box from '@mui/material/Box'
 
 import ModuleGate from '@/components/access/ModuleGate'
+import { extractStoredOutline, stripOutlineField } from '@/app/api/generate/utils/articleHtml'
 
 const extractPreview = htmlContent => {
-  if (!htmlContent) return { img: null, desc: '' }
+  const visible = stripOutlineField(htmlContent)
 
-  const imgMatch = htmlContent.match(/<img[^>]+src=["']([^"']+)["']/i)
+  if (!visible) return { img: null, desc: '' }
+
+  const imgMatch = visible.match(/<img[^>]+src=["']([^"']+)["']/i)
   const img = imgMatch ? imgMatch[1] : null
 
   let desc = ''
-  const pMatches = htmlContent.match(/<p>([\s\S]*?)<\/p>/gi)
+  const pMatches = visible.match(/<p>([\s\S]*?)<\/p>/gi)
 
   if (pMatches) {
     desc = pMatches
       .map(p => p.replace(/<[^>]+>/g, '').trim())
-      .filter(t => t.length > 0)
+      .filter(t => t.length > 0 && !/^affigenie-outline:/i.test(t))
       .join(' ')
   } else {
-    desc = htmlContent
+    desc = visible
       .replace(/<[^>]+>/g, ' ')
+      .replace(/affigenie-outline:[A-Za-z0-9+/=]+/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim()
   }
@@ -195,8 +199,19 @@ export default function DraftsPage() {
           <Grid container spacing={4}>
             {articles.map(article => {
               const outlineMeta = readOutlineMeta(article)
+              const hidden = extractStoredOutline(article.content)
+              let columnHero = ''
+
+              try {
+                const parsed = article.outline ? JSON.parse(article.outline) : null
+
+                columnHero = parsed?.heroImage || parsed?.settings?.heroImage || parsed?.image || ''
+              } catch {
+                columnHero = ''
+              }
+
               const { img, desc } = extractPreview(article.content)
-              const cardImg = outlineMeta?.img || img
+              const cardImg = outlineMeta?.img || columnHero || hidden?.heroImage || img
 
               const preview = outlineMeta ? outlineMeta.desc : desc
 
