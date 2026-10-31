@@ -50,6 +50,31 @@ export function isLimitError(error) {
   return /429|quota|rate.?limit|resource.?exhausted|too many requests/i.test(serializeError(error))
 }
 
+export function isHighDemandError(error) {
+  return /503|high demand|unavailable|overloaded|try again later/i.test(serializeError(error))
+}
+
+/** Rate limit or high demand on the selected model. Auth and billing failures stay excluded. */
+export function lightFallbackReason(error) {
+  if (isLimitError(error)) return 'rate limit'
+  if (isHighDemandError(error)) return 'high demand'
+
+  const failures = Array.isArray(error?.failures) ? error.failures : []
+  const kinds = failures.map(item => item?.kind).filter(Boolean)
+
+  if (kinds.length) {
+    const recoverable = new Set(['rate_limit', 'unavailable'])
+
+    if (kinds.every(kind => recoverable.has(kind))) {
+      return kinds.every(kind => kind === 'rate_limit') ? 'rate limit' : 'high demand'
+    }
+  }
+
+  if (error?.code === 'GEMINI_RATE_LIMIT') return 'rate limit'
+
+  return ''
+}
+
 export function isCapacityError(error) {
   return /429|quota|rate.?limit|resource.?exhausted|503|502|504|high demand|unavailable|overloaded|try again later|fetch failed|ECONNRESET|ETIMEDOUT|AbortError|timeout/i.test(
     serializeError(error)
@@ -392,7 +417,7 @@ async function limitFallback(skipProvider, request, json) {
   return null
 }
 
-/** Selected model is called on its own API. Groq, then Mistral, run only after a rate limit. */
+/** Selected model is called on its own API. Groq, then Mistral, run after a rate limit or high-demand failure. */
 export async function callLLM({
   system,
   prompt,
@@ -440,11 +465,13 @@ export async function callLLM({
       throw paidError
     }
 
-    if (isLimitError(error)) {
+    const reason = lightFallbackReason(error)
+
+    if (reason) {
       const fallback = await limitFallback(requested.provider, request, json)
 
       if (fallback?.text) {
-        console.info(`[llm] rate limit on ${requested.provider}; using ${fallback.provider}`)
+        console.info(`[llm] ${reason} on ${requested.provider} model=${requested.model}; using ${fallback.provider}`)
 
         return { ...fallback, usedPaidKeys: requested.paid }
       }
