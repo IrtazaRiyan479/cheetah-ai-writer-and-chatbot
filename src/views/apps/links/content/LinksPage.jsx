@@ -22,6 +22,7 @@ import TableRow from '@mui/material/TableRow'
 import Paper from '@mui/material/Paper'
 import Chip from '@mui/material/Chip'
 import Divider from '@mui/material/Divider'
+import Alert from '@mui/material/Alert'
 
 // MUI Icons
 import LanguageIcon from '@mui/icons-material/Language'
@@ -40,6 +41,7 @@ const LinksPage = () => {
   const [selectedPages, setSelectedPages] = useState([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [suggestions, setSuggestions] = useState([])
+  const [errorMessage, setErrorMessage] = useState('')
 
   const [loadingTextIndex, setLoadingTextIndex] = useState(0)
 
@@ -153,6 +155,7 @@ const LinksPage = () => {
     setSuggestions([])
     setSelectedPages([])
     setCrawledPages([])
+    setErrorMessage('')
 
     abortControllerRef.current = new AbortController()
 
@@ -192,7 +195,7 @@ const LinksPage = () => {
               setSelectedPages(prev => [...prev, ...parsed.data.map(p => p.id)])
             } else if (parsed.type === 'error') {
               console.error("Crawl Stream error:", parsed.message)
-              alert(`Stream Error: ${parsed.message}`)
+              setErrorMessage(parsed.message || 'The crawl stream failed.')
             } else if (parsed.type === 'done') {
               console.log("Crawl Stream Complete")
             }
@@ -205,7 +208,7 @@ const LinksPage = () => {
       if (error.name === 'AbortError') {
         console.log('Crawl aborted by user.')
       } else {
-        alert(`Failed to crawl domain. ${error.message}`)
+        setErrorMessage(error.message || 'Failed to crawl that domain.')
         console.error(error)
       }
     } finally {
@@ -222,6 +225,7 @@ const LinksPage = () => {
 
     setIsAnalyzing(true)
     setSuggestions([])
+    setErrorMessage('')
     const pagesToAnalyze = crawledPages.filter(p => selectedPages.includes(p.id))
 
     abortControllerRef.current = new AbortController()
@@ -235,7 +239,8 @@ const LinksPage = () => {
       })
 
       if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`)
+        const errorData = await res.json().catch(() => ({}))
+        throw new Error(errorData.error || `The links API failed (HTTP ${res.status}).`)
       }
 
       const reader = res.body.getReader()
@@ -260,7 +265,7 @@ const LinksPage = () => {
               setSuggestions(prev => [...prev, ...parsed.data])
             } else if (parsed.type === 'error') {
               console.error("Backend stream error:", parsed.message)
-              alert(`Stream Error: ${parsed.message}`)
+              setErrorMessage(parsed.message || 'Internal link analysis failed.')
             } else if (parsed.type === 'done') {
               console.log("Analysis Stream Complete")
             }
@@ -274,7 +279,7 @@ const LinksPage = () => {
         console.log('Analysis aborted by user.')
       } else {
         console.error(error)
-        alert('Failed to analyze pages or stream was interrupted.')
+        setErrorMessage(error?.message || 'Failed to analyze pages. The stream stopped before a model could finish.')
       }
     } finally {
       setIsAnalyzing(false)
@@ -415,6 +420,12 @@ const LinksPage = () => {
                   </Table>
                 </TableContainer>
               </Paper>
+
+              {errorMessage ? (
+                <Alert severity="error" sx={{ whiteSpace: 'pre-wrap', alignItems: 'flex-start' }}>
+                  {errorMessage}
+                </Alert>
+              ) : null}
 
               <Box
                 sx={{

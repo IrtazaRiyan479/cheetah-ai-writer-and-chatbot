@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 
-import { withGeminiKey } from '@/app/api/generate/utils/geminiKeys';
+import { callLLMCascade } from '@/app/api/generate/utils/llm';
+import { parseJsonSafe } from '@/app/api/generate/utils/lightLLM';
 import { runWithPaidKeys } from '@/app/api/generate/utils/providerKeys';
 import { paidKeysEnabledFor } from '@/libs/entitlement';
+import { serializeError } from '@/utils/serializeError';
 import * as cheerio from 'cheerio';
 
 
@@ -12,6 +14,29 @@ const browserHeaders = {
   'Accept-Language': 'en-US,en;q=0.5',
   'Connection': 'keep-alive',
 };
+
+export const maxDuration = 300;
+
+function suggestionList(parsed) {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && Array.isArray(parsed.suggestions)) return parsed.suggestions;
+  if (parsed && Array.isArray(parsed.links)) return parsed.links;
+  return null;
+}
+
+function cleanSuggestions(parsed) {
+  const list = suggestionList(parsed);
+  if (!list) return [];
+
+  return list
+    .filter(item => item && item.sourceUrl && item.targetUrl && item.sourceUrl !== item.targetUrl)
+    .map(item => ({
+      sourceUrl: String(item.sourceUrl),
+      targetUrl: String(item.targetUrl),
+      anchorText: String(item.anchorText || '').slice(0, 80),
+      reasoning: String(item.reasoning || '').slice(0, 300)
+    }));
+}
 
 export async function POST(req) {
   try {
@@ -246,31 +271,24 @@ return res.ok ? url : null;
               ]
               `;
 
-              const result = await runWithPaidKeys(usePaidKeys, () => withGeminiKey(async apiKey => {
-                const client = new GoogleGenerativeAI(apiKey)
-                const model = client.getGenerativeModel({
-                  model: 'gemini-3.1-flash-lite',
-                  generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 8192 }
-                })
-                return model.generateContent(prompt)
+              const result = await runWithPaidKeys(usePaidKeys, () => callLLMCascade({
+                system: 'You are an SEO expert specializing in internal linking. Return only a JSON array.',
+                prompt,
+                json: true,
+                maxTokens: 8192,
+                temperature: 0.3,
+                paid: usePaidKeys,
+                accept: parsed => suggestionList(parsed) !== null
               }));
 
               if (req.signal.aborted) break;
 
-              let rawText = String(result.response?.text() || '[]');
+              const batchSuggestions = cleanSuggestions(parseJsonSafe(result.text));
 
-              rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+              if (batchSuggestions.length > 0) {
+                const chunkData = JSON.stringify({ type: 'chunk', data: batchSuggestions }) + '\n';
 
-              try {
-                const batchSuggestions = JSON.parse(rawText);
-
-                if (Array.isArray(batchSuggestions) && batchSuggestions.length > 0) {
-                  const chunkData = JSON.stringify({ type: 'chunk', data: batchSuggestions }) + '\n';
-
-                  controller.enqueue(encoder.encode(chunkData));
-                }
-              } catch (parseError) {
-                console.warn('Skipping batch due to JSON parse error from LLM');
+                controller.enqueue(encoder.encode(chunkData));
               }
             }
 
@@ -281,11 +299,12 @@ return res.ok ? url : null;
               } catch (e) {}
             }
           } catch (error) {
-            console.error('Analyze stream processing error:', error);
+            const message = serializeError(error);
+            console.error('Analyze stream processing error:', message);
 
             if (!req.signal.aborted) {
               try {
-                controller.enqueue(encoder.encode(JSON.stringify({ type: 'error', message: error.message }) + '\n'));
+                controller.enqueue(encoder.encode(JSON.stringify({ type: 'error', message }) + '\n'));
                 controller.close();
               } catch (e) {}
             }
@@ -305,8 +324,9 @@ return res.ok ? url : null;
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
 
   } catch (error) {
-    console.error('API Error:', error);
-    
-return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const message = serializeError(error);
+    console.error('API Error:', message);
+
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
