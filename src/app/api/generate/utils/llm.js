@@ -4,7 +4,7 @@ import { serializeError } from '@/utils/serializeError'
 
 import { callGroq, callMistral, parseJsonSafe } from './lightLLM'
 import { geminiGenerateContent, listGeminiApiKeys } from './geminiKeys'
-import { listProviderKeys, resolvePaidTier, withProviderKey } from './providerKeys'
+import { listProviderKeys, resolvePaidTier, runWithPaidKeys, withProviderKey } from './providerKeys'
 
 export const DEFAULT_XAI_MODEL = 'grok-4.7'
 
@@ -40,6 +40,33 @@ const MODEL_CATALOG = {
   'claude-opus-4-6': { provider: 'anthropic', model: 'claude-opus-4-6' },
   'claude-opus-5-5': { provider: 'anthropic', model: 'claude-opus-5-5' },
   'grok-4.7': { provider: 'xai', model: 'grok-4.7' }
+}
+
+/** Same order as the writer and chat model menus, then the light-provider platforms. */
+export const APP_MODEL_ORDER = [
+  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash',
+  'gemini-3.1-pro-preview-customtools',
+  'claude-haiku-4-5',
+  'claude-haiku-5-5',
+  'claude-sonnet-4-5',
+  'claude-sonnet-4-6',
+  'claude-sonnet-5',
+  'claude-sonnet-5-5',
+  'claude-opus-4-6',
+  'claude-opus-5-5',
+  'gpt-5.2',
+  'gpt-5-mini',
+  'grok-4.7'
+]
+
+const PROVIDER_LABEL = {
+  gemini: 'Gemini',
+  anthropic: 'Claude',
+  openai: 'OpenAI',
+  xai: 'Grok',
+  groq: 'Groq',
+  mistral: 'Mistral'
 }
 
 export function getStableSystemPrefix() {
@@ -479,6 +506,230 @@ export async function callLLM({
 
     throw new Error(`${requested.provider} model ${requested.model} failed: ${message}`)
   }
+}
+
+function publicDetail(error) {
+  return serializeError(error)
+    .replace(/(key=)[^&\s"']+/gi, '$1***')
+    .replace(/AIza[0-9A-Za-z\-_]{10,}/g, '***')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 280)
+}
+
+function isAuthFailure(error) {
+  return /\b401\b|\b403\b|api[_ ]key[_ ]invalid|api key not valid|invalid api key|permission denied|unauthorized|forbidden|incorrect api key|unregistered callers/i.test(
+    publicDetail(error)
+  )
+}
+
+function attemptLabel(item) {
+  const name = PROVIDER_LABEL[item.provider] || item.provider || 'Model'
+  const model = item.model && item.model !== item.provider ? ` (${item.model})` : ''
+
+  return `${name}${model}`
+}
+
+function formatCascadeError(attempts) {
+  const lines = attempts.map(item => `• ${attemptLabel(item)} ${item.status}: ${item.detail}`)
+
+  return [
+    'AffiGenie Magnets could not get a response from any configured AI model.',
+    'Gemini was tried first, then the other models in this app: Claude, OpenAI, Grok, Groq, and Mistral.',
+    lines.length ? lines.join('\n') : 'No model API keys are configured.',
+    'Nothing is left to try. Check the API keys, then try again.'
+  ].join('\n')
+}
+
+function acceptModelText(text, json, accept) {
+  const normalized = String(text || '').trim()
+
+  if (!normalized) return null
+
+  if (!json) {
+    if (typeof accept === 'function' && !accept(normalized)) return null
+
+    return normalized
+  }
+
+  const parsed = parseJsonSafe(normalized)
+
+  if (!parsed || (typeof accept === 'function' && !accept(parsed))) return null
+
+  return JSON.stringify(parsed)
+}
+
+async function tryLightPlatform(provider, args, preferPaid) {
+  const invoke = () => (provider === 'groq' ? callGroq(args) : callMistral(args))
+  const primary = await invoke()
+
+  if (primary) return primary
+
+  return runWithPaidKeys(!preferPaid, invoke)
+}
+
+/**
+ * Try every configured model, starting with Gemini and following the app model order.
+ * A model with no key is skipped. The first usable response wins.
+ */
+export async function callLLMCascade({
+  system,
+  prompt,
+  json = false,
+  maxTokens = 2048,
+  temperature = 0.4,
+  models = APP_MODEL_ORDER,
+  paid,
+  accept
+}) {
+  const attempts = []
+  const skippedProviders = new Set()
+  const stableSystem = String(system || '').trim()
+  const userPrompt = String(prompt || '')
+  const request = { system: stableSystem, prompt: userPrompt, json, maxTokens, temperature }
+  const preferPaid = resolvePaidTier(paid)
+
+  for (const modelId of models) {
+    let config
+
+    try {
+      config = resolveModel(modelId)
+    } catch (error) {
+      attempts.push({ model: String(modelId), provider: 'unknown', status: 'skipped', detail: publicDetail(error) })
+      continue
+    }
+
+    const paidKeys = keysFor(config.provider, true)
+    const freeKeys = keysFor(config.provider, false)
+    const tiers = []
+
+    if (preferPaid && paidKeys.length) tiers.push(true)
+    if (freeKeys.length) tiers.push(false)
+    if (!preferPaid && paidKeys.length) tiers.push(true)
+
+    if (!tiers.length) {
+      attempts.push({
+        model: config.model,
+        provider: config.provider,
+        status: 'skipped',
+        detail: `${PROVIDER_LABEL[config.provider] || config.provider} has no API key configured.`
+      })
+      continue
+    }
+
+    for (const tierPaid of tiers) {
+      const providerKey = `${config.provider}:${tierPaid ? 'paid' : 'free'}`
+
+      if (skippedProviders.has(providerKey)) {
+        attempts.push({
+          model: config.model,
+          provider: config.provider,
+          status: 'skipped',
+          detail: `Skipped. The ${tierPaid ? 'paid' : 'free'} ${PROVIDER_LABEL[config.provider] || config.provider} key was already rejected.`
+        })
+        continue
+      }
+
+      console.info(`[llm-cascade] trying provider=${config.provider} model=${config.model} paid=${tierPaid}`)
+
+      try {
+        const selected = await runProvider({ ...config, paid: tierPaid }, request)
+        const text = selected?.text
+
+        if (!text) throw new Error(`${config.provider} model ${config.model} returned an empty response.`)
+
+        const normalized = acceptModelText(text, json, accept)
+
+        if (!normalized) {
+          attempts.push({
+            model: config.model,
+            provider: config.provider,
+            status: 'failed',
+            detail: json
+              ? `Response was not usable JSON. Sample: ${String(text).replace(/\s+/g, ' ').slice(0, 140)}`
+              : 'Response was empty or rejected.'
+          })
+          continue
+        }
+
+        console.info(`[llm-cascade] using provider=${selected.provider || config.provider} model=${config.model}`)
+
+        return {
+          text: normalized,
+          provider: selected.provider || config.provider,
+          model: config.model,
+          usedPaidKeys: tierPaid,
+          attempts
+        }
+      } catch (error) {
+        const detail = publicDetail(error) || 'Request failed.'
+
+        console.error(`[llm-cascade] ${config.provider} model=${config.model} failed: ${detail}`)
+        attempts.push({ model: config.model, provider: config.provider, status: 'failed', detail })
+        if (isAuthFailure(error)) skippedProviders.add(providerKey)
+      }
+    }
+  }
+
+  const platformArgs = {
+    system: stableSystem,
+    prompt: userPrompt,
+    json,
+    max_tokens: Math.min(Number(maxTokens) || 2048, 8192),
+    waitOn429: false,
+    timeoutMs: 25000
+  }
+
+  for (const provider of ['groq', 'mistral']) {
+    const label = PROVIDER_LABEL[provider]
+    const hasKeys = keysFor(provider, true).length > 0 || keysFor(provider, false).length > 0
+
+    if (!hasKeys) {
+      attempts.push({ model: provider, provider, status: 'skipped', detail: `${label} has no API key configured.` })
+      continue
+    }
+
+    try {
+      const text = await tryLightPlatform(provider, platformArgs, preferPaid)
+      const model = provider === 'groq' ? 'groq-fallback' : 'mistral-small-latest'
+
+      if (!text) {
+        attempts.push({
+          model,
+          provider,
+          status: 'failed',
+          detail: `${label} did not return a response. Its keys were tried and failed, were rate limited, or are not set for this tier.`
+        })
+        continue
+      }
+
+      const normalized = acceptModelText(text, json, accept)
+
+      if (!normalized) {
+        attempts.push({
+          model,
+          provider,
+          status: 'failed',
+          detail: json
+            ? `Response was not usable JSON. Sample: ${String(text).replace(/\s+/g, ' ').slice(0, 140)}`
+            : 'Response was empty or rejected.'
+        })
+        continue
+      }
+
+      console.info(`[llm-cascade] using provider=${provider} model=${model}`)
+
+      return { text: normalized, provider, model, usedPaidKeys: preferPaid, attempts }
+    } catch (error) {
+      attempts.push({ model: provider, provider, status: 'failed', detail: publicDetail(error) || 'Request failed.' })
+    }
+  }
+
+  const error = new Error(formatCascadeError(attempts))
+
+  error.code = 'ALL_MODELS_EXHAUSTED'
+  error.attempts = attempts
+  throw error
 }
 
 export async function callLLMJson(options) {

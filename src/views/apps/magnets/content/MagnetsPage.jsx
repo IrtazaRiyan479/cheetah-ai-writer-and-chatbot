@@ -20,6 +20,7 @@ import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
 import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip' // FIXED: Added missing import
+import Alert from '@mui/material/Alert'
 
 // MUI Icons
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
@@ -33,6 +34,7 @@ const MagnetsPage = () => {
   const [prompt, setPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedMagnet, setGeneratedMagnet] = useState(null)
+  const [errorMessage, setErrorMessage] = useState('')
 
   const [magnetValues, setMagnetValues] = useState({})
   const [isExecuting, setIsExecuting] = useState(false)
@@ -40,29 +42,47 @@ const MagnetsPage = () => {
 
   const [embedOpen, setEmbedOpen] = useState(false)
 
+  const readApiJson = async res => {
+    const raw = await res.text()
+
+    try {
+      return raw ? JSON.parse(raw) : {}
+    } catch {
+      const looksHtml = /^\s*</.test(raw)
+
+      return {
+        success: false,
+        error: looksHtml
+          ? `The magnets API returned a web page instead of JSON (HTTP ${res.status}). The request never reached a model.`
+          : `The magnets API returned an unreadable response (HTTP ${res.status}).`
+      }
+    }
+  }
+
   const handleCreateMagnet = async () => {
     if (!prompt.trim()) return
     setIsGenerating(true)
     setGeneratedMagnet(null)
     setMagnetResult(null)
     setMagnetValues({})
+    setErrorMessage('')
 
     try {
-      const res = await fetch('/api/AffiGenie-magnets', {
+      const res = await fetch('/api/magnets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'create', prompt })
       })
-      const data = await res.json()
+      const data = await readApiJson(res)
 
-      if (data.success) {
+      if (data.success && data.magnetConfig) {
         setGeneratedMagnet(data.magnetConfig)
       } else {
-        alert(data.error || 'Failed to generate magnet.')
+        setErrorMessage(data.error || `The magnets API failed (HTTP ${res.status}).`)
       }
     } catch (error) {
       console.error(error)
-      alert('An error occurred while connecting to the AI.', error)
+      setErrorMessage(error?.message || 'The browser could not reach the magnets API.')
     } finally {
       setIsGenerating(false)
     }
@@ -71,6 +91,7 @@ const MagnetsPage = () => {
   const handleRunMagnet = async () => {
     setIsExecuting(true)
     setMagnetResult(null)
+    setErrorMessage('')
 
     try {
       const res = await fetch('/api/magnets', {
@@ -82,15 +103,16 @@ const MagnetsPage = () => {
           userInputs: magnetValues
         })
       })
-      const data = await res.json()
+      const data = await readApiJson(res)
 
-      if (data.success) {
+      if (data.success && data.result) {
         setMagnetResult(data.result)
       } else {
-        alert('Failed to process request.')
+        setErrorMessage(data.error || `The tool could not run (HTTP ${res.status}).`)
       }
     } catch (error) {
       console.error(error)
+      setErrorMessage(error?.message || 'The browser could not reach the magnets API.')
     } finally {
       setIsExecuting(false)
     }
@@ -154,6 +176,11 @@ const MagnetsPage = () => {
               {isGenerating ? 'Architecting your tool...' : 'Create AffiGenieMagnet'}
             </Button>
           </Box>
+          {errorMessage ? (
+            <Alert severity="error" sx={{ mt: 3, whiteSpace: 'pre-wrap', alignItems: 'flex-start' }}>
+              {errorMessage}
+            </Alert>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -194,7 +221,7 @@ const MagnetsPage = () => {
 
               {/* Dynamic Inputs */}
               <Box className="flex flex-col gap-4">
-                {generatedMagnet.inputs.map((input) => (
+                {generatedMagnet.inputs?.map((input) => (
                   <Box key={input.id}>
                     <Typography variant="subtitle2" color="text.primary" className="font-bold mb-1 block">
                       {input.label}
