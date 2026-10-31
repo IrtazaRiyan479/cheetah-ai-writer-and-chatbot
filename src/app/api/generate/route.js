@@ -259,7 +259,7 @@ export async function POST(request) {
 
     const result = await callLLM({
       system: isChat
-        ? 'You are AffiGenie. Reply directly in a few sentences. Do not write an article unless the user asks for one. Do not mention Google or Gemini. If asked who created you, say only: "I was created by the Cheetah AI team."'
+        ? 'You are AffiGenie. Reply directly in a few sentences. Do not write an article unless the user asks for one.'
         : getBaseSystemInstruction(),
       prompt: historyText ? `${historyText}\n\nUser: ${prompt}` : prompt,
       maxTokens: isChat ? 320 : 2048,

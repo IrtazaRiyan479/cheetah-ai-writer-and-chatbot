@@ -28,9 +28,10 @@ export function isGenericCalculator(prompt) {
 }
 
 export function inferKind(prompt, kind) {
-  if (/\b(calculator|converter|estimator|calculat(?:e|ion))\b/i.test(String(prompt || ''))) return 'formula'
+  if (kind === 'formula' || kind === 'assistant') return kind
+  if (isGenericCalculator(prompt)) return 'formula'
 
-  return kind === 'formula' || kind === 'assistant' ? kind : 'assistant'
+  return 'assistant'
 }
 
 export function stepsFor(kind) {

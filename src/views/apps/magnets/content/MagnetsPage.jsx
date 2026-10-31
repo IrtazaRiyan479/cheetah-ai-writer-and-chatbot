@@ -19,6 +19,9 @@ import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import Alert from '@mui/material/Alert'
 import InputAdornment from '@mui/material/InputAdornment'
+import FormControl from '@mui/material/FormControl'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
 
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import CodeIcon from '@mui/icons-material/Code'
@@ -28,6 +31,112 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import ReactMarkdown from 'react-markdown'
 
 import { evaluateFormula, isGenericCalculator, stepsFor } from '@/utils/magnetTool'
+
+const MAGNET_MODELS = [
+  { label: 'Gemini 3.1 Flash-Lite', value: 'gemini-3.1-flash-lite' },
+  { label: 'Gemini 3.5 Flash', value: 'gemini-3.5-flash' },
+  { label: 'Gemini 3.1 Pro', value: 'gemini-3.1-pro-preview-customtools' },
+  { label: 'Claude Haiku 4.5', value: 'claude-haiku-4-5' },
+  { label: 'Claude Haiku 5.5', value: 'claude-haiku-5-5' },
+  { label: 'Claude Sonnet 4.5', value: 'claude-sonnet-4-5' },
+  { label: 'Claude Sonnet 4.6', value: 'claude-sonnet-4-6' },
+  { label: 'Claude Sonnet 5', value: 'claude-sonnet-5' },
+  { label: 'Claude Sonnet 5.5', value: 'claude-sonnet-5-5' },
+  { label: 'Claude Opus 4.6', value: 'claude-opus-4-6' },
+  { label: 'Claude Opus 5.5', value: 'claude-opus-5-5' },
+  { label: 'GPT-5.2', value: 'gpt-5.2' },
+  { label: 'GPT-5 Mini', value: 'gpt-5-mini' },
+  { label: 'Grok 4.7', value: 'grok-4.7' }
+]
+
+const DEFAULT_MAGNET_MODEL = 'gemini-3.5-flash'
+const PROMPT_PLACEHOLDER =
+  'e.g. A quiz that recommends a laptop from budget and daily use, a week-by-week moving checklist, or a comparison of two products'
+
+function unwrapFence(value) {
+  const trimmed = String(value || '').trim()
+  const full = trimmed.match(/^```(?:html|xml|svg|markdown|md)?\s*([\s\S]*?)```$/i)
+
+  return full ? full[1].trim() : trimmed
+}
+
+function looksLikeHtml(value) {
+  const tags = String(value || '').match(/<\/?[a-z][\w:-]*(\s[^>]*)?>/gi) || []
+
+  if (tags.length < 2) return false
+
+  return /<(?:!doctype|html|body|div|section|article|main|table|thead|tbody|tr|td|figure|img|svg|ul|ol|li|style|form|canvas|h[1-6]|p|a|button|span)\b/i.test(value)
+}
+
+function splitDeliverable(raw) {
+  const text = unwrapFence(raw)
+  const start = text.search(/<(?:!doctype|html|head|body|div|section|article|main|table|figure|ul|ol|svg|style|img|form|canvas)\b/i)
+
+  if (start < 0 || !looksLikeHtml(text.slice(start))) return { markdown: text, html: '' }
+
+  return { markdown: text.slice(0, start).trim(), html: text.slice(start).trim() }
+}
+
+function documentFor(html) {
+  if (/<(?:!doctype|html)\b/i.test(html)) return html
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:8px;font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;background:transparent;color:#1c1c1c;}img,video,svg{max-width:100%;height:auto;}*{box-sizing:border-box;}a{color:#5b4dff;}</style></head><body>${html}</body></html>`
+}
+
+function HtmlFrame({ html }) {
+  return (
+    <iframe
+      title='Tool result'
+      sandbox='allow-same-origin'
+      srcDoc={documentFor(html)}
+      onLoad={event => {
+        const frame = event.currentTarget
+        const height = frame.contentDocument?.documentElement?.scrollHeight || 360
+
+        frame.style.height = `${Math.min(Math.max(height + 12, 180), 4000)}px`
+      }}
+      style={{ width: '100%', border: 0, minHeight: 180, background: 'transparent', display: 'block' }}
+    />
+  )
+}
+
+function MarkdownBlock({ value }) {
+  if (!String(value || '').trim()) return null
+
+  return (
+    <Box className='prose dark:prose-invert max-w-none text-textPrimary leading-relaxed space-y-4'>
+      <ReactMarkdown
+        components={{
+          h2: ({ node, ...props }) => (
+            <Typography variant='h5' className='font-bold pt-4 border-b border-divider pb-2 text-textPrimary' {...props} />
+          ),
+          h3: ({ node, ...props }) => (
+            <Typography variant='h6' className='font-bold pt-2 border-b border-divider pb-1 text-textPrimary' {...props} />
+          ),
+          p: ({ node, ...props }) => <Typography variant='body1' className='text-textSecondary text-[15px] mb-4' {...props} />,
+          strong: ({ node, ...props }) => <Box component='span' sx={{ fontWeight: 'bold', color: 'text.primary' }} {...props} />,
+          ul: ({ node, ...props }) => <Box component='ul' className='list-disc pl-5 mb-4' {...props} />,
+          li: ({ node, ...props }) => <Typography component='li' variant='body1' className='text-textSecondary text-[15px]' {...props} />
+        }}
+      >
+        {value}
+      </ReactMarkdown>
+    </Box>
+  )
+}
+
+function ResultView({ value, output }) {
+  const parts = splitDeliverable(value)
+  const html = parts.html || (output === 'html' && looksLikeHtml(unwrapFence(value)) ? unwrapFence(value) : '')
+  const markdown = html && parts.html ? parts.markdown : html ? '' : unwrapFence(value)
+
+  return (
+    <Box className='flex flex-col gap-4'>
+      <MarkdownBlock value={markdown} />
+      {html ? <HtmlFrame html={html} /> : null}
+    </Box>
+  )
+}
 
 const OP_LABEL = { '+': '+', '-': '−', '*': '×', '/': '÷' }
 
@@ -249,22 +358,39 @@ function ToolFields({ inputs, values, onChange, disabled }) {
       <Typography variant='subtitle2' color='text.primary' className='font-bold mb-1 block'>
         {input.label}
       </Typography>
-      <TextField
-        fullWidth
-        size='small'
-        type={input.type === 'number' ? 'number' : 'text'}
-        multiline={input.type === 'textarea'}
-        rows={input.type === 'textarea' ? 3 : 1}
-        placeholder={input.placeholder}
-        value={values[input.id] || ''}
-        disabled={disabled}
-        onChange={event => onChange({ ...values, [input.id]: event.target.value })}
-        InputProps={
-          input.suffix
-            ? { endAdornment: <InputAdornment position='end'>{input.suffix}</InputAdornment> }
-            : undefined
-        }
-      />
+      {input.type === 'select' && input.options?.length ? (
+        <TextField
+          select
+          fullWidth
+          size='small'
+          value={values[input.id] || ''}
+          disabled={disabled}
+          onChange={event => onChange({ ...values, [input.id]: event.target.value })}
+        >
+          {input.options.map(option => (
+            <MenuItem key={option} value={option}>
+              {option}
+            </MenuItem>
+          ))}
+        </TextField>
+      ) : (
+        <TextField
+          fullWidth
+          size='small'
+          type={input.type === 'number' ? 'number' : 'text'}
+          multiline={input.type === 'textarea'}
+          rows={input.type === 'textarea' ? 3 : 1}
+          placeholder={input.placeholder}
+          value={values[input.id] || ''}
+          disabled={disabled}
+          onChange={event => onChange({ ...values, [input.id]: event.target.value })}
+          InputProps={
+            input.suffix
+              ? { endAdornment: <InputAdornment position='end'>{input.suffix}</InputAdornment> }
+              : undefined
+          }
+        />
+      )}
     </Box>
   ))
 }
@@ -332,6 +458,7 @@ const MagnetsPage = () => {
   const [isExecuting, setIsExecuting] = useState(false)
   const [magnetResult, setMagnetResult] = useState(null)
   const [embedOpen, setEmbedOpen] = useState(false)
+  const [model, setModel] = useState(DEFAULT_MAGNET_MODEL)
 
   const working = phase === 'planning' || phase === 'inputs' || phase === 'logic'
 
@@ -402,7 +529,7 @@ const MagnetsPage = () => {
 
     try {
       setStatusText('Sending the planning request…')
-      const planned = await postMagnet({ action: 'plan', prompt: trimmed })
+      const planned = await postMagnet({ action: 'plan', prompt: trimmed, model })
 
       if (planned.instant && planned.magnetConfig) {
         setPlan(planned.plan)
@@ -418,7 +545,7 @@ const MagnetsPage = () => {
       setPlan(nextPlan)
       setPhase('inputs')
       setStatusText(`Plan: ${nextPlan.summary} Sending the request that chooses the inputs…`)
-      const inputsResponse = await postMagnet({ action: 'build', step: 'inputs', prompt: trimmed, plan: nextPlan })
+      const inputsResponse = await postMagnet({ action: 'build', step: 'inputs', prompt: trimmed, plan: nextPlan, model })
 
       setDraft(inputsResponse.draft)
       setPhase('logic')
@@ -432,7 +559,8 @@ const MagnetsPage = () => {
         step: 'logic',
         prompt: trimmed,
         plan: nextPlan,
-        draft: inputsResponse.draft
+        draft: inputsResponse.draft,
+        model
       })
 
       setGeneratedMagnet(built.magnetConfig)
@@ -458,7 +586,9 @@ const MagnetsPage = () => {
       const data = await postMagnet({
         action: 'execute',
         aiInstructions: generatedMagnet.aiInstructions,
-        userInputs: magnetValues
+        output: generatedMagnet.output,
+        userInputs: magnetValues,
+        model
       })
 
       if (data.result) setMagnetResult(data.result)
@@ -491,14 +621,30 @@ const MagnetsPage = () => {
   return (
     <Box className='flex flex-col gap-6'>
       <Card variant='outlined' className='border-divider shadow-sm rounded-xl overflow-hidden bg-backgroundPaper'>
-        <Box className='p-6 border-b border-divider bg-actionHover/30'>
-          <Typography variant='h5' className='font-bold text-textPrimary tracking-tight flex items-center gap-2'>
-            <AutoAwesomeIcon color='primary' fontSize='large' /> AffiGenieMagnets
-          </Typography>
-          <Typography variant='body2' className='text-textSecondary mt-1.5 max-w-3xl leading-relaxed'>
-            Describe the tool. A plain request such as “Calculator” stays a general calculator. A specific request such as
-            “tip calculator” stays about tips. The preview opens immediately and shows each step while the tool is built.
-          </Typography>
+        <Box
+          className='p-6 border-b border-divider bg-actionHover/30'
+          sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 3, flexWrap: 'wrap' }}
+        >
+          <Box sx={{ flex: '1 1 280px', minWidth: 0 }}>
+            <Typography variant='h5' className='font-bold text-textPrimary tracking-tight flex items-center gap-2'>
+              <AutoAwesomeIcon color='primary' fontSize='large' /> AffiGenieMagnets
+            </Typography>
+            <Typography variant='body2' className='text-textSecondary mt-1.5 max-w-3xl leading-relaxed'>
+              Describe any interactive tool. Quizzes, calculators, checklists, comparisons, planners, generators, and layouts all use the same builder. The preview opens while it is built so you can test the result.
+            </Typography>
+          </Box>
+          <FormControl size='small' sx={{ minWidth: 220, flex: '0 1 260px' }}>
+            <Typography variant='caption' color='text.secondary' className='font-bold uppercase tracking-wider mb-1'>
+              Model
+            </Typography>
+            <Select value={model} onChange={event => setModel(event.target.value)} disabled={working}>
+              {MAGNET_MODELS.map(item => (
+                <MenuItem key={item.value} value={item.value}>
+                  {item.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </Box>
         <CardContent className='p-6'>
           <Typography variant='subtitle2' color='text.secondary' className='font-bold uppercase tracking-wider mb-4'>
@@ -508,7 +654,7 @@ const MagnetsPage = () => {
             fullWidth
             multiline
             rows={4}
-            placeholder='Calculator'
+            placeholder={PROMPT_PLACEHOLDER}
             value={prompt}
             onChange={event => setPrompt(event.target.value)}
             disabled={working}
@@ -571,7 +717,7 @@ const MagnetsPage = () => {
               elevation={4}
               sx={{
                 p: { xs: 3, md: 4 },
-                maxWidth: 650,
+                maxWidth: generatedMagnet?.mode === 'assistant' ? 920 : 650,
                 width: '100%',
                 display: 'flex',
                 flexDirection: 'column',
@@ -656,29 +802,8 @@ const MagnetsPage = () => {
                             </IconButton>
                           </Tooltip>
                         </Box>
-                        <Box className='prose dark:prose-invert max-w-none text-textPrimary leading-relaxed space-y-4'>
-                          <ReactMarkdown
-                            components={{
-                              h2: ({ node, ...props }) => (
-                                <Typography variant='h5' className='font-bold pt-4 border-b border-divider pb-2 text-textPrimary' {...props} />
-                              ),
-                              h3: ({ node, ...props }) => (
-                                <Typography variant='h6' className='font-bold pt-2 border-b border-divider pb-1 text-textPrimary' {...props} />
-                              ),
-                              p: ({ node, ...props }) => (
-                                <Typography variant='body1' className='text-textSecondary text-[15px] mb-4' {...props} />
-                              ),
-                              strong: ({ node, ...props }) => (
-                                <Box component='span' sx={{ fontWeight: 'bold', color: 'text.primary' }} {...props} />
-                              ),
-                              ul: ({ node, ...props }) => <Box component='ul' className='list-disc pl-5 mb-4' {...props} />,
-                              li: ({ node, ...props }) => (
-                                <Typography component='li' variant='body1' className='text-textSecondary text-[15px]' {...props} />
-                              )
-                            }}
-                          >
-                            {magnetResult}
-                          </ReactMarkdown>
+                        <Box className='pt-1'>
+                          <ResultView value={magnetResult} output={generatedMagnet.output} />
                         </Box>
                       </Paper>
                     </Box>
