@@ -167,7 +167,7 @@ export default function DraftsPage() {
         {loading ? (
           <Grid container spacing={4}>
             {[1, 2, 3].map(n => (
-              <Grid item xs={12} sm={6} md={4} key={n}>
+              <Grid size={12} key={n}>
                 <Card className='shadow-md rounded-xl h-full flex flex-col'>
                   <Skeleton variant='rectangular' height={140} />
                   <CardContent className='flex-grow'>
@@ -201,7 +201,7 @@ export default function DraftsPage() {
               const preview = outlineMeta ? outlineMeta.desc : desc
 
               return (
-                <Grid item xs={12} sm={outlineMeta ? 12 : 6} md={outlineMeta ? 12 : 4} key={article.id}>
+                <Grid size={12} key={article.id}>
                   <Card className='shadow-md rounded-xl hover:shadow-lg transition-shadow duration-300 flex flex-col h-full border border-gray-100 overflow-hidden'>
                     {/* Hero Image Section */}
                     {cardImg ? (

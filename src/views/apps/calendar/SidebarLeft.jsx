@@ -11,6 +11,8 @@ import AppReactDatepicker from '@/libs/styles/AppReactDatepicker'
 
 import { filterAllCalendarLabels, filterCalendarLabel, selectedEvent } from '@/redux-store/slices/calendar'
 
+const ACTION_LABELS = { Draft: 'Draft', Published: 'Publish', Scheduled: 'Schedule' }
+
 const SidebarLeft = props => {
   const {
     mdAbove,
@@ -37,7 +39,7 @@ const SidebarLeft = props => {
           <FormControlLabel
             className='mbe-1'
             key={key}
-            label={key}
+            label={ACTION_LABELS[key] || key}
             control={
               <Checkbox
                 color={value}
@@ -99,7 +101,9 @@ const SidebarLeft = props => {
       <Divider className='is-full' />
       <AppReactDatepicker
         inline
-        onChange={date => calendarApi?.gotoDate(date)}
+        onChange={date => date && calendarApi?.gotoDate(date)}
+        onMonthChange={date => date && calendarApi?.gotoDate(date)}
+        onYearChange={date => date && calendarApi?.gotoDate(date)}
         boxProps={{
           className: 'flex justify-center is-full',
           sx: { '& .react-datepicker': { boxShadow: 'none !important', border: 'none !important' } }

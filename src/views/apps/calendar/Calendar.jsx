@@ -174,7 +174,7 @@ const Calendar = props => {
         start: event.start,
         end: event.end || event.start,
         allDay: false,
-        url: '',
+        url: event.url || '',
         extendedProps: event.extendedProps || {}
       })
     )
@@ -226,7 +226,17 @@ const Calendar = props => {
     },
     eventClick({ event: clickedEvent, jsEvent }) {
       jsEvent.preventDefault()
-      dispatch(selectedEvent(clickedEvent))
+      dispatch(
+        selectedEvent({
+          id: clickedEvent.id,
+          title: clickedEvent.title,
+          start: clickedEvent.start,
+          end: clickedEvent.end || clickedEvent.start,
+          allDay: false,
+          url: clickedEvent.url || '',
+          extendedProps: { ...(clickedEvent.extendedProps || {}) }
+        })
+      )
       handleAddEventSidebarToggle()
     },
     eventDidMount(info) {
@@ -405,7 +415,7 @@ const Calendar = props => {
               size='small'
               variant='text'
               onClick={() => {
-                calendarApi?.changeView('timeGridDay', more?.date)
+                calendarApi?.changeView('listMonth', more?.date)
                 setMore(null)
               }}
             >

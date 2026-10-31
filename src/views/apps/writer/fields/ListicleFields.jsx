@@ -33,7 +33,7 @@ const ListItemPromptField = ({ value, onChange }) => {
         rows={3}
         size='small'
         placeholder='e.g. Include pros and cons for each item, and focus on durability...'
-        value={value || 'only write a max of 200 words'}
+        value={value || ''}
         onChange={event => {
           const next = event.target.value
           if (next.trim() && next.trim() !== 'only write a max of 200 words' && !requireFeature('menu-list-item-prompt')) return

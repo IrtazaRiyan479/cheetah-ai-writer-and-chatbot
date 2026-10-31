@@ -671,12 +671,13 @@ async function saveWpPost(user, session, body) {
   const calendar = body.calendar
 
   if (!ACTION_TYPES.includes(calendar)) {
-    return NextResponse.json({ error: 'Choose Draft, Published, or Scheduled.' }, { status: 400 })
+    return NextResponse.json({ error: 'Choose Draft, Publish, or Schedule.' }, { status: 400 })
   }
 
   const sites = await connectedSites(user, session)
   const colors = assignSiteColors(sites)
-  const site = sites.find(item => item.siteKey === String(body.siteKey || ref.siteKey))
+  const targetKey = String(body.siteKey || ref.siteKey)
+  const site = sites.find(item => item.siteKey === targetKey)
 
   if (!site) return NextResponse.json({ error: 'Choose a connected WordPress site.' }, { status: 400 })
 
@@ -691,26 +692,80 @@ async function saveWpPost(user, session, body) {
   }
 
   const authed = siteAuth(site)
-  const existing = await readWpPost(authed, ref.postId)
+  const sameSite = targetKey === ref.siteKey
   const wpStatus = calendar === 'Scheduled' ? 'future' : calendar === 'Draft' ? 'draft' : 'publish'
-  const html = String(body.content || '').trim() || wpHtml(existing)
-  const payload = {
-    title: wpPlainTitle(existing) || 'Untitled article',
-    status: wpStatus
+  const suppliedHtml = String(body.content || '').trim()
+  const suppliedTitle = String(body.title || '').replace(/\s+/g, ' ').trim()
+  let existing = null
+
+  if (!suppliedHtml) {
+    const source = sameSite ? site : sites.find(item => item.siteKey === ref.siteKey)
+
+    if (source) {
+      try {
+        existing = await readWpPost(siteAuth(source), ref.postId)
+      } catch (error) {
+        if (sameSite) throw error
+      }
+    }
   }
 
+  const html = suppliedHtml || wpHtml(existing)
+  const title = suppliedTitle || (existing ? wpPlainTitle(existing) : '') || 'Untitled article'
+  const payload = { status: wpStatus }
+
+  if (suppliedTitle || !sameSite) payload.title = title
   if (html) payload.content = html
   if (wpStatus === 'future') payload.date_gmt = toWpGmt(start)
   if (wpStatus === 'publish') payload.date_gmt = toWpGmt(new Date())
 
-  const { data } = await wpRequest(authed, `/wp-json/wp/v2/posts/${ref.postId}`, {
-    method: 'POST',
-    payload,
-    timeoutMs: 60000
-  })
+  let data = null
+
+  if (sameSite) {
+    try {
+      const saved = await wpRequest(authed, `/wp-json/wp/v2/posts/${ref.postId}`, {
+        method: 'POST',
+        payload,
+        timeoutMs: 60000
+      })
+
+      data = saved.data
+    } catch (error) {
+      const missing = Number(error?.status) === 404 || error?.code === 'rest_post_invalid_id'
+
+      if (!missing || !html) throw error
+    }
+  }
+
+  if (!data) {
+    if (!html) {
+      return NextResponse.json({ error: 'The article body was not loaded, so it was not saved.' }, { status: 400 })
+    }
+
+    if (!payload.title) payload.title = title
+
+    const created = await wpRequest(authed, '/wp-json/wp/v2/posts', {
+      method: 'POST',
+      payload,
+      timeoutMs: 60000
+    })
+
+    data = created.data
+  }
 
   return NextResponse.json({
-    event: wpPostToEvent(site, { ...existing, ...data, content: html ? { rendered: html } : existing?.content, status: data?.status || wpStatus }, colors.get(site.siteKey))
+    event: wpPostToEvent(
+      site,
+      {
+        ...existing,
+        ...data,
+        id: data?.id,
+        title: data?.title || { rendered: title },
+        content: html ? { rendered: html } : existing?.content,
+        status: data?.status || wpStatus
+      },
+      colors.get(site.siteKey)
+    )
   })
 }
 
@@ -730,7 +785,7 @@ async function saveAction(user, session, body) {
   }
 
   if (!ACTION_TYPES.includes(calendar)) {
-    return NextResponse.json({ error: 'Choose Draft, Published, or Scheduled.' }, { status: 400 })
+    return NextResponse.json({ error: 'Choose Draft, Publish, or Schedule.' }, { status: 400 })
   }
 
   const sites = await connectedSites(user, session)
@@ -850,7 +905,7 @@ async function moveEvent(user, session, body) {
 
     if (laneForWpStatus(existing?.status) !== 'Scheduled') {
       return NextResponse.json(
-        { error: 'Open the article and choose Published, Draft, or Scheduled. Dragging does not republish it.' },
+        { error: 'Open the article and choose Publish, Draft, or Schedule. Dragging does not republish it.' },
         { status: 400 }
       )
     }
@@ -923,9 +978,9 @@ async function writeEvent(request) {
     const body = await request.json()
     const intent = body.intent === 'move' ? 'move' : 'action'
 
-    if (intent === 'move') return moveEvent(user, session, body)
+    if (intent === 'move') return await moveEvent(user, session, body)
 
-    return saveAction(user, session, body)
+    return await saveAction(user, session, body)
   } catch (error) {
     console.error(error?.message || 'Calendar save failed')
 
